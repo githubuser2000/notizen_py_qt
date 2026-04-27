@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "notizen-pypy-slint"
+version = "0.1.0"
+description = "PyPy3/Slint port of the old VB.NET Notizen.NET application"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Transcompiled from Notizen.NET" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: X11 Applications",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Office/Business",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+# The current Slint Python releases require Python >=3.12. PyPy's current stable
+# line is 3.11, so the PyPy-oriented extra pins the older alpha that still has
+# Python >=3.10 metadata. Depending on platform this may still need a source
+# build of Slint's native extension.
+slint = ["slint==1.8.0a1"]
+
+[project.scripts]
+notizen-pypy-slint = "notizen_pypy_slint.app:main"
+notizen-alx = "notizen_pypy_slint.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+notizen_pypy_slint = ["ui/*.slint"]
+"notizen_pypy_slint.ui" = ["*.slint"]

@@ -1,0 +1,154 @@
+import { Button, LineEdit, TextEdit, ScrollView } from "std-widgets.slint";
+
+export struct NoteRow {
+    label: string,
+    selected: bool,
+}
+
+export component AppWindow inherits Window {
+    width: 1180px;
+    height: 760px;
+    min-width: 860px;
+    min-height: 560px;
+    title: root.window-title;
+
+    in-out property <string> window-title: "Notizen PyPy Slint";
+    in-out property <[NoteRow]> rows;
+    in-out property <int> selected-index: -1;
+    in-out property <string> editor-text;
+    in-out property <string> note-title;
+    in-out property <string> search-text;
+    in-out property <string> status-text: "Bereit";
+    in-out property <bool> dirty: false;
+
+    callback new-document();
+    callback open-document();
+    callback save-document();
+    callback save-document-as();
+    callback set-password();
+    callback export-text();
+    callback export-rtf();
+    callback add-child();
+    callback add-sibling();
+    callback delete-note();
+    callback toggle-expand();
+    callback select-row(int);
+    callback rename-current(string);
+    callback editor-changed(string);
+    callback search-next(string);
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        Rectangle {
+            height: 46px;
+            background: #f6f6f6;
+            border-color: #dadada;
+            border-width: 1px;
+            HorizontalLayout {
+                padding: 6px;
+                spacing: 6px;
+                Button { text: "Neu"; clicked => { root.new-document(); } }
+                Button { text: "Öffnen"; clicked => { root.open-document(); } }
+                Button { text: "Speichern"; clicked => { root.save-document(); } }
+                Button { text: "Speichern unter"; clicked => { root.save-document-as(); } }
+                Button { text: "Passwort"; clicked => { root.set-password(); } }
+                Rectangle { width: 1px; background: #cccccc; }
+                Button { text: "+ Kind"; clicked => { root.add-child(); } }
+                Button { text: "+ Daneben"; clicked => { root.add-sibling(); } }
+                Button { text: "Löschen"; clicked => { root.delete-note(); } }
+                Button { text: "Auf/Zu"; clicked => { root.toggle-expand(); } }
+                Rectangle { width: 1px; background: #cccccc; }
+                Button { text: "TXT"; clicked => { root.export-text(); } }
+                Button { text: "RTF"; clicked => { root.export-rtf(); } }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: root.dirty ? "● geändert" : "gespeichert"; vertical-alignment: center; }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                width: 330px;
+                background: #ffffff;
+                border-color: #d0d0d0;
+                border-width: 1px;
+                VerticalLayout {
+                    padding: 6px;
+                    spacing: 6px;
+                    Text { text: "Baum"; font-weight: 700; }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        LineEdit {
+                            text <=> root.search-text;
+                            placeholder-text: "Suchen";
+                        }
+                        Button { text: "Weiter"; clicked => { root.search-next(root.search-text); } }
+                    }
+                    ScrollView {
+                        viewport-width: parent.width;
+                        viewport-height: parent.height - 72px;
+                        VerticalLayout {
+                            spacing: 1px;
+                            for row[i] in root.rows: Rectangle {
+                                height: 30px;
+                                background: row.selected ? #dbeafe : #ffffff;
+                                border-color: row.selected ? #93c5fd : #ffffff;
+                                border-width: 1px;
+                                Text {
+                                    x: 6px;
+                                    y: 0px;
+                                    width: parent.width - 12px;
+                                    height: parent.height;
+                                    text: row.label;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                TouchArea {
+                                    clicked => { root.select-row(i); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                background: #ffffff;
+                border-color: #d0d0d0;
+                border-width: 1px;
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text { text: "Titel:"; vertical-alignment: center; }
+                        LineEdit { text <=> root.note-title; }
+                        Button { text: "Umbenennen"; clicked => { root.rename-current(root.note-title); } }
+                    }
+                    TextEdit {
+                        text <=> root.editor-text;
+                        wrap: word-wrap;
+                        changed text => { root.editor-changed(self.text); }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 30px;
+            background: #f6f6f6;
+            border-color: #dadada;
+            border-width: 1px;
+            Text {
+                x: 8px;
+                width: parent.width - 16px;
+                height: parent.height;
+                text: root.status-text;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
