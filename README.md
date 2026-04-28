@@ -18,7 +18,8 @@ Funktioniert im Port:
 - eingebettete RichTextBox-/RTF-Bilder aus alten Notizen extrahieren
 - Datum/Uhrzeit und Aufzählungszeichen an Notizen anhängen
 - einfache Ganznotiz-Formatierung als portabler Ersatz für RichTextBox-Auswahlformatierung
-- RichTextBox-Toolbar-Stile `B`, `I`, `U`, `S` und `Normal` als Ganznotiz-Aktionen in UI und CLI
+- auswahlbezogene RichTextBox-Aktionen als Plain-Text-Range-Operationen im Python-Kern und in der CLI: Text einfügen, Bereich löschen und Bereich formatieren
+- RichTextBox-Toolbar-Stile `B`, `I`, `U`, `S` und `Normal` als Ganznotiz-Aktionen in UI und CLI sowie als Bereichsformatierung per `style-range`
 - Textgröße per A+/A- beziehungsweise CLI wie im alten Ctrl+Plus/Ctrl+Minus-Workflow ändern
 - Raw-RTF-Modus in der UI, damit alte RichTextBox-Inhalte notfalls direkt bearbeitet werden können
 - alte Intellibit-`notes_doc`-Dateien importieren
@@ -140,6 +141,18 @@ notizen-alx change-password local.alx 'ftps://user:pass@example.org/pfad/notizen
 
 Benutzername/Passwort können in der URL stehen, aus der neuen Konfiguration kommen oder über `~/.netrc` gelesen werden. Ohne Angaben wird anonymes FTP versucht.
 
+
+### Auswahlnachbau / Plain-Text-Bereiche
+
+Die alte WinForms-RichTextBox arbeitete oft mit der aktuellen Markierung. Slint stellt diese RichTextBox-Markierung nicht nativ bereit; der Port bildet sie deshalb über Klartext-Zeichenbereiche nach. Die Zeichenpositionen beziehen sich immer auf den durch `rtf_to_text` sichtbaren Text der Notiz.
+
+```bash
+notizen-alx insert-text input.alx output.alx --title "Todo" --at 6 --text "neuer Text"
+notizen-alx insert-text input.alx output.alx --title "Todo" --at 0 --date
+notizen-alx delete-range input.alx output.alx --title "Todo" --start 6 --length 4
+notizen-alx style-range input.alx output.alx --title "Todo" --start 6 --length 4 --style bold --font-size 24
+```
+
 ## Tests
 
 ```bash
@@ -150,7 +163,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 57 tests
+Ran 62 tests
 OK
 ```
 
@@ -158,7 +171,7 @@ Getestet wurden:
 
 - DES-Known-Vector
 - Notizen-DES-Kaskaden-Roundtrip
-- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, Toolbar-Stilerkennung, Textgrößenänderung, RTF-Bildextraktion und RTF-Bildeinfügen
+- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, Toolbar-Stilerkennung, Plain-Text-Range-Ersetzen/-Formatieren, Textgrößenänderung, RTF-Bildextraktion und RTF-Bildeinfügen
 - Laden der originalen `test.alx`-Fixture mit 65 Knoten
 - Speichern/Laden unverschlüsselt
 - Speichern/Laden verschlüsselt
@@ -169,7 +182,7 @@ Getestet wurden:
 - HTML-Export, Sticky-HTML-Export, Bildexport, Bildimport und Notiz-Anhänge
 - alte Konfigurationsmigration inklusive FTP-Feldern
 - Wecker-Wiederholungen, Wecker-Store, fällige Wecker, Benachrichtigungs-Dry-Run und CLI-Weckerpfade
-- CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
+- CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, `insert-text`, `delete-range`, `style-range`, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
 - Sprach-/Übersetzungstabelle aus `languages.vb`, Tastenkürzelmanifest, `config-set`/`config-path`, About-Ausgabe und lokaler Feedback-Draft
 
 ## Projektstruktur

@@ -46,6 +46,8 @@ Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in 
 - alte Tastaturbelegung aus `Notizen.tastendruck` als Manifest in `shortcuts.py` portiert, inklusive Ctrl+S/O/N/Q, Ctrl+F, Ctrl+Plus/Minus und TreeView-Tasten
 - weitere Felder des alten Einstellungsdialogs sind per `config-set` skriptbar: Sprache, Backup/Autosave, Autostart, Fensterposition, Taskbar-/Sticky-Rahmen-Optionen und zuletzt geöffnete Dateien
 - Feedback aus `info_help_and_feedback.vb` wird als lokales GZip-/UTF-16LE-Draftformat erzeugt; der alte harte FTP-Upload wurde bewusst nicht automatisiert
+- Auswahl-/Kontextmenülogik aus `kontext_inhalt.vb` und den RichTextBox-Toolbar-Handlern wird weiter nachgezogen: Text kann an einer Klartextposition eingefügt, ein Klartextbereich gelöscht und ein Klartextbereich lokal als RTF-Gruppe formatiert werden
+- `document_to_xml_bytes` schreibt wieder genau einen Top-Level-Root-Knoten; zusätzliche Top-Level-Notizen werden nur noch defensiv beim Laden malformed/alter Dateien zusammengeführt
 
 ## Dateiformat
 

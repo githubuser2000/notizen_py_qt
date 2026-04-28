@@ -23,7 +23,7 @@ from notizen_py_slint.shortcuts import shortcut_manifest
 from notizen_py_slint.sticky_runtime import sticky_window_specs
 from notizen_py_slint.remote import parse_ftp_url
 from notizen_py_slint.translations import LEGACY_KEYS, normalize_language, translate, translation_table
-from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
+from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, normalize_text_range, replace_rtf_text_range, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, style_rtf_text_range, text_to_rtf
 from notizen_py_slint.storage import (
     autosize_sticky,
     change_note_font_size,
@@ -40,9 +40,12 @@ from notizen_py_slint.storage import (
     save_document_to_bytes,
     import_json_into_document,
     insert_image_into_note,
+    insert_text_into_note,
     append_bullet_into_note,
     apply_toolbar_style_to_note,
+    delete_note_text_range,
     set_note_font_size,
+    style_note_text_range,
     list_backups,
     read_raw_xml,
     restore_backup,
@@ -74,6 +77,22 @@ class RtfTests(unittest.TestCase):
     def test_plain_text_roundtrip(self) -> None:
         text = "Hallo Welt\nZweite Zeile — Umlaut ä"
         self.assertEqual(rtf_to_text(text_to_rtf(text)), text)
+
+    def test_plain_text_range_helpers(self) -> None:
+        text = "Hallo Welt"
+        self.assertEqual(normalize_text_range(text, -3, 99).as_dict(), {"start": 0, "end": 10, "length": 10})
+        replaced = replace_rtf_text_range(text_to_rtf(text, font_family="Arial", font_size_half_points=20), 6, 4, "Mars")
+        self.assertEqual(rtf_to_text(replaced), "Hallo Mars")
+        style = detect_rtf_style(replaced)
+        self.assertEqual(style.font_family, "Arial")
+        self.assertEqual(style.font_size_half_points, 20)
+
+    def test_style_rtf_text_range_formats_selected_text(self) -> None:
+        styled = style_rtf_text_range(text_to_rtf("Hallo Welt"), 6, 4, bold=True, font_size_half_points=28)
+        self.assertEqual(rtf_to_text(styled), "Hallo Welt")
+        self.assertIn(r"\b", styled)
+        self.assertIn(r"\fs28", styled)
+        self.assertIn("Welt", styled)
 
     def test_rtf_detection(self) -> None:
         self.assertTrue(is_rtf(text_to_rtf("x")))
@@ -233,6 +252,26 @@ class StorageTests(unittest.TestCase):
         style = detect_rtf_style(note.rtf)
         self.assertFalse(style.bold)
         self.assertEqual(rtf_to_text(note.rtf), "Toolbar")
+
+    def test_note_range_helpers(self) -> None:
+        note = Note("Root", text_to_rtf("Hallo Welt", font_family="Arial", font_size_half_points=20))
+        insert_text_into_note(note, "schöne ", 6)
+        self.assertEqual(note.text, "Hallo schöne Welt")
+        delete_note_text_range(note, 6, 7)
+        self.assertEqual(note.text, "Hallo Welt")
+        style_note_text_range(note, 6, 4, style="bold", font_size_half_points=24)
+        self.assertEqual(note.text, "Hallo Welt")
+        self.assertIn(r"\b", note.rtf)
+        self.assertIn(r"\fs24", note.rtf)
+
+    def test_saved_xml_has_single_root_note(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Text")), selected_id=None)
+        doc.root.add_child(Note("Kind", text_to_rtf("Mehr")))
+        xml = document_to_xml_bytes(doc).decode("utf-16")
+        self.assertEqual(xml.count("<Notiz"), 2)
+        loaded = load_document_from_bytes(save_document_to_bytes(doc), source="memory")
+        self.assertEqual(sum(1 for _ in loaded.iter_notes()), 2)
+        self.assertEqual([child.title for child in loaded.root.children], ["Kind"])
 
     def test_plain_xml_load_and_save(self) -> None:
         doc = NoteDocument(root=Note("Root", text_to_rtf("XML Text")), selected_id=None)
@@ -659,6 +698,27 @@ class CliIntegrationTests(unittest.TestCase):
                 else:
                     os.environ["XDG_CONFIG_HOME"] = old_home
 
+
+    def test_cli_insert_delete_and_style_range(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Hallo Welt")))
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            inserted = Path(tmp) / "inserted.alx"
+            deleted = Path(tmp) / "deleted.alx"
+            styled = Path(tmp) / "styled.alx"
+            save_document(doc, path=source, backup_count=0)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["insert-text", str(source), str(inserted), "--title", "Root", "--at", "6", "--text", "schöne "]), 0)
+            self.assertEqual(load_document(inserted).root.text, "Hallo schöne Welt")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["delete-range", str(inserted), str(deleted), "--title", "Root", "--start", "6", "--length", "7"]), 0)
+            self.assertEqual(load_document(deleted).root.text, "Hallo Welt")
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(cli_main(["style-range", str(deleted), str(styled), "--title", "Root", "--start", "6", "--length", "4", "--style", "bold", "--font-size", "24", "--show"]), 0)
+            loaded = load_document(styled)
+            self.assertEqual(loaded.root.text, "Hallo Welt")
+            self.assertIn(r"\b", loaded.root.rtf)
+            self.assertIn('"plain_text": "Hallo Welt"', err.getvalue())
 
     def test_cli_config_show_outputs_json(self) -> None:
         with redirect_stdout(io.StringIO()) as buf:

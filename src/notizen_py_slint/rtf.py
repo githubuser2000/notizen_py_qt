@@ -49,6 +49,27 @@ class RtfStyle:
     bg_color: int | None = None
 
 
+@dataclass(slots=True, frozen=True)
+class TextRange:
+    """Plain-text character range inside a note.
+
+    WinForms RichTextBox actions were usually selection based.  Slint's Python
+    binding does not expose a rich-text selection, but CLI/editor helpers can
+    still address a note by plain-text character offsets.  The range is always
+    normalized to Python string indices after RTF has been converted to text.
+    """
+
+    start: int
+    end: int
+
+    @property
+    def length(self) -> int:
+        return max(0, self.end - self.start)
+
+    def as_dict(self) -> dict[str, int]:
+        return {"start": self.start, "end": self.end, "length": self.length}
+
+
 def is_rtf(value: str | bytes | None) -> bool:
     """Return True when a value looks like an RTF document."""
     if value is None:
@@ -121,6 +142,154 @@ def text_to_rtf(
         + rf"{{\fonttbl{{\f0\fnil\fcharset0 {font_family};}}}}"
         + color_table
         + "".join(controls)
+        + " "
+        + body
+        + r"\par"
+        + "\n}"
+    )
+
+
+def normalize_text_range(text: str, start: int, length: int | None = None, *, end: int | None = None) -> TextRange:
+    """Clamp a RichTextBox-style selection range to a Python string.
+
+    ``start`` and ``length`` are character offsets in the note's plain text.  A
+    missing length means an insertion point; callers that want "to end" can pass
+    ``end=len(text)``.  Negative values are clamped rather than crashing because
+    the old UI was forgiving around selection state.
+    """
+    total = len(text or "")
+    left = max(0, min(total, int(start or 0)))
+    if end is not None:
+        right = max(left, min(total, int(end)))
+    elif length is None:
+        right = left
+    else:
+        right = max(left, min(total, left + max(0, int(length))))
+    return TextRange(left, right)
+
+
+def replace_rtf_text_range(rtf_or_text: str, start: int, length: int | None, replacement: str, *, end: int | None = None) -> str:
+    """Replace a plain-text range and rewrite the note as simple styled RTF."""
+    current = detect_rtf_style(rtf_or_text)
+    text = rtf_to_text(rtf_or_text)
+    selected = normalize_text_range(text, start, length, end=end)
+    new_text = text[: selected.start] + str(replacement or "") + text[selected.end :]
+    return text_to_rtf(
+        new_text,
+        font_family=current.font_family,
+        font_size_half_points=current.font_size_half_points,
+        bold=current.bold,
+        italic=current.italic,
+        underline=current.underline,
+        strike=current.strike,
+    )
+
+
+def style_rtf_text_range(
+    rtf_or_text: str,
+    start: int,
+    length: int | None,
+    *,
+    end: int | None = None,
+    font_family: str | None = None,
+    font_size_half_points: int | None = None,
+    bold: bool | None = None,
+    italic: bool | None = None,
+    underline: bool | None = None,
+    strike: bool | None = None,
+    fg_color: int | None = None,
+    bg_color: int | None = None,
+) -> str:
+    """Apply simple RTF formatting to a plain-text range.
+
+    This is the closest portable equivalent to the old RichTextBox selection
+    toolbar.  It converts the note to plain text, keeps the detected global style
+    for unselected text and wraps the selected character range in a local RTF
+    group.  Embedded images and complex prior per-character styles are not
+    preserved by this helper; callers that need raw RTF should keep using the
+    Raw-RTF mode.
+    """
+    current = detect_rtf_style(rtf_or_text)
+    text = rtf_to_text(rtf_or_text)
+    selected = normalize_text_range(text, start, length, end=end)
+    if selected.length == 0:
+        return text_to_rtf(
+            text,
+            font_family=font_family or current.font_family,
+            font_size_half_points=font_size_half_points or current.font_size_half_points,
+            bold=current.bold if bold is None else bold,
+            italic=current.italic if italic is None else italic,
+            underline=current.underline if underline is None else underline,
+            strike=current.strike if strike is None else strike,
+            fg_color=fg_color,
+            bg_color=bg_color,
+        )
+    selected_style = RtfStyle(
+        font_family=font_family or current.font_family,
+        font_size_half_points=max(2, int(font_size_half_points or current.font_size_half_points)),
+        bold=current.bold if bold is None else bold,
+        italic=current.italic if italic is None else italic,
+        underline=current.underline if underline is None else underline,
+        strike=current.strike if strike is None else strike,
+        fg_color=fg_color,
+        bg_color=bg_color,
+    )
+    return text_to_rtf_with_styled_range(text, selected, base_style=current, selected_style=selected_style)
+
+
+def text_to_rtf_with_styled_range(text: str, selected: TextRange, *, base_style: RtfStyle | None = None, selected_style: RtfStyle | None = None) -> str:
+    """Create simple RTF with one locally styled text range."""
+    base = base_style or RtfStyle()
+    sel = selected_style or base
+    text = text or ""
+    selected = normalize_text_range(text, selected.start, selected.length)
+    base_family = _escape_font_name(base.font_family or "Sans Serif")
+    selected_family = _escape_font_name(sel.font_family or base.font_family or "Sans Serif")
+    font_table = rf"{{\fonttbl{{\f0\fnil\fcharset0 {base_family};}}"
+    selected_uses_f1 = selected_family != base_family
+    if selected_uses_f1:
+        font_table += rf"{{\f1\fnil\fcharset0 {selected_family};}}"
+    font_table += "}"
+
+    color_entries: list[str] = []
+    fg_index = bg_index = 0
+    if sel.fg_color is not None:
+        fg_index = len(color_entries) + 1
+        color_entries.append(_rtf_color_entry(sel.fg_color))
+    if sel.bg_color is not None:
+        bg_index = len(color_entries) + 1
+        color_entries.append(_rtf_color_entry(sel.bg_color))
+    color_table = r"{\colortbl ;" + "".join(color_entries) + "}" if color_entries else ""
+
+    base_controls = [r"\viewkind4", r"\uc1", r"\pard", r"\f0", rf"\fs{max(2, int(base.font_size_half_points or 18))}"]
+    if base.bold:
+        base_controls.append(r"\b")
+    if base.italic:
+        base_controls.append(r"\i")
+    if base.underline:
+        base_controls.append(r"\ul")
+    if base.strike:
+        base_controls.append(r"\strike")
+
+    selected_controls = [r"\f1" if selected_uses_f1 else r"\f0", rf"\fs{max(2, int(sel.font_size_half_points or base.font_size_half_points or 18))}"]
+    selected_controls.append(r"\b" if sel.bold else r"\b0")
+    selected_controls.append(r"\i" if sel.italic else r"\i0")
+    selected_controls.append(r"\ul" if sel.underline else r"\ul0")
+    selected_controls.append(r"\strike" if sel.strike else r"\strike0")
+    if fg_index:
+        selected_controls.append(rf"\cf{fg_index}")
+    if bg_index:
+        selected_controls.append(rf"\highlight{bg_index}")
+
+    prefix = _escape_rtf_text(text[: selected.start])
+    middle = _escape_rtf_text(text[selected.start : selected.end])
+    suffix = _escape_rtf_text(text[selected.end :])
+    body = prefix + "{" + "".join(selected_controls) + " " + middle + "}" + suffix
+    return (
+        r"{\rtf1\ansi\ansicpg1252\deff0"
+        + font_table
+        + color_table
+        + "".join(base_controls)
         + " "
         + body
         + r"\par"

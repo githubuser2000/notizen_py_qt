@@ -29,6 +29,7 @@ from .storage import (
     append_current_date_into_note,
     autosize_sticky,
     change_note_font_size,
+    delete_note_text_range,
     export_document_images,
     combine_subtree_to_new_note,
     export_html,
@@ -44,11 +45,15 @@ from .storage import (
     import_json_into_document,
     import_rtf_into_note,
     import_text_into_note,
+    insert_bullet_into_note,
+    insert_current_date_into_note,
     insert_image_into_note,
+    insert_text_into_note,
     document_to_xml_bytes,
     load_document_from_bytes,
     restore_backup,
     set_note_font_size,
+    style_note_text_range,
 )
 
 
@@ -302,6 +307,105 @@ def _append_bullet(file: str, output: str, title: str, password: str | None, new
     doc.select(note)
     doc.modified = True
     _save_after_edit(doc, output, password, new_password)
+
+
+def _insert_text_range(
+    file: str,
+    output: str,
+    title: str,
+    at: int,
+    password: str | None,
+    new_password: str | None,
+    text_value: str | None,
+    input_file: str | None,
+    insert_date: bool,
+    insert_bullet: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    note = _note_by_title(doc, title)
+    if text_value is not None:
+        insert_text_into_note(note, text_value, at)
+    elif input_file is not None:
+        insert_text_into_note(note, Path(input_file).read_text(encoding="utf-8"), at)
+    elif insert_date:
+        insert_current_date_into_note(note, at)
+    elif insert_bullet:
+        insert_bullet_into_note(note, at)
+    else:  # defensive; argparse normally prevents this
+        raise ValueError("Bitte --text, --input, --date oder --bullet angeben")
+    doc.select(note)
+    doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+
+
+def _delete_text_range(
+    file: str,
+    output: str,
+    title: str,
+    start: int,
+    length: int | None,
+    end: int | None,
+    password: str | None,
+    new_password: str | None,
+) -> None:
+    doc = load_uri(file, password=password)
+    note = _note_by_title(doc, title)
+    delete_note_text_range(note, start, length, end=end)
+    doc.select(note)
+    doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+
+
+def _style_text_range(
+    file: str,
+    output: str,
+    title: str,
+    start: int,
+    length: int | None,
+    end: int | None,
+    password: str | None,
+    new_password: str | None,
+    style: str | None,
+    font_family: str | None,
+    font_size: int | None,
+    fg_color: str | None,
+    bg_color: str | None,
+    show: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    note = _note_by_title(doc, title)
+    style_note_text_range(
+        note,
+        start,
+        length,
+        end=end,
+        style=style,
+        font_family=font_family,
+        font_size_half_points=font_size,
+        fg_color=parse_int_or_hex(fg_color) if fg_color else None,
+        bg_color=parse_int_or_hex(bg_color) if bg_color else None,
+    )
+    doc.select(note)
+    doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+    if show:
+        rtf_style = detect_rtf_style(note.rtf)
+        payload = {
+            "title": note.title,
+            "start": start,
+            "length": length,
+            "end": end,
+            "plain_text": note.text,
+            "detected_global_style": {
+                "font_family": rtf_style.font_family,
+                "font_size_half_points": rtf_style.font_size_half_points,
+                "bold": rtf_style.bold,
+                "italic": rtf_style.italic,
+                "underline": rtf_style.underline,
+                "strike": rtf_style.strike,
+            },
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=False), file=sys.stderr)
 
 def _set_note(file: str, output: str, title: str, input_file: str, password: str | None, new_password: str | None, as_rtf: bool) -> None:
     doc = load_uri(file, password=password)
@@ -1238,6 +1342,47 @@ def main(argv: list[str] | None = None) -> int:
     _add_new_password_arg(bullet)
     _add_password_arg(bullet)
 
+    insert_text = sub.add_parser("insert-text", help="Text/Datum/Aufzählung an einer Plain-Text-Position einfügen")
+    insert_text.add_argument("file")
+    insert_text.add_argument("output")
+    insert_text.add_argument("--title", required=True)
+    insert_text.add_argument("--at", type=int, required=True, help="Einfügeposition im Klartext der Notiz")
+    insert_payload = insert_text.add_mutually_exclusive_group(required=True)
+    insert_payload.add_argument("--text")
+    insert_payload.add_argument("--input", help="UTF-8-Textdatei zum Einfügen")
+    insert_payload.add_argument("--date", action="store_true", help="aktuelles Datum/Uhrzeit an der Position einfügen")
+    insert_payload.add_argument("--bullet", action="store_true", help="Aufzählungszeichen an der Position einfügen")
+    _add_new_password_arg(insert_text)
+    _add_password_arg(insert_text)
+
+    delete_range = sub.add_parser("delete-range", help="Plain-Text-Bereich einer Notiz löschen")
+    delete_range.add_argument("file")
+    delete_range.add_argument("output")
+    delete_range.add_argument("--title", required=True)
+    delete_range.add_argument("--start", type=int, required=True)
+    delete_group = delete_range.add_mutually_exclusive_group(required=True)
+    delete_group.add_argument("--length", type=int)
+    delete_group.add_argument("--end", type=int)
+    _add_new_password_arg(delete_range)
+    _add_password_arg(delete_range)
+
+    style_range = sub.add_parser("style-range", help="RichTextBox-Toolbar-Stil auf einen Plain-Text-Bereich anwenden")
+    style_range.add_argument("file")
+    style_range.add_argument("output")
+    style_range.add_argument("--title", required=True)
+    style_range.add_argument("--start", type=int, required=True)
+    style_range_group = style_range.add_mutually_exclusive_group(required=True)
+    style_range_group.add_argument("--length", type=int)
+    style_range_group.add_argument("--end", type=int)
+    style_range.add_argument("--style", choices=["bold", "italic", "underline", "strike", "regular"], help="Toolbar-Stil wie im Original")
+    style_range.add_argument("--font-family")
+    style_range.add_argument("--font-size", type=int, help="RTF-Halbpunkte, 18 = 9pt")
+    style_range.add_argument("--fg-color")
+    style_range.add_argument("--bg-color")
+    style_range.add_argument("--show", action="store_true")
+    _add_new_password_arg(style_range)
+    _add_password_arg(style_range)
+
     fmt = sub.add_parser("format-note", help="eine Notiz als schlichtes, formatiertes RTF neu schreiben")
     fmt.add_argument("file")
     fmt.add_argument("output")
@@ -1526,6 +1671,12 @@ def main(argv: list[str] | None = None) -> int:
             _append_date(args.file, args.output, args.title, args.password, args.new_password)
         elif args.cmd == "append-bullet":
             _append_bullet(args.file, args.output, args.title, args.password, args.new_password)
+        elif args.cmd == "insert-text":
+            _insert_text_range(args.file, args.output, args.title, args.at, args.password, args.new_password, args.text, args.input, args.date, args.bullet)
+        elif args.cmd == "delete-range":
+            _delete_text_range(args.file, args.output, args.title, args.start, args.length, args.end, args.password, args.new_password)
+        elif args.cmd == "style-range":
+            _style_text_range(args.file, args.output, args.title, args.start, args.length, args.end, args.password, args.new_password, args.style, args.font_family, args.font_size, args.fg_color, args.bg_color, args.show)
         elif args.cmd == "format-note":
             _format_note(
                 args.file,

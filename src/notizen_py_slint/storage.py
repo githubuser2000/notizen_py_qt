@@ -12,7 +12,21 @@ import xml.etree.ElementTree as ET
 from .des_compat import NotizenCryptoError, decrypt_notizen_payload, encrypt_notizen_payload, is_blank_password
 from .model import Note, NoteDocument, StickyWindow
 from .legacy_colors import argb_to_signed
-from .rtf import append_picture_to_rtf, append_text_to_rtf, change_rtf_font_size, extract_pictures, is_rtf, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf, write_extracted_pictures
+from .rtf import (
+    append_picture_to_rtf,
+    append_text_to_rtf,
+    change_rtf_font_size,
+    extract_pictures,
+    is_rtf,
+    replace_rtf_text_range,
+    restyle_rtf_with_defaults,
+    rtf_to_html_fragment,
+    rtf_to_text,
+    set_rtf_font_size,
+    style_rtf_text_range,
+    text_to_rtf,
+    write_extracted_pictures,
+)
 
 
 class NotizenFileError(Exception):
@@ -680,6 +694,97 @@ def append_current_date_into_note(note: Note) -> Note:
 
 def append_bullet_into_note(note: Note) -> Note:
     return append_text_into_note(note, "\n•   ")
+
+
+def insert_text_into_note(note: Note, text: str, at: int) -> Note:
+    """Insert plain text at a RichTextBox-style character offset.
+
+    Offsets refer to the note's plain text after best-effort RTF conversion.  The
+    result is intentionally rewritten as simple RTF because Slint's editor has no
+    RichTextBox selection object.
+    """
+    note.rtf = replace_rtf_text_range(note.rtf, at, 0, text)
+    return note
+
+
+def replace_note_text_range(
+    note: Note,
+    start: int,
+    length: int | None,
+    replacement: str,
+    *,
+    end: int | None = None,
+) -> Note:
+    note.rtf = replace_rtf_text_range(note.rtf, start, length, replacement, end=end)
+    return note
+
+
+def delete_note_text_range(note: Note, start: int, length: int | None, *, end: int | None = None) -> Note:
+    return replace_note_text_range(note, start, length, "", end=end)
+
+
+def style_note_text_range(
+    note: Note,
+    start: int,
+    length: int | None,
+    *,
+    end: int | None = None,
+    style: str | None = None,
+    font_family: str | None = None,
+    font_size_half_points: int | None = None,
+    fg_color: int | None = None,
+    bg_color: int | None = None,
+) -> Note:
+    """Apply a toolbar-like style to a selected plain-text range."""
+    bold = italic = underline = strike = None
+    style_key = (style or "").strip().lower()
+    if style_key:
+        styles = {
+            "bold": dict(bold=True, italic=None, underline=None, strike=None),
+            "b": dict(bold=True, italic=None, underline=None, strike=None),
+            "italic": dict(bold=None, italic=True, underline=None, strike=None),
+            "i": dict(bold=None, italic=True, underline=None, strike=None),
+            "underline": dict(bold=None, italic=None, underline=True, strike=None),
+            "u": dict(bold=None, italic=None, underline=True, strike=None),
+            "strike": dict(bold=None, italic=None, underline=None, strike=True),
+            "strikeout": dict(bold=None, italic=None, underline=None, strike=True),
+            "s": dict(bold=None, italic=None, underline=None, strike=True),
+            "regular": dict(bold=False, italic=False, underline=False, strike=False),
+            "normal": dict(bold=False, italic=False, underline=False, strike=False),
+        }
+        if style_key not in styles:
+            raise ValueError(f"Unbekannter Stil: {style}")
+        selected = styles[style_key]
+        bold = selected["bold"]
+        italic = selected["italic"]
+        underline = selected["underline"]
+        strike = selected["strike"]
+    note.rtf = style_rtf_text_range(
+        note.rtf,
+        start,
+        length,
+        end=end,
+        font_family=font_family,
+        font_size_half_points=font_size_half_points,
+        bold=bold,
+        italic=italic,
+        underline=underline,
+        strike=strike,
+        fg_color=fg_color,
+        bg_color=bg_color,
+    )
+    return note
+
+
+def insert_current_date_into_note(note: Note, at: int) -> Note:
+    from datetime import datetime
+
+    stamp = datetime.now().strftime(" %d.%m.%Y %H:%M ")
+    return insert_text_into_note(note, stamp, at)
+
+
+def insert_bullet_into_note(note: Note, at: int) -> Note:
+    return insert_text_into_note(note, "\n•   ", at)
 
 
 def insert_image_into_note(note: Note, image_path: str | Path, *, width_twips: int | None = None, height_twips: int | None = None) -> Note:
