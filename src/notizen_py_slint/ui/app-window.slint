@@ -1,4 +1,4 @@
-import { Button, LineEdit, TextEdit, ScrollView } from "std-widgets.slint";
+import { Button, LineEdit, TextEdit, ListView } from "std-widgets.slint";
 
 export struct NoteRow {
     label: string,
@@ -10,7 +10,7 @@ export component AppWindow inherits Window {
     height: 820px;
     title: root.window-title;
 
-    in-out property <string> window-title: "Notizen Python Slint";
+    in-out property <string> window-title: "Notizen Py Slint";
     in-out property <[NoteRow]> rows;
     in-out property <int> selected-index: -1;
     in-out property <string> editor-text;
@@ -31,12 +31,16 @@ export component AppWindow inherits Window {
     callback export-text();
     callback export-rtf();
     callback export-html();
+    callback export-markdown();
+    callback export-json();
     callback export-subtree-text();
     callback export-subtree-rtf();
     callback export-note-rtf();
+    callback export-sticky-html();
     callback extract-images();
     callback import-text();
     callback import-rtf();
+    callback import-json();
     callback insert-image();
     callback append-date();
     callback append-bullet();
@@ -44,6 +48,7 @@ export component AppWindow inherits Window {
     callback add-sibling();
     callback delete-note();
     callback duplicate-note();
+    callback combine-subtree();
     callback copy-node();
     callback cut-node();
     callback paste-node();
@@ -62,14 +67,18 @@ export component AppWindow inherits Window {
     callback toggle-raw-rtf();
     callback toggle-sticky();
     callback set-sticky-geometry();
+    callback autosize-sticky();
     callback set-colors();
     callback clear-colors();
     callback format-note();
+    callback increase-font-size();
+    callback decrease-font-size();
     callback open-settings();
     callback import-legacy-config();
     callback open-alarm();
     callback show-next-alarm();
     callback show-stats();
+    callback show-backups();
 
     VerticalLayout {
         padding: 8px;
@@ -96,6 +105,8 @@ export component AppWindow inherits Window {
                     Button { text: "TXT"; clicked => { root.export-text(); } }
                     Button { text: "RTF"; clicked => { root.export-rtf(); } }
                     Button { text: "HTML"; clicked => { root.export-html(); } }
+                    Button { text: "MD"; clicked => { root.export-markdown(); } }
+                    Button { text: "JSON"; clicked => { root.export-json(); } }
                     Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
                     Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
                     Rectangle { horizontal-stretch: 1; }
@@ -106,6 +117,7 @@ export component AppWindow inherits Window {
                     Button { text: "+ Kind"; clicked => { root.add-child(); } }
                     Button { text: "+ Daneben"; clicked => { root.add-sibling(); } }
                     Button { text: "Dupl."; clicked => { root.duplicate-note(); } }
+                    Button { text: "Zusammenf."; clicked => { root.combine-subtree(); } }
                     Button { text: "Löschen"; clicked => { root.delete-note(); } }
                     Button { text: "Kopieren"; clicked => { root.copy-node(); } }
                     Button { text: "Ausschneiden"; clicked => { root.cut-node(); } }
@@ -121,20 +133,25 @@ export component AppWindow inherits Window {
                     Rectangle { width: 1px; background: #cccccc; }
                     Button { text: "Sticky"; clicked => { root.toggle-sticky(); } }
                     Button { text: "Geom."; clicked => { root.set-sticky-geometry(); } }
+                    Button { text: "Auto-Größe"; clicked => { root.autosize-sticky(); } }
                     Button { text: "Farben"; clicked => { root.set-colors(); } }
                     Button { text: "Farbe weg"; clicked => { root.clear-colors(); } }
                     Button { text: "Format"; clicked => { root.format-note(); } }
+                    Button { text: "A+"; clicked => { root.increase-font-size(); } }
+                    Button { text: "A-"; clicked => { root.decrease-font-size(); } }
                     Button { text: "Bilder"; clicked => { root.extract-images(); } }
                 }
                 HorizontalLayout {
                     spacing: 6px;
                     Button { text: "Stats"; clicked => { root.show-stats(); } }
+                    Button { text: "Backups"; clicked => { root.show-backups(); } }
                     Button { text: "Einstellungen"; clicked => { root.open-settings(); } }
                     Button { text: "Wecker"; clicked => { root.open-alarm(); } }
                     Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
+                    Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Button { text: "Alt-Config importieren"; clicked => { root.import-legacy-config(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "HTML/Bilder/FTP/Wecker/Autosave erweitert"; vertical-alignment: center; color: #666666; }
+                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Autosave erweitert"; vertical-alignment: center; color: #666666; }
                 }
             }
         }
@@ -159,28 +176,25 @@ export component AppWindow inherits Window {
                         Button { text: "Weiter"; clicked => { root.search-next(root.search-text); } }
                         Button { text: "Alle"; clicked => { root.search-all(root.search-text); } }
                     }
-                    ScrollView {
-                        viewport-width: parent.width;
-                        viewport-height: parent.height - 72px;
-                        VerticalLayout {
-                            spacing: 1px;
-                            for row[i] in root.rows: Rectangle {
-                                height: 30px;
-                                background: row.selected ? #dbeafe : #ffffff;
-                                border-color: row.selected ? #93c5fd : #ffffff;
-                                border-width: 1px;
-                                Text {
-                                    x: 6px;
-                                    y: 0px;
-                                    width: parent.width - 12px;
-                                    height: parent.height;
-                                    text: row.label;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                }
-                                TouchArea {
-                                    clicked => { root.select-row(i); }
-                                }
+                    ListView {
+                        for row[i] in root.rows: Rectangle {
+                            height: 30px;
+                            background: row.selected ? #dbeafe : #ffffff;
+                            border-color: row.selected ? #93c5fd : #ffffff;
+                            border-width: 1px;
+                            Text {
+                                x: 6px;
+                                y: 0px;
+                                width: parent.width - 12px;
+                                height: parent.height;
+                                text: row.label;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            TouchArea {
+                                width: parent.width;
+                                height: parent.height;
+                                clicked => { root.select-row(i); }
                             }
                         }
                     }
@@ -204,6 +218,7 @@ export component AppWindow inherits Window {
                         Button { text: "RTF/Text"; clicked => { root.toggle-raw-rtf(); } }
                         Button { text: "Import TXT"; clicked => { root.import-text(); } }
                         Button { text: "Import RTF"; clicked => { root.import-rtf(); } }
+                        Button { text: "Import JSON"; clicked => { root.import-json(); } }
                         Button { text: "Bild+"; clicked => { root.insert-image(); } }
                         Button { text: "Datum+"; clicked => { root.append-date(); } }
                         Button { text: "•+"; clicked => { root.append-bullet(); } }

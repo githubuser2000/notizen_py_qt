@@ -7,22 +7,12 @@ from pathlib import Path
 from urllib.parse import quote
 
 
-APP_DIR_NAME = "notizen-py-slint"
-LEGACY_APP_DIR_NAME = "notizen-pypy-slint"
-
-
-def _config_base_dir() -> Path:
-    if os.name == "nt":
-        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-
-
 def config_dir() -> Path:
-    return _config_base_dir() / APP_DIR_NAME
-
-
-def legacy_config_dir() -> Path:
-    return _config_base_dir() / LEGACY_APP_DIR_NAME
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return base / "notizen-py-slint"
 
 
 @dataclass(slots=True)
@@ -50,17 +40,15 @@ class AppConfig:
 
     @classmethod
     def load(cls) -> "AppConfig":
-        for directory in (config_dir(), legacy_config_dir()):
-            path = directory / "config.json"
-            if not path.exists():
-                continue
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                allowed = {field.name for field in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
-                return cls(**{k: v for k, v in data.items() if k in allowed})
-            except Exception:
-                continue
-        return cls()
+        path = config_dir() / "config.json"
+        if not path.exists():
+            return cls()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            allowed = {field.name for field in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+            return cls(**{k: v for k, v in data.items() if k in allowed})
+        except Exception:
+            return cls()
 
     def save(self) -> None:
         path = config_dir() / "config.json"

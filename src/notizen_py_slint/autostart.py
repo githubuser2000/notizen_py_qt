@@ -20,7 +20,7 @@ class AutostartStatus:
 def default_autostart_path() -> Path | None:
     if os.name == "nt":
         startup = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-        return startup / "Notizen Python Slint.cmd"
+        return startup / "Notizen Py Slint.cmd"
     if sys.platform == "darwin":
         return Path.home() / "Library" / "LaunchAgents" / "net.notizen-py-slint.plist"
     return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "autostart" / "notizen-py-slint.desktop"
@@ -87,7 +87,7 @@ def _linux_desktop_entry(command: list[str]) -> str:
         [
             "[Desktop Entry]",
             "Type=Application",
-            "Name=Notizen Python Slint",
+            "Name=Notizen Py Slint",
             f"Exec={quoted}",
             "Terminal=false",
             "X-GNOME-Autostart-enabled=true",
@@ -98,7 +98,7 @@ def _linux_desktop_entry(command: list[str]) -> str:
 
 def _windows_cmd(command: list[str]) -> str:
     quoted = " ".join(_quote_windows(part) for part in command)
-    return f"@echo off\r\nstart \"Notizen Python Slint\" {quoted}\r\n"
+    return f"@echo off\r\nstart \"Notizen Py Slint\" {quoted}\r\n"
 
 
 def _quote_windows(value: str) -> str:

@@ -31,6 +31,8 @@ Diese weitere Runde hat vor allem Logik portiert, die im ersten Stand noch fehlt
 - CLI erweitert um Statistik, Suche, XML-Dump/Pack, Einzelnotiz-RTF-Export, Notizinhalt ersetzen, Bewegung, Duplizieren, strukturelles Einfügen/Löschen/Umbenennen, Bild einfügen, Datum/Bullet anhängen und FTP-Konfiguration
 - HTML-Export als portabler Ersatz für Drucken/Vorschau-Zusammenfassungen
 - einfache Ganznotiz-Formatierung (`bold`, `italic`, `underline`, `strike`, Vorder-/Hintergrundfarbe, Schriftfamilie/-größe)
+- Ctrl+Plus/Ctrl+Minus aus `Notizen.vb` als RTF-weite Textgrößenänderung (`font-size`, A+/A-) portiert
+- Sticky-Autogröße und Sticky-HTML-Board als portabler Ersatz für Teile von `desknote.vb`
 - alte `notizen.config.xml` aus `xml_kram.vb` lesen, in die neue JSON-Konfiguration übernehmen und diagnostisch wieder als alte XML-Struktur schreiben
 - Autostart portabel nachgebaut: `.desktop` unter Linux, `.cmd` im Windows-Startup-Ordner, LaunchAgent unter macOS
 - Autosave-Timer aus der Konfiguration für lokale Dateien
@@ -98,7 +100,7 @@ Noch nicht enthalten ist ein nativer Benachrichtigungsdienst oder eine dauerhaft
 Nicht sinnvoll 1:1 übernommen wurden:
 
 - WinForms-Trayicon als natives System-Tray-Objekt
-- separate borderlose Desktop-Sticky-Fenster
+- separate borderlose Desktop-Sticky-Fenster (der Port hat stattdessen Sticky-Metadaten, Autogröße und HTML-Board)
 - native TreeView-Drag-and-drop-Gesten
 - Druckdialog; HTML-Export dient als portabler Ersatz
 - vollständige mehrsprachige Menülogik aus den `.resx`-/`languages.vb`-Dateien

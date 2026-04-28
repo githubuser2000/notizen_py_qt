@@ -218,12 +218,35 @@ class SearchHit:
 
 
 @dataclass(slots=True)
+class SearchDetail:
+    note: Note
+    title_matches: int = 0
+    text_matches: int = 0
+    snippets: list[str] = field(default_factory=list)
+
+    @property
+    def total_matches(self) -> int:
+        return self.title_matches + self.text_matches
+
+
+@dataclass(slots=True)
 class NoteStats:
     notes: int
     leaves: int
     max_depth: int
     sticky_notes: int
     characters: int
+
+
+@dataclass(slots=True)
+class ReplaceReport:
+    notes_changed: int = 0
+    title_replacements: int = 0
+    text_replacements: int = 0
+
+    @property
+    def total_replacements(self) -> int:
+        return self.title_replacements + self.text_replacements
 
 
 @dataclass(slots=True)
@@ -241,6 +264,9 @@ class NoteDocument:
 
     def iter_notes(self) -> Iterable[Note]:
         yield from _iter_notes(self.root)
+
+    def iter_subtree(self, start: Note | None = None) -> Iterable[Note]:
+        yield from _iter_notes(start or self.root)
 
     def flatten(self, include_collapsed: bool = False) -> list[FlatNote]:
         rows: list[FlatNote] = []
@@ -269,6 +295,35 @@ class NoteDocument:
             if value == cmp_title:
                 return note
         return None
+
+    def first_note_by_path(self, path: str, case_sensitive: bool = False, separator: str = "/") -> Note | None:
+        """Return the first note matching a slash-separated title path.
+
+        CLI commands historically selected by visible tree position.  The Python
+        fallback cannot point at a TreeView row, so a path such as
+        ``Root/Projekt/Todo`` gives callers a deterministic way to select a
+        duplicated title.  If the root title is omitted, the path may also start
+        at any descendant sequence.
+        """
+        parts = [part.strip() for part in (path or "").split(separator) if part.strip()]
+        if not parts:
+            return None
+
+        def norm(value: str) -> str:
+            return value if case_sensitive else value.casefold()
+
+        wanted = [norm(part) for part in parts]
+        for note in self.iter_notes():
+            titles = [norm(title) for title in note.path_titles()]
+            if titles == wanted or titles[-len(wanted) :] == wanted:
+                return note
+        return None
+
+    def first_note_by_title_or_path(self, value: str, case_sensitive: bool = False) -> Note | None:
+        note = self.first_note_by_title(value, case_sensitive=case_sensitive)
+        if note is not None:
+            return note
+        return self.first_note_by_path(value, case_sensitive=case_sensitive)
 
     @property
     def selected_note(self) -> Note:
@@ -456,11 +511,14 @@ class NoteDocument:
             self.root.expanded = True
         self.modified = True
 
-    def find_next(self, needle: str, *, case_sensitive: bool = False, whole_words: bool = False) -> Note | None:
-        matches = self.find_all(needle, case_sensitive=case_sensitive, whole_words=whole_words)
+    def find_next(self, needle: str, *, case_sensitive: bool = False, whole_words: bool = False, start: Note | None = None) -> Note | None:
+        matches = self.find_all(needle, case_sensitive=case_sensitive, whole_words=whole_words, start=start)
         if not matches:
             return None
         flat = [row.note for row in self.flatten(include_collapsed=True)]
+        allowed_ids = {note.note_id for note in self.iter_subtree(start)} if start is not None else None
+        if allowed_ids is not None:
+            flat = [note for note in flat if note.note_id in allowed_ids]
         current_index = next((i for i, note in enumerate(flat) if note.note_id == self.selected_id), -1)
         hit_ids = {hit.note.note_id for hit in matches}
         ordered = flat[current_index + 1 :] + flat[: current_index + 1]
@@ -470,17 +528,97 @@ class NoteDocument:
                 return note
         return None
 
-    def find_all(self, needle: str, *, case_sensitive: bool = False, whole_words: bool = False) -> list[SearchHit]:
+    def find_all(self, needle: str, *, case_sensitive: bool = False, whole_words: bool = False, start: Note | None = None) -> list[SearchHit]:
         matcher = _make_matcher(needle, case_sensitive=case_sensitive, whole_words=whole_words)
         if matcher is None:
             return []
         hits: list[SearchHit] = []
-        for note in self.iter_notes():
+        for note in self.iter_subtree(start):
             title_match = matcher(note.title)
             text_match = matcher(note.text)
             if title_match or text_match:
                 hits.append(SearchHit(note=note, title_match=title_match, text_match=text_match))
         return hits
+
+    def find_detailed(
+        self,
+        needle: str,
+        *,
+        case_sensitive: bool = False,
+        whole_words: bool = False,
+        context: int = 40,
+        max_snippets_per_note: int = 3,
+        start: Note | None = None,
+    ) -> list[SearchDetail]:
+        """Return counted search hits with short snippets.
+
+        The old WinForms search jumped through notes and showed a separate result
+        window. This pure-Python form keeps the same idea but is usable from the
+        CLI, tests and Slint status line. The optional ``start`` argument mirrors
+        the old "aktuelle Notiz oder alle Notizen" search scope.
+        """
+        pattern = _make_pattern(needle, case_sensitive=case_sensitive, whole_words=whole_words)
+        if pattern is None:
+            return []
+        details: list[SearchDetail] = []
+        for note in self.iter_subtree(start):
+            title_spans = [m.span() for m in pattern.finditer(note.title or "")]
+            text = note.text or ""
+            text_spans = [m.span() for m in pattern.finditer(text)]
+            if not title_spans and not text_spans:
+                continue
+            snippets: list[str] = []
+            for match_start, match_end in title_spans[:max_snippets_per_note]:
+                snippets.append("Titel: " + _make_snippet(note.title or "", match_start, match_end, context=context))
+            remaining = max(0, max_snippets_per_note - len(snippets))
+            for match_start, match_end in text_spans[:remaining]:
+                snippets.append("Text: " + _make_snippet(text, match_start, match_end, context=context))
+            details.append(SearchDetail(note=note, title_matches=len(title_spans), text_matches=len(text_spans), snippets=snippets))
+        return details
+
+    def replace_all(
+        self,
+        needle: str,
+        replacement: str,
+        *,
+        case_sensitive: bool = False,
+        whole_words: bool = False,
+        start: Note | None = None,
+        include_titles: bool = True,
+        include_text: bool = True,
+    ) -> ReplaceReport:
+        """Replace text in titles and/or note bodies.
+
+        Body replacement intentionally rewrites the affected body as plain RTF.
+        This is the same compromise as the Slint text editor: it is portable and
+        deterministic, but it cannot preserve arbitrary RichTextBox formatting
+        around changed ranges.
+        """
+        pattern = _make_pattern(needle, case_sensitive=case_sensitive, whole_words=whole_words)
+        report = ReplaceReport()
+        if pattern is None:
+            return report
+        replacement = replacement or ""
+        for note in self.iter_subtree(start):
+            changed = False
+            if include_titles:
+                new_title, count = pattern.subn(lambda _match: replacement, note.title or "")
+                if count:
+                    note.title = new_title or "..."
+                    report.title_replacements += count
+                    changed = True
+            if include_text:
+                body = note.text or ""
+                new_body, count = pattern.subn(lambda _match: replacement, body)
+                if count:
+                    note.set_text(new_body)
+                    report.text_replacements += count
+                    changed = True
+            if changed:
+                report.notes_changed += 1
+        if report.total_replacements:
+            self.modified = True
+        return report
 
     def stats(self) -> NoteStats:
         max_depth = 0
@@ -523,16 +661,32 @@ def _iter_notes(root: Note) -> Iterable[Note]:
 
 
 def _make_matcher(needle: str, *, case_sensitive: bool, whole_words: bool) -> Callable[[str], bool] | None:
-    if not needle:
+    pattern = _make_pattern(needle, case_sensitive=case_sensitive, whole_words=whole_words)
+    if pattern is None:
         return None
+    return lambda value: bool(pattern.search(value or ""))
+
+
+def _make_pattern(needle: str, *, case_sensitive: bool, whole_words: bool) -> re.Pattern[str] | None:
+    needle = needle or ""
+    if not needle.strip():
+        return None
+    flags = 0 if case_sensitive else re.IGNORECASE
+    body = re.escape(needle)
     if whole_words:
-        flags = 0 if case_sensitive else re.IGNORECASE
-        pattern = re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)", flags)
-        return lambda value: pattern.search(value or "") is not None
-    if case_sensitive:
-        return lambda value: needle in (value or "")
-    folded = needle.casefold()
-    return lambda value: folded in (value or "").casefold()
+        body = rf"(?<!\w){body}(?!\w)"
+    return re.compile(body, flags)
+
+
+def _make_snippet(value: str, start: int, end: int, *, context: int) -> str:
+    context = max(0, int(context))
+    left = max(0, start - context)
+    right = min(len(value), end + context)
+    snippet = value[left:right].replace("\r\n", "\n").replace("\r", "\n")
+    snippet = " ".join(part for part in snippet.split())
+    prefix = "…" if left > 0 else ""
+    suffix = "…" if right < len(value) else ""
+    return prefix + snippet + suffix
 
 
 def argb_to_hex(value: int | None) -> str:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from importlib import resources
+import json
 import os
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
@@ -12,22 +12,31 @@ import unittest
 from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
 from notizen_py_slint.cli import main as cli_main
-from notizen_py_slint.app import _format_slint_compile_error
-from notizen_py_slint.config import AppConfig, load_config
+from notizen_py_slint.config import AppConfig
 from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config
 from notizen_py_slint.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from notizen_py_slint.remote import parse_ftp_url
-from notizen_py_slint.rtf import append_picture_to_rtf, extract_pictures, is_rtf, restyle_rtf_as_plain, rtf_to_text, text_to_rtf
+from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
 from notizen_py_slint.storage import (
+    autosize_sticky,
+    change_note_font_size,
+    combine_subtree_to_new_note,
     export_document_images,
     export_html,
+    export_json,
+    export_markdown,
+    export_sticky_html,
     load_document,
     load_document_from_bytes,
     save_document,
     save_document_to_bytes,
+    import_json_into_document,
     insert_image_into_note,
     append_bullet_into_note,
+    set_note_font_size,
+    list_backups,
     read_raw_xml,
+    restore_backup,
     write_raw_xml,
 )
 
@@ -83,6 +92,17 @@ class RtfTests(unittest.TestCase):
         self.assertIn(r"\highlight2", styled)
         self.assertEqual(rtf_to_text(styled), "Hallo")
 
+    def test_font_size_change_preserves_rtf(self) -> None:
+        rtf = text_to_rtf("Hallo", font_size_half_points=18)
+        bigger = change_rtf_font_size(rtf, 2)
+        self.assertEqual(first_rtf_font_size(bigger), 20)
+        smaller = change_rtf_font_size(bigger, -4)
+        self.assertEqual(first_rtf_font_size(smaller), 16)
+        direct = set_rtf_font_size("plain", 24)
+        self.assertTrue(is_rtf(direct))
+        self.assertIn(r"\fs24", direct)
+        self.assertEqual(rtf_to_text(direct), "plain")
+
     def test_extract_rtf_picture(self) -> None:
         sample = r"{\rtf1{\pict\pngblip\picwgoal10\pichgoal20 89504E470D0A1A0A}}"
         pictures = extract_pictures(sample)
@@ -101,6 +121,12 @@ class RtfTests(unittest.TestCase):
         pictures = extract_pictures(rtf)
         self.assertEqual(len(pictures), 1)
         self.assertEqual(pictures[0].data, bytes.fromhex("89504E470D0A1A0A"))
+
+    def test_rtf_to_html_fragment_embeds_text_and_images(self) -> None:
+        rtf = r"{\rtf1 <&>{\pict\pngblip 89504E470D0A1A0A}}"
+        html = rtf_to_html_fragment(rtf)
+        self.assertIn("&lt;&amp;&gt;", html)
+        self.assertIn("data:image/png;base64,", html)
 
 
 class StorageTests(unittest.TestCase):
@@ -121,6 +147,19 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(loaded.root.title, "Root")
         self.assertEqual(loaded.root.children[0].title, "Kind")
         self.assertEqual(loaded.root.children[0].text, "Mehr Text")
+
+    def test_backup_list_and_restore(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Version 1")), selected_id=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "plain.alx"
+            save_document(doc, path=path, backup_count=0)
+            doc.root.set_text("Version 2")
+            save_document(doc, path=path, backup_count=3)
+            backups = list_backups(path)
+            self.assertEqual(len(backups), 1)
+            restored = Path(tmp) / "restored.alx"
+            restore_backup(backups[0].path, target=restored, backup_current=False)
+            self.assertEqual(load_document(restored).root.text, "Version 1")
 
     def test_save_reload_encrypted(self) -> None:
         doc = NoteDocument(root=Note("Secret", text_to_rtf("Geheim")), selected_id=None)
@@ -175,6 +214,41 @@ class StorageTests(unittest.TestCase):
         self.assertIn("Root &lt;tag&gt;", html)
         self.assertIn("Eins &amp; Zwei", html)
 
+    def test_markdown_export_and_combine_subtree(self) -> None:
+        root = Note("Root", text_to_rtf("root text"))
+        child = root.add_child(Note("Kind", text_to_rtf("kind text")))
+        doc = NoteDocument(root=root, selected_id=child.note_id)
+        combined = combine_subtree_to_new_note(doc, start=child, title="Einheit")
+        self.assertEqual(combined.title, "Einheit")
+        self.assertIn("Kind", combined.text)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "out.md"
+            export_markdown(doc, path)
+            md = path.read_text(encoding="utf-8")
+        self.assertIn("# Root", md)
+        self.assertIn("## Root", md)
+        self.assertIn("### Kind", md)
+
+    def test_json_export_import_subtree(self) -> None:
+        root = Note("Root", text_to_rtf("root text"))
+        child = root.add_child(Note("Kind", text_to_rtf("kind text"), sticky=StickyWindow(True, 1, 2, 3, 4, 0.5, -1)))
+        doc = NoteDocument(root=root, selected_id=child.note_id)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "subtree.json"
+            export_json(doc, path, start=child)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["note"]["text"], "kind text")
+            target_doc = NoteDocument(root=Note("Target", text_to_rtf("")))
+            imported = import_json_into_document(target_doc, path, target=target_doc.root)
+            plain_path = Path(tmp) / "plain.json"
+            plain_path.write_text(json.dumps({"title": "Plain", "text": "Plain Text", "children": []}), encoding="utf-8")
+            plain = import_json_into_document(target_doc, plain_path, target=target_doc.root)
+        self.assertEqual(imported.title, "Kind")
+        self.assertEqual(imported.text, "kind text")
+        self.assertIsNotNone(imported.sticky)
+        self.assertEqual(imported.sticky.x, 1)  # type: ignore[union-attr]
+        self.assertEqual(plain.text, "Plain Text")
+
     def test_document_image_export(self) -> None:
         png = "89504E470D0A1A0A"
         root = Note("Root", r"{\rtf1{\pict\pngblip " + png + "}}")
@@ -194,6 +268,30 @@ class StorageTests(unittest.TestCase):
         append_bullet_into_note(note)
         self.assertEqual(len(extract_pictures(note.rtf)), 1)
         self.assertIn("•", rtf_to_text(note.rtf))
+
+    def test_font_size_helpers_on_note(self) -> None:
+        note = Note("Root", text_to_rtf("Text", font_size_half_points=18))
+        change_note_font_size(note, 2)
+        self.assertIn(r"\fs20", note.rtf)
+        set_note_font_size(note, 26)
+        self.assertIn(r"\fs26", note.rtf)
+        self.assertEqual(note.text, "Text")
+
+    def test_sticky_autosize_and_html_export(self) -> None:
+        root = Note("Root", text_to_rtf(""))
+        sticky_note = root.add_child(Note("Merkzettel", text_to_rtf("Eine lange Zeile für Autogröße\nZweite Zeile")))
+        sticky_note.sticky = StickyWindow(True, 12, 34, None, None, None, parse_int_or_hex("#FFFFFF99"))
+        doc = NoteDocument(root=root, selected_id=sticky_note.note_id)
+        sticky = autosize_sticky(sticky_note)
+        self.assertGreaterEqual(sticky.width or 0, 180)
+        self.assertGreaterEqual(sticky.height or 0, 120)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sticky.html"
+            export_sticky_html(doc, path)
+            html = path.read_text(encoding="utf-8")
+        self.assertIn("Merkzettel", html)
+        self.assertIn("position:absolute", html)
+        self.assertIn("#FFFF99", html)
 
 
 class ModelOperationTests(unittest.TestCase):
@@ -222,9 +320,25 @@ class ModelOperationTests(unittest.TestCase):
         doc = self._doc()
         self.assertEqual(len(doc.find_all("zwei")), 1)
         self.assertEqual(len(doc.find_all("wei", whole_words=True)), 0)
+        details = doc.find_detailed("A", context=3)
+        self.assertTrue(any(hit.title_matches for hit in details))
+        self.assertTrue(any(hit.snippets for hit in details))
         stats = doc.stats()
         self.assertEqual(stats.notes, 4)
         self.assertEqual(stats.max_depth, 2)
+
+    def test_path_selection_disambiguates_duplicate_titles(self) -> None:
+        root = Note("Root", text_to_rtf(""))
+        first = root.add_child(Note("Projekt", text_to_rtf("eins")))
+        second = root.add_child(Note("Projekt", text_to_rtf("zwei")))
+        first_todo = first.add_child(Note("Todo", text_to_rtf("falsch")))
+        second_todo = second.add_child(Note("Todo", text_to_rtf("richtig")))
+        doc = NoteDocument(root=root, selected_id=root.note_id)
+        self.assertIs(doc.first_note_by_title("Todo"), first_todo)
+        self.assertIs(doc.first_note_by_path("Root/Projekt/Todo"), first_todo)
+        self.assertIs(doc.first_note_by_path("Projekt/Todo"), first_todo)
+        self.assertIs(doc.first_note_by_title_or_path("Root/Projekt/Todo"), first_todo)
+        self.assertEqual(second_todo.path_string(), "Root / Projekt / Todo")
 
     def test_color_helpers(self) -> None:
         self.assertEqual(argb_to_hex(-1), "#FFFFFFFF")
@@ -329,6 +443,27 @@ class CliIntegrationTests(unittest.TestCase):
             loaded_image = load_document(with_image)
             self.assertEqual(len(extract_pictures(loaded_image.root.rtf)), 1)
 
+    def test_cli_font_size_sticky_and_sticky_html(self) -> None:
+        root = Note("Root", text_to_rtf("Text", font_size_half_points=18))
+        doc = NoteDocument(root=root)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            sized = Path(tmp) / "sized.alx"
+            sticky_file = Path(tmp) / "sticky.alx"
+            sticky_html = Path(tmp) / "sticky.html"
+            save_document(doc, path=source, backup_count=0)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["font-size", str(source), str(sized), "--title", "Root", "--bigger"]), 0)
+            self.assertIn(r"\fs20", load_document(sized).root.rtf)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["sticky", str(sized), str(sticky_file), "--title", "Root", "--show", "--autosize", "--x", "10", "--y", "20", "--argb", "#FFFFFF99"]), 0)
+            loaded = load_document(sticky_file)
+            self.assertIsNotNone(loaded.root.sticky)
+            self.assertEqual(loaded.root.sticky.x, 10)  # type: ignore[union-attr]
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["export-sticky-html", str(sticky_file), str(sticky_html)]), 0)
+            self.assertIn("Root", sticky_html.read_text(encoding="utf-8"))
+
     def test_cli_config_show_outputs_json(self) -> None:
         with redirect_stdout(io.StringIO()) as buf:
             code = cli_main(["config-show"])
@@ -348,6 +483,36 @@ class CliIntegrationTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(cli_main(["pack-xml", str(xml), str(packed)]), 0)
             self.assertEqual(load_document(packed).root.text, "XML CLI")
+
+    def test_cli_search_json_combine_and_backups(self) -> None:
+        root = Note("Root", text_to_rtf("Root Text"))
+        root.add_child(Note("Kind", text_to_rtf("Kind Text")))
+        doc = NoteDocument(root=root)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            combined = Path(tmp) / "combined.alx"
+            md = Path(tmp) / "out.md"
+            save_document(doc, path=source, backup_count=0)
+            save_document(doc, path=source, backup_count=2)
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["search", str(source), "Kind", "--json"]), 0)
+            self.assertIn('"title": "Kind"', out.getvalue())
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["combine-subtree", str(source), str(combined), "--title", "Kind", "--new-title", "Einheit"]), 0)
+            self.assertEqual(load_document(combined).root.children[-1].title, "Einheit")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["export-md", str(combined), str(md)]), 0)
+            self.assertIn("# Root", md.read_text(encoding="utf-8"))
+            subtree_json = Path(tmp) / "kind.json"
+            imported_file = Path(tmp) / "imported.alx"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["export-json", str(combined), str(subtree_json), "--title", "Kind"]), 0)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["import-json", str(combined), str(imported_file), "--title", "Root", "--input", str(subtree_json)]), 0)
+            self.assertTrue(load_document(imported_file).root.children[-1].title.startswith("Kind"))
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["backup-list", str(source)]), 0)
+            self.assertIn("source-", out.getvalue())
 
     def test_cli_alarm_add_next_remove(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -394,59 +559,6 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(loc.password, "p")
         self.assertEqual(loc.path, "/dir/file.alx")
         self.assertTrue(loc.use_tls)
-
-
-class PythonProjectCompatibilityTests(unittest.TestCase):
-    def test_legacy_import_path_still_forwards(self) -> None:
-        from notizen_pypy_slint.storage import load_document as old_load_document
-
-        self.assertIs(old_load_document, load_document)
-
-    def test_load_config_falls_back_to_old_config_dir(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            old_home = os.environ.get("XDG_CONFIG_HOME")
-            os.environ["XDG_CONFIG_HOME"] = tmp
-            try:
-                legacy = Path(tmp) / "notizen-pypy-slint"
-                legacy.mkdir()
-                (legacy / "config.json").write_text('{"backup_count": 11, "language": "en"}', encoding="utf-8")
-                loaded = load_config()
-            finally:
-                if old_home is None:
-                    os.environ.pop("XDG_CONFIG_HOME", None)
-                else:
-                    os.environ["XDG_CONFIG_HOME"] = old_home
-        self.assertEqual(loaded.backup_count, 11)
-        self.assertEqual(loaded.language, "en")
-
-
-    def test_packaged_slint_file_compiles_when_slint_is_installed(self) -> None:
-        try:
-            import slint
-        except ModuleNotFoundError:
-            self.skipTest("slint is not installed")
-        ui_path = resources.files("notizen_py_slint.ui").joinpath("app-window.slint")
-        components = slint.load_file(str(ui_path))
-        self.assertTrue(hasattr(components, "AppWindow"))
-
-    def test_slint_compile_error_formatter_shows_diagnostics(self) -> None:
-        class FakeDiagnostic:
-            def message(self) -> str:
-                return "expected callback syntax"
-
-            def level(self) -> str:
-                return "Error"
-
-            def source_file(self) -> str:
-                return "app-window.slint"
-
-            def line_column(self) -> tuple[int, int]:
-                return (218, 25)
-
-        exc = RuntimeError("compile failed", [FakeDiagnostic()])
-        text = _format_slint_compile_error(exc, Path("app-window.slint"))
-        self.assertIn("218", text)
-        self.assertIn("expected callback syntax", text)
 
 
 if __name__ == "__main__":

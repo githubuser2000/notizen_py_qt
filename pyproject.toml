@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "notizen-py-slint"
-version = "0.5.0"
-description = "Python3/Slint port of the old VB.NET Notizen.NET application"
+version = "0.6.0"
+description = "Python/Slint port of the old VB.NET Notizen.NET application"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "GPL-3.0-or-later" }
@@ -16,8 +16,6 @@ classifiers = [
   "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -28,17 +26,14 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-# Current Slint-Python releases target Python >=3.12. The pure-Python core and
-# CLI below still run without Slint on older Python 3 versions.
 slint = ["slint>=1.16.1b1"]
-# Kept for older Python installations that cannot install current Slint wheels.
-slint-legacy = ["slint==1.8.0a1"]
+dev = []
 
 [project.scripts]
 notizen-py-slint = "notizen_py_slint.app:main"
-notizen-slint = "notizen_py_slint.app:main"
-notizen-pypy-slint = "notizen_pypy_slint.app:main"
 notizen-alx = "notizen_py_slint.cli:main"
+# Compatibility entry point for old installs. Prefer notizen-py-slint.
+notizen-pypy-slint = "notizen_pypy_slint.app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

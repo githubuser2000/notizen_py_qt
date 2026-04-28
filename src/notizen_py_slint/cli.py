@@ -9,40 +9,51 @@ from .autostart import autostart_status, sync_autostart
 from .alarm import AlarmRule, add_or_replace_alarm, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from .config import AppConfig
 from .legacy_config import import_legacy_config, load_legacy_config, write_legacy_like_config
-from .model import Note, NoteDocument, parse_int_or_hex
+from .model import Note, NoteDocument, StickyWindow, parse_int_or_hex
 from .remote import load_uri, save_uri
 from .rtf import restyle_rtf_as_plain, text_to_rtf
 from .storage import (
     NotizenFileError,
     append_bullet_into_note,
     append_current_date_into_note,
+    autosize_sticky,
+    change_note_font_size,
     export_document_images,
+    combine_subtree_to_new_note,
     export_html,
+    export_json,
+    export_markdown,
     export_note_images,
     export_note_rtf,
     export_rtf,
+    export_sticky_html,
     export_text,
+    list_backups,
+    import_document_root_into_document,
+    import_json_into_document,
     import_rtf_into_note,
     import_text_into_note,
     insert_image_into_note,
     document_to_xml_bytes,
     load_document_from_bytes,
+    restore_backup,
+    set_note_font_size,
 )
 
 
 def _select_by_title(doc: NoteDocument, title: str | None) -> None:
     if not title:
         return
-    note = doc.first_note_by_title(title)
+    note = doc.first_note_by_title_or_path(title)
     if note is None:
-        raise NotizenFileError(f"Keine Notiz mit Titel gefunden: {title}")
+        raise NotizenFileError(f"Keine Notiz mit Titel/Pfad gefunden: {title}")
     doc.select(note)
 
 
 def _note_by_title(doc: NoteDocument, title: str) -> Note:
-    note = doc.first_note_by_title(title)
+    note = doc.first_note_by_title_or_path(title)
     if note is None:
-        raise NotizenFileError(f"Keine Notiz mit Titel gefunden: {title}")
+        raise NotizenFileError(f"Keine Notiz mit Titel/Pfad gefunden: {title}")
     return note
 
 
@@ -78,6 +89,20 @@ def _export_html(file: str, output: str, password: str | None, title: str | None
     print(output)
 
 
+def _export_md(file: str, output: str, password: str | None, title: str | None) -> None:
+    doc = load_uri(file, password=password)
+    _select_by_title(doc, title)
+    export_markdown(doc, output, start=doc.selected_note if title else None)
+    print(output)
+
+
+def _export_json(file: str, output: str, password: str | None, title: str | None) -> None:
+    doc = load_uri(file, password=password)
+    _select_by_title(doc, title)
+    export_json(doc, output, start=doc.selected_note if title else None)
+    print(output)
+
+
 def _export_note_rtf(file: str, output: str, password: str | None, title: str) -> None:
     doc = load_uri(file, password=password)
     _select_by_title(doc, title)
@@ -95,6 +120,60 @@ def _extract_images(file: str, output_dir: str, password: str | None, title: str
     for path in paths:
         print(path)
     print(f"{len(paths)} Bilddatei(en)", file=sys.stderr)
+
+
+def _export_sticky_html(file: str, output: str, password: str | None, include_hidden: bool) -> None:
+    doc = load_uri(file, password=password)
+    export_sticky_html(doc, output, visible_only=not include_hidden)
+    print(output)
+
+
+def _sticky(
+    file: str,
+    output: str,
+    title: str,
+    password: str | None,
+    new_password: str | None,
+    show: bool,
+    hide: bool,
+    clear: bool,
+    autosize: bool,
+    x: int | None,
+    y: int | None,
+    width: int | None,
+    height: int | None,
+    opacity: float | None,
+    argb: str | None,
+) -> None:
+    doc = load_uri(file, password=password)
+    note = _note_by_title(doc, title)
+    if clear:
+        note.sticky = None
+    else:
+        sticky = note.sticky or StickyWindow(visible=True, x=100, y=100, width=260, height=180, opacity=0.85, argb=note.bg_color)
+        if show:
+            sticky.visible = True
+        if hide:
+            sticky.visible = False
+        if x is not None:
+            sticky.x = x
+        if y is not None:
+            sticky.y = y
+        if width is not None:
+            sticky.width = width
+        if height is not None:
+            sticky.height = height
+        if opacity is not None:
+            sticky.opacity = max(0.05, min(1.0, opacity))
+        if argb is not None:
+            sticky.argb = parse_int_or_hex(argb)
+        note.sticky = sticky
+        if autosize:
+            autosize_sticky(note)
+    doc.select(note)
+    doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+    print(note.sticky.summary() if note.sticky else "Sticky-Metadaten gelöscht", file=sys.stderr)
 
 
 def _change_password(file: str, output: str, old_password: str | None, new_password: str | None) -> None:
@@ -130,9 +209,44 @@ def _stats(file: str, password: str | None) -> None:
     print(f"Textzeichen: {stats.characters}")
 
 
-def _search(file: str, needle: str, password: str | None, case_sensitive: bool, whole_words: bool) -> None:
+def _search(
+    file: str,
+    needle: str,
+    password: str | None,
+    case_sensitive: bool,
+    whole_words: bool,
+    details: bool = False,
+    as_json: bool = False,
+    context: int = 40,
+    title: str | None = None,
+) -> None:
     doc = load_uri(file, password=password)
-    hits = doc.find_all(needle, case_sensitive=case_sensitive, whole_words=whole_words)
+    _select_by_title(doc, title)
+    start = doc.selected_note if title else None
+    if details or as_json:
+        hits = doc.find_detailed(needle, case_sensitive=case_sensitive, whole_words=whole_words, context=context, start=start)
+        if as_json:
+            payload = [
+                {
+                    "path": hit.note.path_titles(),
+                    "title": hit.note.title,
+                    "title_matches": hit.title_matches,
+                    "text_matches": hit.text_matches,
+                    "total_matches": hit.total_matches,
+                    "snippets": hit.snippets,
+                }
+                for hit in hits
+            ]
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            for hit in hits:
+                print(f"{hit.note.path_string()} [{hit.total_matches} Treffer; Titel {hit.title_matches}, Text {hit.text_matches}]")
+                for snippet in hit.snippets:
+                    print(f"  {snippet}")
+        print(f"{len(hits)} Notiz(en) mit Treffern", file=sys.stderr)
+        return
+
+    hits = doc.find_all(needle, case_sensitive=case_sensitive, whole_words=whole_words, start=start)
     for hit in hits:
         where = []
         if hit.title_match:
@@ -141,8 +255,6 @@ def _search(file: str, needle: str, password: str | None, case_sensitive: bool, 
             where.append("Text")
         print(f"{hit.note.path_string()} [{', '.join(where)}]")
     print(f"{len(hits)} Treffer", file=sys.stderr)
-
-
 
 
 def _insert_image(
@@ -191,6 +303,103 @@ def _set_note(file: str, output: str, title: str, input_file: str, password: str
     _save_after_edit(doc, output, password, new_password)
 
 
+def _import_json(file: str, output: str, title: str, input_file: str, where: str, password: str | None, new_password: str | None) -> None:
+    doc = load_uri(file, password=password)
+    target = _note_by_title(doc, title)
+    created = import_json_into_document(doc, input_file, target=target, where=where)
+    _save_after_edit(doc, output, password, new_password)
+    print(f"importiert: {created.title}", file=sys.stderr)
+
+
+def _import_file(
+    file: str,
+    output: str,
+    title: str,
+    input_file: str,
+    where: str,
+    password: str | None,
+    input_password: str | None,
+    new_password: str | None,
+) -> None:
+    doc = load_uri(file, password=password)
+    imported = load_uri(input_file, password=input_password)
+    target = _note_by_title(doc, title)
+    created = import_document_root_into_document(doc, imported, target=target, where=where)
+    _save_after_edit(doc, output, password, new_password)
+    print(f"importiert: {created.title}", file=sys.stderr)
+
+
+def _replace(
+    file: str,
+    output: str,
+    needle: str,
+    replacement: str,
+    password: str | None,
+    new_password: str | None,
+    case_sensitive: bool,
+    whole_words: bool,
+    title: str | None,
+    titles_only: bool,
+    text_only: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    _select_by_title(doc, title)
+    start = doc.selected_note if title else None
+    report = doc.replace_all(
+        needle,
+        replacement,
+        case_sensitive=case_sensitive,
+        whole_words=whole_words,
+        start=start,
+        include_titles=not text_only,
+        include_text=not titles_only,
+    )
+    _save_after_edit(doc, output, password, new_password)
+    if report.total_replacements == 0:
+        print("keine Ersetzung", file=sys.stderr)
+    else:
+        print(
+            f"{report.total_replacements} Ersetzung(en) in {report.notes_changed} Notiz(en); "
+            f"Titel {report.title_replacements}, Text {report.text_replacements}",
+            file=sys.stderr,
+        )
+
+
+def _validate(file: str, password: str | None, as_json: bool) -> None:
+    doc = load_uri(file, password=password)
+    stats = doc.stats()
+    payload = {
+        "ok": True,
+        "path": doc.path,
+        "password_protected": bool(doc.password),
+        "notes": stats.notes,
+        "leaves": stats.leaves,
+        "max_depth": stats.max_depth,
+        "sticky_notes": stats.sticky_notes,
+        "characters": stats.characters,
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print("OK")
+        print(f"Pfad: {doc.path}")
+        print(f"Passwortgeschützt: {'ja' if doc.password else 'nein'}")
+        print(f"Notizen: {stats.notes}; Blätter: {stats.leaves}; Tiefe: {stats.max_depth}; Zeichen: {stats.characters}")
+
+
+def _recent(as_json: bool) -> None:
+    config = AppConfig.load()
+    if as_json:
+        print(json.dumps(config.recent_files, indent=2, ensure_ascii=False))
+        return
+    if not config.recent_files:
+        print("keine zuletzt geöffneten Dateien")
+        return
+    for index, path in enumerate(config.recent_files, start=1):
+        marker = "*" if path == config.last_file else " "
+        print(f"{index}. {marker} {path}")
+
+
 def _format_note(
     file: str,
     output: str,
@@ -219,6 +428,31 @@ def _format_note(
         fg_color=parse_int_or_hex(fg_color),
         bg_color=parse_int_or_hex(bg_color),
     )
+    doc.select(note)
+    doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+
+
+def _font_size(
+    file: str,
+    output: str,
+    title: str,
+    password: str | None,
+    new_password: str | None,
+    bigger: bool,
+    smaller: bool,
+    set_size: int | None,
+    step: int,
+) -> None:
+    doc = load_uri(file, password=password)
+    note = _note_by_title(doc, title)
+    if set_size is not None:
+        set_note_font_size(note, set_size)
+    else:
+        if not bigger and not smaller:
+            raise NotizenFileError("Bitte --bigger, --smaller oder --set angeben.")
+        delta = abs(step or 2) * (1 if bigger else -1)
+        change_note_font_size(note, delta)
     doc.select(note)
     doc.modified = True
     _save_after_edit(doc, output, password, new_password)
@@ -291,6 +525,45 @@ def _duplicate(file: str, output: str, title: str, password: str | None, new_pas
     if clone is None:
         raise NotizenFileError("Wurzel kann nicht dupliziert werden.")
     _save_after_edit(doc, output, password, new_password)
+
+
+def _combine_subtree(
+    file: str,
+    output: str,
+    title: str | None,
+    new_title: str | None,
+    password: str | None,
+    new_password: str | None,
+    numbered: bool,
+    attach_to_selected: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    if title:
+        _select_by_title(doc, title)
+    created = combine_subtree_to_new_note(
+        doc,
+        start=doc.selected_note,
+        title=new_title,
+        numbered=numbered,
+        attach_to_root=not attach_to_selected,
+    )
+    _save_after_edit(doc, output, password, new_password)
+    print(f"zusammengefasst: {created.title}", file=sys.stderr)
+
+
+def _backup_list(file: str, as_json: bool) -> None:
+    backups = list_backups(file)
+    if as_json:
+        print(json.dumps([info.as_dict() for info in backups], indent=2, ensure_ascii=False))
+    else:
+        for info in backups:
+            print(f"{info.path}	{int(info.created)}	{info.size}")
+    print(f"{len(backups)} Backup(s)", file=sys.stderr)
+
+
+def _backup_restore(backup: str, target: str | None, no_backup_current: bool) -> None:
+    restored = restore_backup(backup, target=target, backup_current=not no_backup_current)
+    print(restored)
 
 
 def _config_show() -> None:
@@ -439,6 +712,18 @@ def main(argv: list[str] | None = None) -> int:
     html.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
     _add_password_arg(html)
 
+    md = sub.add_parser("export-md", help="Nach Markdown exportieren")
+    md.add_argument("file")
+    md.add_argument("output")
+    md.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+    _add_password_arg(md)
+
+    json_exp = sub.add_parser("export-json", help="Dokument oder Teilbaum als JSON exportieren")
+    json_exp.add_argument("file")
+    json_exp.add_argument("output")
+    json_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+    _add_password_arg(json_exp)
+
     note_rtf = sub.add_parser("export-note-rtf", help="Roh-RTF einer einzelnen Notiz exportieren")
     note_rtf.add_argument("file")
     note_rtf.add_argument("output")
@@ -450,6 +735,12 @@ def main(argv: list[str] | None = None) -> int:
     images.add_argument("output_dir")
     images.add_argument("--title", help="nur eine Notiz untersuchen")
     _add_password_arg(images)
+
+    sticky_html = sub.add_parser("export-sticky-html", help="sichtbare Sticky-Notizen als HTML-Board exportieren")
+    sticky_html.add_argument("file")
+    sticky_html.add_argument("output")
+    sticky_html.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten exportieren")
+    _add_password_arg(sticky_html)
 
     password = sub.add_parser("change-password", help="Datei neu speichern und Passwort ändern/entfernen")
     password.add_argument("file")
@@ -476,7 +767,33 @@ def main(argv: list[str] | None = None) -> int:
     search.add_argument("needle")
     search.add_argument("--case-sensitive", action="store_true")
     search.add_argument("--whole-words", action="store_true")
+    search.add_argument("--details", action="store_true", help="Treffer zählen und Snippets ausgeben")
+    search.add_argument("--json", action="store_true", help="detaillierte Treffer als JSON ausgeben")
+    search.add_argument("--context", type=int, default=40, help="Snippet-Kontextzeichen")
+    search.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel durchsuchen")
     _add_password_arg(search)
+
+    replace = sub.add_parser("replace", help="Text in Titeln und/oder Notiztext ersetzen")
+    replace.add_argument("file")
+    replace.add_argument("output")
+    replace.add_argument("needle")
+    replace.add_argument("replacement")
+    replace.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel ändern")
+    replace.add_argument("--case-sensitive", action="store_true")
+    replace.add_argument("--whole-words", action="store_true")
+    group_replace = replace.add_mutually_exclusive_group()
+    group_replace.add_argument("--titles-only", action="store_true")
+    group_replace.add_argument("--text-only", action="store_true")
+    _add_new_password_arg(replace)
+    _add_password_arg(replace)
+
+    validate = sub.add_parser("validate", help="Datei laden und Kompatibilitäts-/Statistikcheck ausgeben")
+    validate.add_argument("file")
+    validate.add_argument("--json", action="store_true")
+    _add_password_arg(validate)
+
+    sub_recent = sub.add_parser("recent", help="zuletzt geöffnete Dateien aus der Port-Konfiguration anzeigen")
+    sub_recent.add_argument("--json", action="store_true")
 
     set_note = sub.add_parser("set-note", help="Text/RTF einer Notiz ersetzen und speichern")
     set_note.add_argument("file")
@@ -486,6 +803,25 @@ def main(argv: list[str] | None = None) -> int:
     set_note.add_argument("--rtf", action="store_true")
     _add_new_password_arg(set_note)
     _add_password_arg(set_note)
+
+    json_imp = sub.add_parser("import-json", help="JSON-Teilbaum in eine Datei importieren")
+    json_imp.add_argument("file")
+    json_imp.add_argument("output")
+    json_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
+    json_imp.add_argument("--input", required=True)
+    json_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
+    _add_new_password_arg(json_imp)
+    _add_password_arg(json_imp)
+
+    file_imp = sub.add_parser("import-file", help="Root-Teilbaum einer anderen .alx/.xml/FTP-Datei importieren")
+    file_imp.add_argument("file")
+    file_imp.add_argument("output")
+    file_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
+    file_imp.add_argument("--input", required=True, help="zu importierende .alx/.xml/FTP-Datei")
+    file_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
+    file_imp.add_argument("--input-password")
+    _add_new_password_arg(file_imp)
+    _add_password_arg(file_imp)
 
     img = sub.add_parser("insert-image", help="PNG/JPEG/BMP als RTF-Bild an eine Notiz anhängen")
     img.add_argument("file")
@@ -525,6 +861,36 @@ def main(argv: list[str] | None = None) -> int:
     fmt.add_argument("--bg-color")
     _add_new_password_arg(fmt)
     _add_password_arg(fmt)
+
+    font_size = sub.add_parser("font-size", help="Textgröße einer Notiz wie Ctrl+Plus/Ctrl+Minus ändern")
+    font_size.add_argument("file")
+    font_size.add_argument("output")
+    font_size.add_argument("--title", required=True)
+    size_group = font_size.add_mutually_exclusive_group(required=True)
+    size_group.add_argument("--bigger", action="store_true")
+    size_group.add_argument("--smaller", action="store_true")
+    size_group.add_argument("--set", dest="set_size", type=int, help="RTF-Halbpunkte direkt setzen, z.B. 22")
+    font_size.add_argument("--step", type=int, default=2, help="Halbpunkte pro Schritt; Standard 2 = 1pt")
+    _add_new_password_arg(font_size)
+    _add_password_arg(font_size)
+
+    sticky = sub.add_parser("sticky", help="Sticky-Metadaten einer Notiz anzeigen/ändern")
+    sticky.add_argument("file")
+    sticky.add_argument("output")
+    sticky.add_argument("--title", required=True)
+    state_group = sticky.add_mutually_exclusive_group()
+    state_group.add_argument("--show", action="store_true")
+    state_group.add_argument("--hide", action="store_true")
+    sticky.add_argument("--clear", action="store_true", help="Sticky-Metadaten entfernen")
+    sticky.add_argument("--autosize", action="store_true", help="Breite/Höhe aus Textlänge schätzen")
+    sticky.add_argument("--x", type=int)
+    sticky.add_argument("--y", type=int)
+    sticky.add_argument("--width", type=int)
+    sticky.add_argument("--height", type=int)
+    sticky.add_argument("--opacity", type=float)
+    sticky.add_argument("--argb", help="ARGB/Farbe dezimal oder hex, z.B. 0xFFFFFF99")
+    _add_new_password_arg(sticky)
+    _add_password_arg(sticky)
 
     rename = sub.add_parser("rename", help="Notiz umbenennen")
     rename.add_argument("file")
@@ -573,6 +939,26 @@ def main(argv: list[str] | None = None) -> int:
     duplicate.add_argument("--title", required=True)
     _add_new_password_arg(duplicate)
     _add_password_arg(duplicate)
+
+    combine = sub.add_parser("combine-subtree", help="Teilbaum wie die alte Einheit/Zusammenfassen-Funktion als neue Notiz einfügen")
+    combine.add_argument("file")
+    combine.add_argument("output")
+    combine.add_argument("--title", help="Teilbaum ab erstem passenden Titel; ohne Angabe die Wurzel")
+    combine.add_argument("--new-title")
+    combine.add_argument("--numbered", action="store_true", default=True)
+    combine.add_argument("--plain", action="store_true", help="ohne Nummerierung zusammenfassen")
+    combine.add_argument("--attach-to-selected", action="store_true", help="neue Zusammenfassung als Kind des ausgewählten Knotens statt unter der Wurzel")
+    _add_new_password_arg(combine)
+    _add_password_arg(combine)
+
+    backup_list = sub.add_parser("backup-list", help="lokale Sicherheitskopien einer Datei anzeigen")
+    backup_list.add_argument("file")
+    backup_list.add_argument("--json", action="store_true")
+
+    backup_restore = sub.add_parser("backup-restore", help="eine Sicherheitskopie zurückspielen")
+    backup_restore.add_argument("backup")
+    backup_restore.add_argument("--target", help="Zieldatei; ohne Angabe aus Backup-Ordner abgeleitet")
+    backup_restore.add_argument("--no-backup-current", action="store_true", help="aktuelle Zieldatei vor dem Überschreiben nicht sichern")
 
     cfg_show = sub.add_parser("config-show", help="Port-Konfiguration anzeigen")
 
@@ -624,10 +1010,16 @@ def main(argv: list[str] | None = None) -> int:
             _export_rtf(args.file, args.output, args.password, args.title, args.numbered)
         elif args.cmd == "export-html":
             _export_html(args.file, args.output, args.password, args.title)
+        elif args.cmd == "export-md":
+            _export_md(args.file, args.output, args.password, args.title)
+        elif args.cmd == "export-json":
+            _export_json(args.file, args.output, args.password, args.title)
         elif args.cmd == "export-note-rtf":
             _export_note_rtf(args.file, args.output, args.password, args.title)
         elif args.cmd == "extract-images":
             _extract_images(args.file, args.output_dir, args.password, args.title)
+        elif args.cmd == "export-sticky-html":
+            _export_sticky_html(args.file, args.output, args.password, args.all)
         elif args.cmd == "change-password":
             _change_password(args.file, args.output, args.old_password, args.new_password)
         elif args.cmd == "dump-xml":
@@ -637,9 +1029,19 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "stats":
             _stats(args.file, args.password)
         elif args.cmd == "search":
-            _search(args.file, args.needle, args.password, args.case_sensitive, args.whole_words)
+            _search(args.file, args.needle, args.password, args.case_sensitive, args.whole_words, args.details, args.json, args.context, args.title)
+        elif args.cmd == "replace":
+            _replace(args.file, args.output, args.needle, args.replacement, args.password, args.new_password, args.case_sensitive, args.whole_words, args.title, args.titles_only, args.text_only)
+        elif args.cmd == "validate":
+            _validate(args.file, args.password, args.json)
+        elif args.cmd == "recent":
+            _recent(args.json)
         elif args.cmd == "set-note":
             _set_note(args.file, args.output, args.title, args.input, args.password, args.new_password, args.rtf)
+        elif args.cmd == "import-json":
+            _import_json(args.file, args.output, args.title, args.input, args.where, args.password, args.new_password)
+        elif args.cmd == "import-file":
+            _import_file(args.file, args.output, args.title, args.input, args.where, args.password, args.input_password, args.new_password)
         elif args.cmd == "insert-image":
             _insert_image(args.file, args.output, args.title, args.image, args.password, args.new_password, args.width_twips, args.height_twips)
         elif args.cmd == "append-date":
@@ -662,6 +1064,10 @@ def main(argv: list[str] | None = None) -> int:
                 args.fg_color,
                 args.bg_color,
             )
+        elif args.cmd == "font-size":
+            _font_size(args.file, args.output, args.title, args.password, args.new_password, args.bigger, args.smaller, args.set_size, args.step)
+        elif args.cmd == "sticky":
+            _sticky(args.file, args.output, args.title, args.password, args.new_password, args.show, args.hide, args.clear, args.autosize, args.x, args.y, args.width, args.height, args.opacity, args.argb)
         elif args.cmd == "rename":
             _rename(args.file, args.output, args.title, args.new_title, args.password, args.new_password)
         elif args.cmd == "add-note":
@@ -674,6 +1080,12 @@ def main(argv: list[str] | None = None) -> int:
             _move_under(args.file, args.output, args.title, args.target_title, args.password, args.new_password)
         elif args.cmd == "duplicate":
             _duplicate(args.file, args.output, args.title, args.password, args.new_password)
+        elif args.cmd == "combine-subtree":
+            _combine_subtree(args.file, args.output, args.title, args.new_title, args.password, args.new_password, not args.plain, args.attach_to_selected)
+        elif args.cmd == "backup-list":
+            _backup_list(args.file, args.json)
+        elif args.cmd == "backup-restore":
+            _backup_restore(args.backup, args.target, args.no_backup_current)
         elif args.cmd == "config-show":
             _config_show()
         elif args.cmd == "config-read-legacy":

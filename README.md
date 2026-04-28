@@ -1,6 +1,6 @@
-# Notizen Python Slint
+# Notizen Py Slint
 
-Das ist ein Python3-orientierter Port von **Notizen.NET** aus dem gelieferten VB.NET/WinForms-Projekt. Der alte Code wurde nicht nur zeilenweise umgeschrieben: Dateiformat, Notizbaum, RTF-Textinhalt, Sicherheitskopien, Konfiguration, FTP-Transport, Wecker-Logik und die historische DES-Kaskadenverschlüsselung wurden als pure-Python-Kern neu aufgebaut. Die Oberfläche liegt als Slint-Datei plus Python-Controller vor.
+Das ist ein Python-orientierter Port von **Notizen.NET** aus dem gelieferten VB.NET/WinForms-Projekt. Der alte Code wurde nicht nur zeilenweise umgeschrieben: Dateiformat, Notizbaum, RTF-Textinhalt, Sicherheitskopien, Konfiguration, FTP-Transport, Wecker-Logik und die historische DES-Kaskadenverschlüsselung wurden als pure-Python-Kern neu aufgebaut. Die Oberfläche liegt als Slint-Datei plus Python-Controller vor.
 
 ## Status
 
@@ -12,15 +12,16 @@ Funktioniert im Port:
 - Notizbaum anzeigen, Kind-/Nachbarnotizen anlegen, löschen, duplizieren, kopieren/ausschneiden/einfügen
 - Knoten hoch/runter verschieben, einrücken, ausrücken, alle auf-/zuklappen
 - Suche über Titel und Text, einmalig oder als Trefferliste
-- TXT-, RTF- und HTML-Export für ganze Datei oder ausgewählten Teilbaum
+- TXT-, RTF-, Markdown-, JSON- und HTML-Export für ganze Datei oder ausgewählten Teilbaum
 - Roh-RTF einer einzelnen Notiz exportieren, Text/RTF in aktuelle Notiz importieren
 - PNG/JPEG/BMP als RTF-`\pict` an Notizen anhängen
 - eingebettete RichTextBox-/RTF-Bilder aus alten Notizen extrahieren
 - Datum/Uhrzeit und Aufzählungszeichen an Notizen anhängen
 - einfache Ganznotiz-Formatierung als portabler Ersatz für RichTextBox-Auswahlformatierung
+- Textgröße per A+/A- beziehungsweise CLI wie im alten Ctrl+Plus/Ctrl+Minus-Workflow ändern
 - Raw-RTF-Modus in der UI, damit alte RichTextBox-Inhalte notfalls direkt bearbeitet werden können
 - alte Intellibit-`notes_doc`-Dateien importieren
-- Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten und Geometrie/Farbe bearbeiten
+- Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten, Geometrie/Farbe bearbeiten, automatisch grob dimensionieren und als HTML-Board exportieren
 - Knotenfarben (`bgcolor`, `fgcolor`) lesen, speichern und in der UI setzen/löschen
 - Sicherheitskopien beim lokalen Speichern und Autosave-Timer aus der Konfiguration
 - alte `notizen.config.xml` lesen/importieren/exportieren, inklusive Backup-Anzahl, Autosave, Autostart, Fensterdaten, Sticky-Rahmen und FTP-Feldern
@@ -32,28 +33,28 @@ Funktioniert im Port:
 Bewusst vereinfacht oder nicht vollständig portiert:
 
 - Slints `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der neue Raw-RTF-Modus erlaubt aber direkten Zugriff auf das gespeicherte RTF.
-- Sticky/Desktop-Notizen werden nicht als separate, frei schwebende Desktop-Fenster nachgebaut. Ihre Metadaten bleiben aber im Dateiformat erhalten und können bearbeitet werden.
+- Sticky/Desktop-Notizen werden nicht als separate, frei schwebende Desktop-Fenster nachgebaut. Ihre Metadaten bleiben aber im Dateiformat erhalten, können bearbeitet/automatisch dimensioniert und als HTML-Board exportiert werden.
 - Der Wecker speichert und berechnet Erinnerungen, erzeugt aber noch keine native OS-Benachrichtigung oder Popup-Schleife. CLI/UI können Regeln anlegen und den nächsten Termin anzeigen.
 - Trayicon, native Drag-and-drop-Mauslogik, Druckdialog und die alte mehrsprachige WinForms-Menülogik sind nicht 1:1 in der neuen UI enthalten. Autostart, HTML-Export und RTF-Bildzugriff sind portabel nachgebaut, aber nicht identisch mit WinForms.
 - Die alte Verschlüsselung ist absichtlich nur kompatibel, nicht sicher. Für echte Sicherheit die `.alx` zusätzlich mit einem modernen Werkzeug verschlüsseln.
 
 ## Installation
 
-Für den reinen Kern reicht Python3 ohne externe Pakete:
+Für Kern und CLI reicht die editierbare Installation ohne externe Laufzeitpakete:
 
 ```bash
 cd notizen_py_slint
 python3 -m pip install -e .
 ```
 
-Für die Slint-Oberfläche:
+Für die Slint-Oberfläche die UI-Extra-Abhängigkeit installieren:
 
 ```bash
 cd notizen_py_slint
 python3 -m pip install -e ".[slint]"
 ```
 
-Hinweis: Die normale UI-Abhängigkeit nutzt aktuelle Slint-Python-Releases (`slint>=1.16.1b1`) und braucht damit Python 3.12 oder neuer. Für alte Python-3.10/3.11-Umgebungen gibt es zusätzlich `python3 -m pip install -e ".[slint-legacy]"`; der Kern und das CLI bleiben auch ganz ohne Slint lauffähig.
+Hinweis: Das Projekt ist jetzt ein normales Python-Projekt. Die alte Pinning-Logik für PyPy wurde entfernt. Die Slint-Extra-Abhängigkeit nutzt aktuelle Slint-Python-Versionen (`slint>=1.16.1b1`); diese verlangen derzeit Python 3.12 oder neuer. Mit Python 3.14 ist das die passende Richtung. Kern und CLI bleiben bewusst ohne Slint lauffähig.
 
 ## Starten
 
@@ -66,12 +67,7 @@ python3 -m notizen_py_slint pfad/zur/datei.alx --password geheim
 python3 -m notizen_py_slint 'ftp://user:pass@example.org/notizen.alx'
 ```
 
-Der alte Modulname bleibt als Kompatibilitätsweiterleitung erhalten:
-
-```bash
-python3 -m notizen_pypy_slint
-notizen-pypy-slint --help
-```
+Kompatibilität: `python3 -m notizen_pypy_slint` funktioniert weiterhin als alter Alias, damit vorhandene lokale Aufrufe nicht sofort brechen. Neu bevorzugt ist `python3 -m notizen_py_slint`.
 
 CLI-Fallback ohne Slint:
 
@@ -82,6 +78,7 @@ notizen-alx search tests/fixtures/test.alx test
 notizen-alx export-txt tests/fixtures/test.alx /tmp/notizen.txt --numbered
 notizen-alx export-rtf tests/fixtures/test.alx /tmp/notizen.rtf --title "PC" --numbered
 notizen-alx export-html tests/fixtures/test.alx /tmp/notizen.html
+notizen-alx export-sticky-html tests/fixtures/test.alx /tmp/sticky.html --all
 notizen-alx export-note-rtf tests/fixtures/test.alx /tmp/notiz.rtf --title "todo"
 notizen-alx dump-xml input.alx /tmp/notizen.xml
 notizen-alx pack-xml /tmp/notizen.xml output.alx --password geheim
@@ -92,6 +89,8 @@ notizen-alx append-bullet input.alx output.alx --title "todo"
 notizen-alx change-password input.alx output.alx --old-password alt --new-password neu
 notizen-alx set-note input.alx output.alx --title "todo" --input /tmp/neuer-text.txt
 notizen-alx format-note input.alx output.alx --title "todo" --bold --fg-color '#112233'
+notizen-alx font-size input.alx output.alx --title "todo" --bigger
+notizen-alx sticky input.alx output.alx --title "todo" --show --autosize --x 100 --y 100
 notizen-alx rename input.alx output.alx --title "todo" --new-title "erledigen"
 notizen-alx add-note input.alx output.alx --title "todo" --new-title "Unterpunkt" --where child
 notizen-alx move input.alx output.alx --title "todo" --action down
@@ -123,10 +122,10 @@ cd notizen_py_slint
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, deshalb ist der GUI-Start nicht live kompiliert worden:
+Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 34 tests in 0.886s
+Ran 40 tests in 2.516s
 OK
 ```
 
@@ -134,7 +133,7 @@ Getestet wurden:
 
 - DES-Known-Vector
 - Notizen-DES-Kaskaden-Roundtrip
-- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, RTF-Bildextraktion und RTF-Bildeinfügen
+- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, Textgrößenänderung, RTF-Bildextraktion und RTF-Bildeinfügen
 - Laden der originalen `test.alx`-Fixture mit 65 Knoten
 - Speichern/Laden unverschlüsselt
 - Speichern/Laden verschlüsselt
@@ -142,10 +141,10 @@ Getestet wurden:
 - direktes Laden/Speichern von lesbarem XML und Raw-XML-Dump/Pack-Roundtrip
 - Kopieren/verschieben/einrücken/ausrücken/duplizieren im Baum
 - Suche, Statistik und Farb-Hilfsfunktionen
-- HTML-Export, Bildexport, Bildimport und Notiz-Anhänge
+- HTML-Export, Sticky-HTML-Export, Bildexport, Bildimport und Notiz-Anhänge
 - alte Konfigurationsmigration inklusive FTP-Feldern
 - Wecker-Wiederholungen, Wecker-Store und CLI-Weckerpfade
-- CLI-Integrationspfade inklusive XML-Dump/Pack und FTP/FTPS-URL-Parsing
+- CLI-Integrationspfade inklusive XML-Dump/Pack, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
 
 ## Projektstruktur
 

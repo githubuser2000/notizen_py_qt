@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from base64 import b64encode
 from dataclasses import dataclass
+from html import escape
 from pathlib import Path
 import re
 
 _HEX_RE = re.compile(r"^[0-9a-fA-F]{2}$")
 _PICT_CONTROL_RE = re.compile(r"\\([a-zA-Z]+)(-?\d+)? ?")
+_FS_CONTROL_RE = re.compile(r"(\\fs)(\d+)")
 _IMAGE_KIND_BY_SUFFIX = {
     ".png": ("png", "pngblip"),
     ".jpg": ("jpg", "jpegblip"),
@@ -254,6 +257,60 @@ def rtf_to_text(rtf: str) -> str:
     return text.strip("\n")
 
 
+
+
+def rtf_to_html_fragment(rtf: str, *, include_images: bool = True) -> str:
+    """Convert stored RTF into a small safe HTML fragment.
+
+    This is intentionally conservative: text is escaped, line breaks are kept,
+    and embedded RichTextBox pictures are emitted as data-URI images. It does not
+    try to be a full RTF renderer, but it preserves much more than the plain text
+    export and gives old image-heavy notes a useful print/preview path.
+    """
+    parts: list[str] = []
+    text = rtf_to_text(rtf).strip("\n")
+    if text:
+        paragraphs = re.split(r"\n{2,}", text)
+        for paragraph in paragraphs:
+            paragraph = paragraph.strip("\n")
+            if not paragraph:
+                continue
+            parts.append("<p>" + escape(paragraph).replace("\n", "<br>\n") + "</p>")
+    if include_images:
+        for picture in extract_pictures(rtf):
+            mime = _picture_mime_type(picture.extension)
+            if mime.startswith("image/"):
+                encoded = b64encode(picture.data).decode("ascii")
+                alt = escape(picture.filename)
+                attrs = [f'src="data:{mime};base64,{encoded}"', f'alt="{alt}"']
+                if picture.width_twips:
+                    attrs.append(f'data-width-twips="{picture.width_twips}"')
+                if picture.height_twips:
+                    attrs.append(f'data-height-twips="{picture.height_twips}"')
+                parts.append("<figure><img " + " ".join(attrs) + "></figure>")
+            else:
+                parts.append(f'<p class="embedded-object">[eingebettetes Objekt: {escape(picture.filename)}]</p>')
+    return "\n".join(parts)
+
+
+def _picture_mime_type(extension: str) -> str:
+    ext = (extension or "").lower().lstrip(".")
+    if ext in {"jpg", "jpeg"}:
+        return "image/jpeg"
+    if ext == "png":
+        return "image/png"
+    if ext == "bmp":
+        return "image/bmp"
+    if ext == "gif":
+        return "image/gif"
+    if ext == "svg":
+        return "image/svg+xml"
+    if ext == "wmf":
+        return "image/wmf"
+    if ext == "emf":
+        return "image/emf"
+    return "application/octet-stream"
+
 def restyle_rtf_as_plain(
     rtf_or_text: str,
     *,
@@ -278,6 +335,80 @@ def restyle_rtf_as_plain(
         fg_color=fg_color,
         bg_color=bg_color,
     )
+
+
+def first_rtf_font_size(rtf_or_text: str, *, default_half_points: int = 18) -> int:
+    """Return the first RTF ``\fs`` font size in half-points.
+
+    The old WinForms application had toolbar/shortcut actions for larger and
+    smaller text. RichTextBox represented that as ``\fsN`` control words. This
+    helper gives the Python port a lightweight way to inspect the same state
+    without depending on a GUI text widget.
+    """
+    if not is_rtf(rtf_or_text):
+        return max(2, int(default_half_points or 18))
+    match = _FS_CONTROL_RE.search(rtf_or_text or "")
+    if match is None:
+        return max(2, int(default_half_points or 18))
+    return int(match.group(2))
+
+
+def set_rtf_font_size(
+    rtf_or_text: str,
+    half_points: int,
+    *,
+    min_half_points: int = 2,
+    max_half_points: int = 400,
+) -> str:
+    """Set all RTF font-size control words to ``half_points``.
+
+    Existing RTF is preserved as far as possible. When no RTF size marker exists,
+    the content is rewritten as simple RTF using the same plain text.
+    """
+    target = _clamp_half_points(half_points, min_half_points, max_half_points)
+    if not is_rtf(rtf_or_text):
+        return text_to_rtf(str(rtf_or_text or ""), font_size_half_points=target)
+    value = rtf_or_text or ""
+    if _FS_CONTROL_RE.search(value):
+        return _FS_CONTROL_RE.sub(lambda match: f"{match.group(1)}{target}", value)
+    return restyle_rtf_as_plain(value, font_size_half_points=target)
+
+
+def change_rtf_font_size(
+    rtf_or_text: str,
+    delta_half_points: int,
+    *,
+    default_half_points: int = 18,
+    min_half_points: int = 2,
+    max_half_points: int = 400,
+) -> str:
+    """Increase/decrease all RTF font-size control words by half-points.
+
+    Notizen.NET changed the RichTextBox selection size through Ctrl+Plus and
+    Ctrl+Minus. Slint's plain TextEdit cannot do selection-level rich text, so the
+    port applies the change to every ``\fs`` marker in the note. That keeps old
+    rich notes mostly intact and still gives the same one-click workflow.
+    """
+    delta = int(delta_half_points or 0)
+    if not is_rtf(rtf_or_text):
+        base = _clamp_half_points(default_half_points + delta, min_half_points, max_half_points)
+        return text_to_rtf(str(rtf_or_text or ""), font_size_half_points=base)
+
+    value = rtf_or_text or ""
+    if not _FS_CONTROL_RE.search(value):
+        base = _clamp_half_points(default_half_points + delta, min_half_points, max_half_points)
+        return restyle_rtf_as_plain(value, font_size_half_points=base)
+
+    def replace(match: re.Match[str]) -> str:
+        current = int(match.group(2))
+        changed = _clamp_half_points(current + delta, min_half_points, max_half_points)
+        return f"{match.group(1)}{changed}"
+
+    return _FS_CONTROL_RE.sub(replace, value)
+
+
+def _clamp_half_points(value: int, low: int, high: int) -> int:
+    return max(int(low), min(int(high), int(value)))
 
 
 

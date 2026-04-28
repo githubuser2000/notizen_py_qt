@@ -16,109 +16,91 @@ from .storage import (
     EncryptedFileError,
     append_bullet_into_note,
     append_current_date_into_note,
+    autosize_sticky as autosize_note_sticky,
+    change_note_font_size,
     NotizenFileError,
     WrongPasswordError,
+    combine_subtree_to_new_note,
     export_document_images,
     export_html,
+    export_json,
+    export_markdown,
     export_note_rtf,
+    export_sticky_html,
     export_rtf,
     export_text,
+    import_json_into_document,
     import_rtf_into_note,
     import_text_into_note,
     insert_image_into_note,
+    list_backups,
     save_document as write_document,
 )
 from .rtf import restyle_rtf_as_plain
 
 
-class SlintUiError(RuntimeError):
-    """Raised when the packaged Slint UI file cannot be compiled or loaded."""
+def _format_slint_compile_error(exc: Exception, ui_path: Path) -> str:
+    """Return readable Slint diagnostics.
 
+    Older and current Slint Python bindings often expose diagnostics as opaque
+    PyDiagnostic objects in the default traceback. This formatter probes both
+    method-style and attribute-style APIs and falls back to repr() when needed.
+    """
 
-def _read_diag_attr(diag: object, name: str) -> object | None:
-    """Read Slint's PyDiagnostic attributes across old and new bindings."""
-    try:
-        value = getattr(diag, name)
-    except Exception:
+    lines = [f"Slint konnte die UI-Datei nicht kompilieren: {ui_path}"]
+    diagnostics: list[Any] = []
+    if len(getattr(exc, "args", ())) > 1 and isinstance(exc.args[1], list):
+        diagnostics = exc.args[1]
+    elif hasattr(exc, "diagnostics"):
+        value = getattr(exc, "diagnostics")
+        diagnostics = list(value() if callable(value) else value)
+
+    def read_value(obj: object, *names: str) -> object | None:
+        for name in names:
+            if hasattr(obj, name):
+                value = getattr(obj, name)
+                try:
+                    return value() if callable(value) else value
+                except TypeError:
+                    return value
         return None
-    if callable(value):
-        try:
-            return value()
-        except TypeError:
-            return value
-        except Exception:
-            return None
-    return value
 
-
-def _iter_slint_diagnostics(exc: BaseException) -> list[object]:
-    diagnostics = getattr(exc, "diagnostics", None)
-    if diagnostics is None:
-        for arg in getattr(exc, "args", ()):  # older slint-python stores them as args[1]
-            if isinstance(arg, list | tuple):
-                diagnostics = arg
-                break
-    if diagnostics is None:
-        return []
-    try:
-        return list(diagnostics)
-    except TypeError:
-        return []
-
-
-def _format_slint_diagnostic(diag: object) -> str:
-    message = _read_diag_attr(diag, "message")
-    level = _read_diag_attr(diag, "level")
-    source = _read_diag_attr(diag, "source_file")
-    line_col = _read_diag_attr(diag, "line_column")
-    line_number = _read_diag_attr(diag, "line_number")
-    column_number = _read_diag_attr(diag, "column_number")
-
-    location = ""
-    if source:
-        location = str(source)
-    if isinstance(line_col, tuple) and len(line_col) >= 2:
-        line_number, column_number = line_col[0], line_col[1]
-    elif isinstance(line_col, list) and len(line_col) >= 2:
-        line_number, column_number = line_col[0], line_col[1]
-    if line_number or column_number:
-        line = line_number or 0
-        col = column_number or 0
-        location = f"{location}:{line}:{col}" if location else f"Zeile {line}, Spalte {col}"
-
-    level_text = str(level).split(".")[-1] if level is not None else "Fehler"
-    message_text = str(message) if message else str(diag)
-    if location:
-        return f"{location}: {level_text}: {message_text}"
-    return f"{level_text}: {message_text}"
-
-
-def _format_slint_compile_error(exc: BaseException, ui_path: Path) -> str:
-    diagnostics = _iter_slint_diagnostics(exc)
-    if diagnostics:
-        lines = [_format_slint_diagnostic(diag) for diag in diagnostics]
-    else:
-        lines = [str(exc)]
-    return "\n".join([f"Slint konnte die UI-Datei nicht kompilieren: {ui_path}", *lines])
-
-
-def _load_slint_components(slint_module: Any, ui_path: Path) -> Any:
-    try:
-        return slint_module.load_file(str(ui_path))
-    except Exception as exc:  # noqa: BLE001 - slint exposes version-dependent exception classes
-        raise SlintUiError(_format_slint_compile_error(exc, ui_path)) from exc
+    for index, diag in enumerate(diagnostics, start=1):
+        message = read_value(diag, "message", "message_str", "description")
+        level = read_value(diag, "level", "severity")
+        line = read_value(diag, "line")
+        column = read_value(diag, "column")
+        line_column = read_value(diag, "line_column", "lineColumn")
+        if isinstance(line_column, (tuple, list)) and len(line_column) >= 2:
+            line, column = line_column[0], line_column[1]
+        where = ""
+        if line not in (None, 0, "0"):
+            where = f"{ui_path}:{line}"
+            if column not in (None, 0, "0"):
+                where += f":{column}"
+            where += ": "
+        level_text = f"[{level}] " if level not in (None, "") else ""
+        lines.append(f"  {index}. {where}{level_text}{message if message else repr(diag)}")
+    if not diagnostics:
+        lines.append(f"  {exc}")
+    lines.append("Tipp: Die Datei liegt unter src/notizen_py_slint/ui/app-window.slint.")
+    return "\n".join(lines)
 
 
 class NotizenSlintApp:
     """Thin controller that binds the pure Python document model to Slint."""
 
     def __init__(self, initial_path: str | Path | None = None, password: str | None = None) -> None:
-        import slint  # imported lazily so the non-GUI CLI/tests stay Python-only
+        import slint  # imported lazily so CLI/tests can run without starting the GUI
 
         self.slint = slint
-        ui_resource = resources.files("notizen_py_slint.ui").joinpath("app-window.slint")
-        with resources.as_file(ui_resource) as ui_path:
-            components = _load_slint_components(slint, ui_path)
+        ui_path = resources.files("notizen_py_slint.ui").joinpath("app-window.slint")
+        try:
+            components = slint.load_file(str(ui_path))
+        except Exception as exc:  # noqa: BLE001 - Slint uses its own CompileError type
+            if exc.__class__.__name__ == "CompileError":
+                raise RuntimeError(_format_slint_compile_error(exc, ui_path)) from exc
+            raise
         self.window = components.AppWindow()
         self.config: AppConfig = load_config()
         self.document: NoteDocument = NoteDocument.empty()
@@ -162,12 +144,16 @@ class NotizenSlintApp:
         self.window.export_text = self.export_text_file
         self.window.export_rtf = self.export_rtf_file
         self.window.export_html = self.export_html_file
+        self.window.export_markdown = self.export_markdown_file
+        self.window.export_json = self.export_json_file
         self.window.export_subtree_text = self.export_subtree_text_file
         self.window.export_subtree_rtf = self.export_subtree_rtf_file
         self.window.export_note_rtf = self.export_note_rtf_file
+        self.window.export_sticky_html = self.export_sticky_html_file
         self.window.extract_images = self.extract_images_file
         self.window.import_text = self.import_text_file
         self.window.import_rtf = self.import_rtf_file
+        self.window.import_json = self.import_json_file
         self.window.insert_image = self.insert_image_file
         self.window.append_date = self.append_date
         self.window.append_bullet = self.append_bullet
@@ -175,6 +161,7 @@ class NotizenSlintApp:
         self.window.add_sibling = self.add_sibling
         self.window.delete_note = self.delete_note
         self.window.duplicate_note = self.duplicate_note
+        self.window.combine_subtree = self.combine_subtree
         self.window.copy_node = self.copy_node
         self.window.cut_node = self.cut_node
         self.window.paste_node = self.paste_node
@@ -193,14 +180,18 @@ class NotizenSlintApp:
         self.window.toggle_raw_rtf = self.toggle_raw_rtf
         self.window.toggle_sticky = self.toggle_sticky
         self.window.set_sticky_geometry = self.set_sticky_geometry
+        self.window.autosize_sticky = self.autosize_sticky
         self.window.set_colors = self.set_colors
         self.window.clear_colors = self.clear_colors
         self.window.format_note = self.format_note
+        self.window.increase_font_size = self.increase_font_size
+        self.window.decrease_font_size = self.decrease_font_size
         self.window.open_settings = self.open_settings
         self.window.import_legacy_config = self.import_legacy_config_file
         self.window.open_alarm = self.open_alarm
         self.window.show_next_alarm = self.show_next_alarm
         self.window.show_stats = self.show_stats
+        self.window.show_backups = self.show_backups
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:
@@ -346,6 +337,27 @@ class NotizenSlintApp:
         except Exception as exc:  # noqa: BLE001
             self._set_status(f"HTML-Export fehlgeschlagen: {exc}")
 
+    def export_markdown_file(self) -> None:
+        path = ask_save_file("Als Markdown exportieren", suggested="notizen.md", suffix=".md")
+        if path is None:
+            return
+        try:
+            export_markdown(self.document, path)
+            self._set_status(f"Markdown exportiert: {path}")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"Markdown-Export fehlgeschlagen: {exc}")
+
+    def export_json_file(self) -> None:
+        note = self.document.selected_note
+        path = ask_save_file("Ausgewählten Teilbaum als JSON exportieren", suggested=f"{_safe_filename(note.title)}.json", suffix=".json")
+        if path is None:
+            return
+        try:
+            export_json(self.document, path, start=note)
+            self._set_status(f"JSON exportiert: {path}")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"JSON-Export fehlgeschlagen: {exc}")
+
     def export_subtree_text_file(self) -> None:
         note = self.document.selected_note
         path = ask_save_file("Teilbaum als Text exportieren", suggested=f"{_safe_filename(note.title)}.txt", suffix=".txt")
@@ -378,6 +390,17 @@ class NotizenSlintApp:
             self._set_status(f"Notiz-RTF exportiert: {path}")
         except Exception as exc:  # noqa: BLE001
             self._set_status(f"Notiz-RTF-Export fehlgeschlagen: {exc}")
+
+    def export_sticky_html_file(self) -> None:
+        path = ask_save_file("Sticky-Notizen als HTML exportieren", suggested="sticky-notizen.html", suffix=".html")
+        if path is None:
+            return
+        try:
+            export_sticky_html(self.document, path, visible_only=True)
+            self._set_status(f"Sticky-HTML exportiert: {path}")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"Sticky-HTML-Export fehlgeschlagen: {exc}")
+
 
     def extract_images_file(self) -> None:
         current = self.document.path or self.config.last_file or "notizen"
@@ -420,6 +443,18 @@ class NotizenSlintApp:
         self.document.modified = True
         self._refresh_all()
         self._set_status(f"RTF/Text importiert: {path}")
+
+    def import_json_file(self) -> None:
+        path = ask_open_file("JSON-Teilbaum unter aktueller Notiz importieren", filetypes=[("JSON", "*.json"), ("Alle Dateien", "*.*")])
+        if path is None:
+            return
+        try:
+            created = import_json_into_document(self.document, path, target=self.document.selected_note, where="child")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"JSON-Import fehlgeschlagen: {exc}")
+            return
+        self._refresh_all()
+        self._set_status(f"JSON-Teilbaum importiert: {created.title}")
 
     def insert_image_file(self) -> None:
         path = ask_open_file(
@@ -473,6 +508,12 @@ class NotizenSlintApp:
             return
         self._refresh_all()
         self._set_status(f"Notiz dupliziert: {clone.title}")
+
+    def combine_subtree(self) -> None:
+        selected = self.document.selected_note
+        created = combine_subtree_to_new_note(self.document, start=selected, numbered=True, attach_to_root=True)
+        self._refresh_all()
+        self._set_status(f"Teilbaum zusammengefasst als neue Notiz: {created.title}")
 
     def copy_node(self) -> None:
         self._clipboard_note = self.document.selected_note.clone_deep()
@@ -628,6 +669,14 @@ class NotizenSlintApp:
         self._refresh_all(keep_editor=True)
         self._set_status("Sticky-Geometrie gesetzt.")
 
+    def autosize_sticky(self) -> None:
+        note = self.document.selected_note
+        sticky = autosize_note_sticky(note)
+        self.document.modified = True
+        self._refresh_all(keep_editor=True)
+        self._set_status(f"Sticky-Autogröße gesetzt: {sticky.width}x{sticky.height}")
+
+
     def set_colors(self) -> None:
         note = self.document.selected_note
         default = f"{argb_to_hex(note.bg_color) if note.bg_color is not None else ''},{argb_to_hex(note.fg_color) if note.fg_color is not None else ''}"
@@ -685,6 +734,21 @@ class NotizenSlintApp:
         self._refresh_all()
         self._set_status(f"Notiz formatiert: {note.title}")
 
+    def increase_font_size(self) -> None:
+        self._change_current_font_size(2)
+
+    def decrease_font_size(self) -> None:
+        self._change_current_font_size(-2)
+
+    def _change_current_font_size(self, delta_half_points: int) -> None:
+        note = self.document.selected_note
+        change_note_font_size(note, delta_half_points)
+        self.document.modified = True
+        self._refresh_all()
+        direction = "vergrößert" if delta_half_points > 0 else "verkleinert"
+        self._set_status(f"Textgröße {direction}: {note.title}")
+
+
     def open_settings(self) -> None:
         default = f"{self.config.backup_count},{self.config.autosave_seconds},{self.config.autorun},{self.config.autorun_minimized},{self.config.ftp_host},{self.config.ftp_username},{self.config.ftp_path},{self.config.ftp_use_tls}"
         raw = ask_text("Einstellungen: backups,autosave_sec,autorun,autorun_minimized,ftp_host,ftp_user,ftp_path,ftps", default=default, empty_is_none=True)
@@ -740,6 +804,18 @@ class NotizenSlintApp:
             f"{stats.notes} Notizen, {stats.leaves} Blätter, Tiefe {stats.max_depth}, "
             f"{stats.sticky_notes} Sticky-Metadaten, {stats.characters} Zeichen"
         )
+
+    def show_backups(self) -> None:
+        path = self.document.path
+        if not path or is_remote_uri(path):
+            self._set_status("Backups gibt es nur für lokal gespeicherte Dateien.")
+            return
+        backups = list_backups(path)
+        if not backups:
+            self._set_status("Keine Sicherheitskopien gefunden.")
+            return
+        newest = backups[0]
+        self._set_status(f"{len(backups)} Backup(s), neueste: {newest.path.name} ({newest.size} Bytes)")
 
 
     # Alarm actions --------------------------------------------------------
@@ -846,7 +922,7 @@ class NotizenSlintApp:
         name = Path(self.document.path).name if self.document.path and not is_remote_uri(self.document.path) else self.document.path or "unbenannt.alx"
         locked = " 🔒" if self._current_password else ""
         marker = " *" if self.document.modified else ""
-        self.window.window_title = f"Notizen Python Slint - {name}{locked}{marker}"
+        self.window.window_title = f"Notizen Py Slint - {name}{locked}{marker}"
         self.window.dirty = bool(self.document.modified)
 
     def _set_status(self, message: str) -> None:
@@ -866,7 +942,7 @@ def _safe_filename(value: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Notizen.NET-Port für Python3 mit Slint")
+    parser = argparse.ArgumentParser(description="Notizen.NET-Port für Python mit Slint")
     parser.add_argument("file", nargs="?", help=".alx-Datei oder ftp://-/ftps://-URL öffnen")
     parser.add_argument("--password", help="Passwort für verschlüsselte .alx-Dateien")
     parser.add_argument("--minimized", action="store_true", help="aus alter Autostart-Konfiguration akzeptiert; UI startet normal")
@@ -880,17 +956,6 @@ def main(argv: list[str] | None = None) -> int:
             print("Slint ist nicht installiert. Installiere die UI-Abhängigkeit mit:")
             print('  python3 -m pip install -e ".[slint]"')
             return 2
-        raise
-    except SlintUiError as exc:
-        print(exc)
-        return 1
-    except RuntimeError as exc:
-        text = str(exc)
-        if "Could not initialize any renderer" in text or "No renderers configured" in text:
-            print("Slint konnte kein Fenster-/Renderer-Backend initialisieren.")
-            print("Starte die Anwendung in einer Desktop-Sitzung oder setze ein passendes SLINT_BACKEND.")
-            print(text)
-            return 1
         raise
     except NotizenFileError as exc:
         print(f"Dateifehler: {exc}")

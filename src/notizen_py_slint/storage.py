@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import gzip
+import json
 from html import escape
 from pathlib import Path
 import shutil
@@ -9,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 from .des_compat import NotizenCryptoError, decrypt_notizen_payload, encrypt_notizen_payload, is_blank_password
 from .model import Note, NoteDocument, StickyWindow
-from .rtf import append_picture_to_rtf, append_text_to_rtf, extract_pictures, is_rtf, rtf_to_text, text_to_rtf, write_extracted_pictures
+from .rtf import append_picture_to_rtf, append_text_to_rtf, change_rtf_font_size, extract_pictures, is_rtf, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf, write_extracted_pictures
 
 
 class NotizenFileError(Exception):
@@ -26,6 +28,20 @@ class WrongPasswordError(NotizenFileError):
 
 class NotizenExportError(NotizenFileError):
     pass
+
+
+@dataclass(slots=True, frozen=True)
+class BackupInfo:
+    path: Path
+    created: float
+    size: int
+
+    @property
+    def name(self) -> str:
+        return self.path.name
+
+    def as_dict(self) -> dict[str, object]:
+        return {"path": str(self.path), "name": self.name, "created": self.created, "size": self.size}
 
 
 def load_document(path: str | Path, password: str | None = None) -> NoteDocument:
@@ -145,6 +161,25 @@ def export_html(document: NoteDocument, path: str | Path, *, start: Note | None 
     return path
 
 
+def export_markdown(document: NoteDocument, path: str | Path, *, start: Note | None = None, title: str | None = None) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(outline_markdown(document, start=start, title=title), encoding="utf-8")
+    return path
+
+
+def export_json(document: NoteDocument, path: str | Path, *, start: Note | None = None) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "format": "notizen-py-slint-subtree",
+        "version": 1,
+        "note": note_to_dict(start or document.root),
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 def export_note_images(note: Note, directory: str | Path) -> list[Path]:
     return write_extracted_pictures(note.rtf, directory)
 
@@ -166,6 +201,141 @@ def export_document_images(document: NoteDocument, directory: str | Path) -> lis
     return paths
 
 
+def export_sticky_html(document: NoteDocument, path: str | Path, *, visible_only: bool = True, title: str | None = None) -> Path:
+    """Export sticky note metadata as a small desktop-board HTML file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(outline_sticky_html(document, visible_only=visible_only, title=title), encoding="utf-8")
+    return path
+
+
+def sticky_manifest(document: NoteDocument, *, visible_only: bool = True) -> list[dict[str, object]]:
+    """Return sticky-note metadata in a serialisable form.
+
+    Notizen.NET opened desktop note windows from the same attributes that are
+    stored in the XML. Slint cannot recreate the WinForms floating windows without
+    a platform-specific shell layer, but this manifest is enough for HTML export,
+    tests, and future native integration while preserving the original data.
+    """
+    items: list[dict[str, object]] = []
+    for note in document.iter_notes():
+        sticky = note.sticky
+        if sticky is None:
+            continue
+        if visible_only and not sticky.visible:
+            continue
+        items.append(
+            {
+                "path": note.path_titles(),
+                "path_string": note.path_string(),
+                "title": note.title,
+                "text": note.text,
+                "html": rtf_to_html_fragment(note.rtf),
+                "visible": sticky.visible,
+                "x": sticky.x,
+                "y": sticky.y,
+                "width": sticky.width,
+                "height": sticky.height,
+                "opacity": sticky.opacity,
+                "argb": sticky.argb,
+                "background": _argb_to_css(sticky.argb) or _argb_to_css(note.bg_color),
+                "foreground": _argb_to_css(note.fg_color),
+            }
+        )
+    return items
+
+
+def outline_sticky_html(document: NoteDocument, *, visible_only: bool = True, title: str | None = None) -> str:
+    """Create an HTML board from sticky metadata and note content."""
+    doc_title = title or "Sticky-Notizen"
+    items = sticky_manifest(document, visible_only=visible_only)
+    parts = [
+        "<!doctype html>",
+        '<html lang="de">',
+        "<head>",
+        '<meta charset="utf-8">',
+        f"<title>{escape(doc_title)}</title>",
+        "<style>",
+        "body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f3f4f6;color:#111827;}",
+        ".board{position:relative;min-height:100vh;padding:24px;}",
+        ".sticky{position:absolute;box-sizing:border-box;overflow:auto;padding:.7rem .8rem;border:1px solid rgba(0,0,0,.18);border-radius:.45rem;box-shadow:0 10px 22px rgba(0,0,0,.18);}",
+        ".sticky h2{font-size:1rem;margin:.05rem 0 .45rem 0;}",
+        ".sticky .path{font-size:.72rem;opacity:.65;margin-bottom:.35rem;}",
+        ".sticky .note-text p{white-space:pre-wrap;margin:.25rem 0 .5rem 0;}",
+        ".sticky .note-text img{max-width:100%;height:auto;border:1px solid rgba(0,0,0,.12);}",
+        ".empty{position:static;margin:2rem;padding:1rem;background:white;border-radius:.4rem;}",
+        "</style>",
+        "</head>",
+        "<body>",
+        '<main class="board">',
+    ]
+    if not items:
+        parts.append('<div class="empty">Keine sichtbaren Sticky-Notizen gefunden.</div>')
+    for index, item in enumerate(items):
+        x = _css_px(item.get("x"), 32 + (index % 4) * 290)
+        y = _css_px(item.get("y"), 32 + (index // 4) * 230)
+        width = _css_px(item.get("width"), 260)
+        height = _css_px(item.get("height"), 180)
+        opacity = _css_opacity(item.get("opacity"))
+        bg = str(item.get("background") or "#FFF8B8")
+        fg = str(item.get("foreground") or "#111827")
+        style = f"left:{x};top:{y};width:{width};min-height:{height};opacity:{opacity};background:{bg};color:{fg};"
+        parts.append(f'<article class="sticky" data-index="{index}" style="{style}">')
+        parts.append(f"<h2>{escape(str(item.get('title') or '...'))}</h2>")
+        parts.append(f'<div class="path">{escape(str(item.get("path_string") or ""))}</div>')
+        fragment = str(item.get("html") or "")
+        if fragment:
+            parts.append(f'<div class="note-text">{fragment}</div>')
+        else:
+            parts.append('<div class="note-text"><p></p></div>')
+        parts.append("</article>")
+    parts.extend(["</main>", "</body>", "</html>", ""])
+    return "\n".join(parts)
+
+
+def autosize_sticky(
+    note: Note,
+    *,
+    min_width: int = 180,
+    max_width: int = 560,
+    min_height: int = 120,
+    max_height: int = 760,
+) -> StickyWindow:
+    """Estimate sticky window size from title/text and store it on the note."""
+    sticky = note.sticky or StickyWindow(visible=True, x=100, y=100, opacity=0.85, argb=note.bg_color)
+    text_lines = (note.text or "").splitlines() or [""]
+    longest = max([len(note.title or ""), *[len(line) for line in text_lines]])
+    width = max(min_width, min(max_width, longest * 8 + 54))
+    chars_per_line = max(18, (width - 54) // 8)
+    visual_lines = 0
+    for line in text_lines:
+        visual_lines += max(1, (len(line) + chars_per_line - 1) // chars_per_line)
+    height = max(min_height, min(max_height, visual_lines * 21 + 74))
+    sticky.visible = True
+    sticky.width = width
+    sticky.height = height
+    if sticky.x is None:
+        sticky.x = 100
+    if sticky.y is None:
+        sticky.y = 100
+    if sticky.opacity is None:
+        sticky.opacity = 0.85
+    if sticky.argb is None and note.bg_color not in (None, 0):
+        sticky.argb = note.bg_color
+    note.sticky = sticky
+    return sticky
+
+
+def set_note_font_size(note: Note, half_points: int) -> Note:
+    note.rtf = set_rtf_font_size(note.rtf, half_points)
+    return note
+
+
+def change_note_font_size(note: Note, delta_half_points: int) -> Note:
+    note.rtf = change_rtf_font_size(note.rtf, delta_half_points)
+    return note
+
+
 def outline_html(document: NoteDocument, *, start: Note | None = None, title: str | None = None) -> str:
     root = start or document.root
     doc_title = title or root.title or "Notizen"
@@ -177,10 +347,13 @@ def outline_html(document: NoteDocument, *, start: Note | None = None, title: st
         f"<title>{escape(doc_title)}</title>",
         "<style>",
         "body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.45;margin:2rem;}",
-        "article{margin:0 0 1.2rem 0;}",
+        "article{margin:0 0 1.2rem 0;padding:.35rem .55rem;border-radius:.35rem;}",
         "h1,h2,h3,h4,h5,h6{margin:.7rem 0 .2rem;}",
-        ".note-text{white-space:pre-wrap;margin:.2rem 0 .7rem 0;}",
-        ".meta{color:#666;font-size:.85rem;}",
+        ".note-text{white-space:normal;margin:.2rem 0 .7rem 0;}",
+        ".note-text p{white-space:pre-wrap;margin:.2rem 0 .55rem 0;}",
+        ".note-text figure{margin:.4rem 0;}",
+        ".note-text img{max-width:100%;height:auto;border:1px solid #ddd;}",
+        ".embedded-object,.meta{color:#666;font-size:.85rem;}",
         "</style>",
         "</head>",
         "<body>",
@@ -189,7 +362,8 @@ def outline_html(document: NoteDocument, *, start: Note | None = None, title: st
 
     def visit(note: Note, level: int) -> None:
         heading = min(level + 2, 6)
-        parts.append(f'<article data-depth="{level}">')
+        style = _note_html_style(note)
+        parts.append(f'<article data-depth="{level}"{style}>')
         parts.append(f"<h{heading}>{escape(note.title or '...')}</h{heading}>")
         meta: list[str] = []
         if note.sticky is not None:
@@ -200,14 +374,235 @@ def outline_html(document: NoteDocument, *, start: Note | None = None, title: st
             meta.append(f"fgcolor={note.fg_color}")
         if meta:
             parts.append(f'<div class="meta">{escape(" | ".join(meta))}</div>')
-        text = note.text.strip("\n")
-        if text:
-            parts.append(f'<div class="note-text">{escape(text)}</div>')
+        fragment = rtf_to_html_fragment(note.rtf)
+        if fragment:
+            parts.append(f'<div class="note-text">{fragment}</div>')
         parts.append("</article>")
 
     document.walk_with_level(visit, start=root)
     parts.extend(["</body>", "</html>", ""])
     return "\n".join(parts)
+
+
+def outline_markdown(document: NoteDocument, *, start: Note | None = None, title: str | None = None) -> str:
+    root = start or document.root
+    doc_title = title or root.title or "Notizen"
+    parts: list[str] = [f"# {doc_title}", ""]
+
+    def visit(note: Note, level: int) -> None:
+        heading = "#" * min(level + 2, 6)
+        parts.append(f"{heading} {note.title or '...'}")
+        meta: list[str] = []
+        if note.sticky is not None:
+            meta.append("Sticky: " + note.sticky.summary())
+        if note.bg_color not in (None, 0):
+            meta.append(f"bgcolor={note.bg_color}")
+        if note.fg_color not in (None, 0):
+            meta.append(f"fgcolor={note.fg_color}")
+        if meta:
+            parts.append("_")
+            parts.append(" | ".join(meta))
+            parts.append("_")
+        text = note.text.strip("\n")
+        if text:
+            parts.append("")
+            parts.extend(text.splitlines())
+        pictures = extract_pictures(note.rtf)
+        if pictures:
+            parts.append("")
+            for picture in pictures:
+                parts.append(f"[eingebettetes Bild/Objekt: {picture.filename}]")
+        parts.append("")
+
+    document.walk_with_level(visit, start=root)
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def combine_subtree_to_new_note(
+    document: NoteDocument,
+    *,
+    start: Note | None = None,
+    title: str | None = None,
+    numbered: bool = True,
+    attach_to_root: bool = True,
+) -> Note:
+    """Create a new note containing a flattened outline of a subtree.
+
+    This ports Notizen.NET's old "Einheit/Zusammenfassen" action in a
+    Slint-friendly way. The original built a temporary RichTextBox and pasted all
+    nodes into a new node. Here we generate simple RTF from the same outline so
+    the operation works without a GUI or clipboard.
+    """
+    root = start or document.selected_note
+    note_title = title or f"Zusammenfassung: {root.title or 'Notizen'}"
+    new_note = Note(note_title, text_to_rtf(outline_text(document, start=root, numbered=numbered)))
+    parent = document.root if attach_to_root else root
+    parent.add_child(new_note)
+    parent.expanded = True
+    document.select(new_note)
+    document.modified = True
+    return new_note
+
+
+def note_to_dict(note: Note) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "title": note.title,
+        "text": note.text,
+        "rtf": note.rtf,
+        "expanded": note.expanded,
+        "bg_color": note.bg_color,
+        "fg_color": note.fg_color,
+        "children": [note_to_dict(child) for child in note.children],
+    }
+    if note.sticky is not None:
+        payload["sticky"] = {
+            "visible": note.sticky.visible,
+            "x": note.sticky.x,
+            "y": note.sticky.y,
+            "width": note.sticky.width,
+            "height": note.sticky.height,
+            "opacity": note.sticky.opacity,
+            "argb": note.sticky.argb,
+        }
+    return payload
+
+
+def note_from_dict(data: dict[str, object]) -> Note:
+    if not isinstance(data, dict):
+        raise NotizenFileError("JSON-Notiz ist kein Objekt.")
+    sticky_data = data.get("sticky")
+    sticky = None
+    if isinstance(sticky_data, dict):
+        sticky = StickyWindow(
+            visible=bool(sticky_data.get("visible", False)),
+            x=_json_optional_int(sticky_data.get("x")),
+            y=_json_optional_int(sticky_data.get("y")),
+            width=_json_optional_int(sticky_data.get("width")),
+            height=_json_optional_int(sticky_data.get("height")),
+            opacity=_json_optional_float(sticky_data.get("opacity")),
+            argb=_json_optional_int(sticky_data.get("argb")),
+        )
+    rtf_value = data.get("rtf")
+    if rtf_value in (None, "") and data.get("text") not in (None, ""):
+        rtf_value = text_to_rtf(str(data.get("text") or ""))
+    note = Note(
+        title=str(data.get("title") or "..."),
+        rtf=str(rtf_value or ""),
+        expanded=bool(data.get("expanded", True)),
+        bg_color=_json_optional_int(data.get("bg_color")),
+        fg_color=_json_optional_int(data.get("fg_color")),
+        sticky=sticky,
+    )
+    children = data.get("children", [])
+    if not isinstance(children, list):
+        raise NotizenFileError("JSON-Kinderliste ist ungültig.")
+    for child_data in children:
+        if not isinstance(child_data, dict):
+            raise NotizenFileError("JSON-Kindnotiz ist ungültig.")
+        note.add_child(note_from_dict(child_data))
+    return note
+
+
+def load_note_json(path: str | Path) -> Note:
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise NotizenFileError(f"JSON konnte nicht gelesen werden: {exc}") from exc
+    if isinstance(data, dict) and data.get("format") == "notizen-py-slint-subtree":
+        data = data.get("note")
+    if not isinstance(data, dict):
+        raise NotizenFileError("JSON enthält keine Notiz.")
+    return note_from_dict(data)
+
+
+def import_json_into_document(document: NoteDocument, path: str | Path, *, target: Note | None = None, where: str = "child") -> Note:
+    imported = load_note_json(path)
+    return import_note_into_document(document, imported, target=target, where=where)
+
+
+def import_note_into_document(document: NoteDocument, note: Note, *, target: Note | None = None, where: str = "child") -> Note:
+    """Insert a detached note/subtree into a document.
+
+    The inserted tree is cloned so callers can pass notes from another loaded
+    document without cross-linking parents between documents.
+    """
+    imported = note.clone_deep()
+    target = target or document.selected_note
+    if where == "child":
+        created = target.add_child(imported)
+        target.expanded = True
+    elif where == "before":
+        created = target.insert_before(imported)
+    elif where == "after":
+        created = target.insert_after(imported)
+    else:
+        raise NotizenFileError(f"Ungültige Importposition: {where}")
+    document.select(created)
+    document.modified = True
+    return created
+
+
+def import_document_root_into_document(document: NoteDocument, imported_document: NoteDocument, *, target: Note | None = None, where: str = "child") -> Note:
+    """Import the root note of another Notizen document as a subtree."""
+    return import_note_into_document(document, imported_document.root, target=target, where=where)
+
+
+def _json_optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _json_optional_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _note_html_style(note: Note) -> str:
+    styles: list[str] = []
+    bg = _argb_to_css(note.bg_color)
+    fg = _argb_to_css(note.fg_color)
+    if bg:
+        styles.append(f"background-color:{bg}")
+    if fg:
+        styles.append(f"color:{fg}")
+    if not styles:
+        return ""
+    return ' style="' + ";".join(styles) + '"'
+
+
+def _argb_to_css(value: int | None) -> str:
+    if value in (None, 0):
+        return ""
+    unsigned = int(value) & 0xFFFFFFFF
+    # XML stores ARGB, CSS wants RGB. Alpha is ignored for broad browser support.
+    rgb = unsigned & 0x00FFFFFF
+    return f"#{rgb:06X}"
+
+
+def _css_px(value: object, fallback: int) -> str:
+    try:
+        numeric = int(value) if value not in (None, "") else int(fallback)
+    except (TypeError, ValueError):
+        numeric = int(fallback)
+    return f"{max(0, numeric)}px"
+
+
+def _css_opacity(value: object) -> str:
+    try:
+        numeric = float(value) if value not in (None, "") else 1.0
+    except (TypeError, ValueError):
+        numeric = 1.0
+    numeric = max(0.05, min(1.0, numeric))
+    return f"{numeric:.3g}"
+
 
 def export_note_rtf(note: Note, path: str | Path) -> Path:
     path = Path(path)
@@ -406,6 +801,40 @@ def _safe_path_part(value: str) -> str:
     cleaned = "__".join(part.strip() for part in value.replace("\\", "/").split("/") if part.strip())
     cleaned = "".join(ch if ch.isalnum() or ch in " ._-" else "_" for ch in cleaned)
     return cleaned[:160] or "notiz"
+
+
+def backup_directory_for(target: str | Path) -> Path:
+    return Path(target).with_suffix("")
+
+
+def list_backups(target: str | Path) -> list[BackupInfo]:
+    target_path = Path(target)
+    directory = backup_directory_for(target_path)
+    if not directory.exists():
+        return []
+    backups: list[BackupInfo] = []
+    for path in sorted(directory.glob(f"{target_path.stem}-*{target_path.suffix}"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        backups.append(BackupInfo(path=path, created=stat.st_mtime, size=stat.st_size))
+    return backups
+
+
+def restore_backup(backup: str | Path, target: str | Path | None = None, *, backup_current: bool = True) -> Path:
+    backup_path = Path(backup)
+    if not backup_path.exists():
+        raise NotizenFileError(f"Backup nicht gefunden: {backup_path}")
+    if target is None:
+        target_path = backup_path.parent.with_suffix(backup_path.suffix)
+    else:
+        target_path = Path(target)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if backup_current and target_path.exists():
+        _make_backup(target_path, keep=9999)
+    shutil.copy2(backup_path, target_path)
+    return target_path
 
 
 def _make_backup(target: Path, keep: int) -> None:
