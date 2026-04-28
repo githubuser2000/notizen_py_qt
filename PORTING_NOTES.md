@@ -84,7 +84,7 @@ Slints `TextEdit` ist kein RichTextBox-Ersatz. Deshalb gibt es zwei Modi:
 - Textmodus: gespeichertes RTF wird best-effort zu Plain-Text konvertiert; Änderungen werden als schlichtes RTF gespeichert.
 - Raw-RTF-Modus: der gespeicherte RTF-String wird direkt editiert/exportiert/importiert.
 
-Damit bleiben alte formatierte Inhalte erreichbar, auch wenn die neue UI keine vollständige Rich-Text-Bearbeitung bietet. Zusätzlich kann der Port Bilder aus `\pict`-Gruppen extrahieren und PNG/JPEG/BMP wieder als `\pict`-Gruppen anhängen. Die alten Auswahlformatierungen werden nicht Zeichen-für-Zeichen nachgebildet; `format-note`, `style-note` und die Slint-Buttons wenden Stiländerungen bewusst auf die ganze Notiz an. Das ist ehrlich begrenzt, aber stabil und ohne native RichTextBox-Abhängigkeit.
+Damit bleiben alte formatierte Inhalte erreichbar, auch wenn die neue UI keine vollständige Rich-Text-Bearbeitung bietet. Zusätzlich kann der Port Bilder aus `\pict`-Gruppen extrahieren und PNG/JPEG/BMP wieder als `\pict`-Gruppen anhängen. Die alten gemischten RichTextBox-Formatierungen werden nicht vollständig wie in WinForms nachgebildet; `format-note`, `style-note` und die Slint-Buttons arbeiten bewusst stabil auf Ganznotizebene. Für gezielte Bearbeitung gibt es zusätzlich die Plain-Text-Range-Funktionen `insert-text`, `delete-range` und `style-range`.
 
 ## Alte Konfiguration, FTP und Autostart
 
@@ -145,3 +145,11 @@ Der alte Exportpfad aus `Notizen.vb` wurde weiter angenähert: `export-legacy-tx
 
 Ergänzt wurde außerdem die alte Suchergebnisform aus `suche.vb`/`suchergebnisse.vb`: `find_occurrences` und `search --occurrences` liefern jetzt genaue sichtbare Textpositionen für Titel und Inhalt, also den funktionalen Ersatz für `SelectionStart`. Die WinForms-Kontextmenüs aus `kontext_inhalt.vb`, `Baum_Kontext_.vb`, `desknote_kontext.vb` und `desknote_kontext_opacy.vb` liegen als `context_menus.py` vor und sind per `notizen-alx context-menus` sowie im Slint-Infofeld abrufbar.
 
+
+## v12: OPML, Teilbaum-ALX, sichtbare Treffer und Schriftliste
+
+Dieser Schritt ergänzt Export-/Importpfade, die früher in mehreren WinForms-Menüs verteilt waren. Ganze Dateien oder ausgewählte Teilbäume können jetzt als eigenständige `.alx` exportiert werden. Zusätzlich gibt es OPML-Export und -Import. OPML ist absichtlich als portables Outline-Format gehalten; optionale private `_notizen_*`-Attribute bewahren RTF, Klartext, Farben, Sticky-Metadaten und den Auf-/Zu-Zustand, ohne fremde OPML-Leser zu blockieren.
+
+Die Suchlogik wurde um einen eigenen `search-occurrences`-Befehl erweitert. Er liefert Treffer nicht nur pro Notiz, sondern mit Feld, Start-/Endposition, Trefferindex, Pfad und Snippet. Das ist der robustere Python-Ersatz für die alten `SelectionStart`-basierten Suchergebnislisten.
+
+`expand-state` macht gespeicherte Baumzustände per CLI setzbar, inklusive einer Option, die Wurzel beim Massenlauf nicht zu schließen. `font-list` scannt installierte Systemschriften ohne externe Pakete über Font-Dateien und nutzt bei unlesbaren Dateien einen Dateinamen-Fallback. Damit sind alte Font-Dialog-/Toolbar-Arbeitsweisen besser skriptbar, auch wenn Slint weiterhin keinen WinForms-Fontdialog nachbildet.

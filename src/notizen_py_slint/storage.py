@@ -236,6 +236,54 @@ def export_json(document: NoteDocument, path: str | Path, *, start: Note | None 
     return path
 
 
+def subtree_document(document: NoteDocument, *, start: Note | None = None, path: str | None = None, password: str | None = None) -> NoteDocument:
+    """Return a detached document containing a deep clone of one subtree."""
+    root = (start or document.root).clone_deep()
+    return NoteDocument(root=root, path=path, password=password, selected_id=root.note_id)
+
+
+def export_alx(
+    document: NoteDocument,
+    path: str | Path,
+    *,
+    start: Note | None = None,
+    password: str | None = None,
+    backup_count: int = 0,
+) -> Path:
+    """Export a subtree as a standalone .alx/.xml Notizen file."""
+    subdoc = subtree_document(document, start=start, password=password)
+    return save_document(subdoc, path=path, password=password, backup_count=backup_count)
+
+
+def export_opml(
+    document: NoteDocument,
+    path: str | Path,
+    *,
+    start: Note | None = None,
+    title: str | None = None,
+    include_metadata: bool = True,
+    include_rtf: bool = True,
+    include_plain_text: bool = True,
+) -> Path:
+    from .opml import write_opml
+
+    return write_opml(
+        document,
+        path,
+        start=start,
+        title=title,
+        include_metadata=include_metadata,
+        include_rtf=include_rtf,
+        include_plain_text=include_plain_text,
+    )
+
+
+def import_opml_into_document(document: NoteDocument, path: str | Path, *, target: Note | None = None, where: str = "child") -> Note:
+    from .opml import read_opml
+
+    return import_note_into_document(document, read_opml(path), target=target, where=where)
+
+
 
 def apply_toolbar_style_to_note(
     note: Note,

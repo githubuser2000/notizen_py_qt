@@ -27,6 +27,7 @@ from .context_menus import context_actions_json, format_context_actions
 from .legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table, readable_color_lines
 from .legacy_sticky import legacy_opacity_choices, opacity_from_legacy_choice
 from .feedback import FeedbackError, write_feedback_gzip
+from .fonts import format_font_list, list_system_fonts
 from .legacy_config import import_legacy_config, load_legacy_config, write_legacy_like_config
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import load_uri, save_uri
@@ -46,11 +47,13 @@ from .storage import (
     delete_note_text_range,
     export_document_images,
     combine_subtree_to_new_note,
+    export_alx,
     export_html,
     export_json,
     export_legacy_text,
     export_markdown,
     export_note_images,
+    export_opml,
     export_note_rtf,
     export_rtf,
     export_sticky_html,
@@ -60,6 +63,7 @@ from .storage import (
     import_document_root_into_document,
     import_json_into_document,
     import_note_into_document,
+    import_opml_into_document,
     import_rtf_into_note,
     import_text_into_note,
     insert_bullet_into_note,
@@ -147,6 +151,35 @@ def _export_json(file: str, output: str, password: str | None, title: str | None
     doc = load_uri(file, password=password)
     _select_by_title(doc, title)
     export_json(doc, output, start=doc.selected_note if title else None)
+    print(output)
+
+
+def _export_alx(file: str, output: str, password: str | None, title: str | None, new_password: str | None) -> None:
+    doc = load_uri(file, password=password)
+    _select_by_title(doc, title)
+    export_alx(doc, output, start=doc.selected_note if title else None, password=new_password if new_password is not None else password, backup_count=0)
+    print(output)
+
+
+def _export_opml(
+    file: str,
+    output: str,
+    password: str | None,
+    title: str | None,
+    no_metadata: bool,
+    no_rtf: bool,
+    no_text: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    _select_by_title(doc, title)
+    export_opml(
+        doc,
+        output,
+        start=doc.selected_note if title else None,
+        include_metadata=not no_metadata,
+        include_rtf=not no_rtf,
+        include_plain_text=not no_text,
+    )
     print(output)
 
 
@@ -470,6 +503,14 @@ def _import_json(file: str, output: str, title: str, input_file: str, where: str
     print(f"importiert: {created.title}", file=sys.stderr)
 
 
+def _import_opml(file: str, output: str, title: str, input_file: str, where: str, password: str | None, new_password: str | None) -> None:
+    doc = load_uri(file, password=password)
+    target = _note_by_title(doc, title)
+    created = import_opml_into_document(doc, input_file, target=target, where=where)
+    _save_after_edit(doc, output, password, new_password)
+    print(f"OPML importiert: {created.title}", file=sys.stderr)
+
+
 def _import_file(
     file: str,
     output: str,
@@ -486,6 +527,30 @@ def _import_file(
     created = import_document_root_into_document(doc, imported, target=target, where=where)
     _save_after_edit(doc, output, password, new_password)
     print(f"importiert: {created.title}", file=sys.stderr)
+
+
+def _search_occurrences(
+    file: str,
+    needle: str,
+    password: str | None,
+    case_sensitive: bool,
+    whole_words: bool,
+    as_json: bool,
+    context: int,
+    title: str | None,
+    field: list[str] | None,
+    limit: int | None,
+) -> None:
+    doc = load_uri(file, password=password)
+    _select_by_title(doc, title)
+    start = doc.selected_note if title else None
+    hits = doc.find_occurrences(needle, case_sensitive=case_sensitive, whole_words=whole_words, context=context, start=start, fields=field or ("title", "text"), limit=limit)
+    if as_json:
+        print(json.dumps([dict(hit.as_dict(), index=i) for i, hit in enumerate(hits)], indent=2, ensure_ascii=False))
+        return
+    for i, hit in enumerate(hits):
+        print(f"{i:04d} {hit.field} {hit.start}-{hit.end} {hit.note.path_string()} :: {hit.snippet}")
+    print(f"{len(hits)} Treffer", file=sys.stderr)
 
 
 def _replace(
@@ -972,6 +1037,41 @@ def _combine_subtree(
     print(f"zusammengefasst: {created.title}", file=sys.stderr)
 
 
+def _expand_state(
+    file: str,
+    output: str,
+    password: str | None,
+    new_password: str | None,
+    title: str | None,
+    all_notes: bool,
+    expanded: bool,
+    keep_root_open: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    if all_notes:
+        if expanded:
+            doc.expand_all()
+        else:
+            doc.collapse_all(keep_root_open=keep_root_open)
+    else:
+        if not title:
+            raise NotizenFileError("Bitte --title oder --all angeben.")
+        note = _note_by_title(doc, title)
+        note.expanded = bool(expanded)
+        doc.select(note)
+        doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+
+
+def _font_list(contains: str | None, limit: int | None, as_json: bool, paths: list[str] | None) -> None:
+    entries = list_system_fonts(contains=contains, limit=limit, paths=paths)
+    if as_json:
+        print(json.dumps([entry.as_dict() for entry in entries], indent=2, ensure_ascii=False))
+    else:
+        print(format_font_list(entries))
+    print(f"{len(entries)} Schrift(en)", file=sys.stderr)
+
+
 def _backup_list(file: str, as_json: bool) -> None:
     backups = list_backups(file)
     if as_json:
@@ -1366,6 +1466,22 @@ def main(argv: list[str] | None = None) -> int:
     json_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
     _add_password_arg(json_exp)
 
+    alx_exp = sub.add_parser("export-alx", help="Teilbaum als eigenständige .alx/.xml-Datei exportieren")
+    alx_exp.add_argument("file")
+    alx_exp.add_argument("output")
+    alx_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren; ohne Angabe die ganze Datei")
+    _add_new_password_arg(alx_exp)
+    _add_password_arg(alx_exp)
+
+    opml_exp = sub.add_parser("export-opml", help="Dokument oder Teilbaum als OPML-Outliner-Datei exportieren")
+    opml_exp.add_argument("file")
+    opml_exp.add_argument("output")
+    opml_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+    opml_exp.add_argument("--no-metadata", action="store_true", help="keine privaten _notizen_*-Attribute schreiben")
+    opml_exp.add_argument("--no-rtf", action="store_true", help="RTF nicht als Base64-Metadatum mitschreiben")
+    opml_exp.add_argument("--no-text", action="store_true", help="Klartext nicht als OPML-Notiz/Metadatum mitschreiben")
+    _add_password_arg(opml_exp)
+
     note_rtf = sub.add_parser("export-note-rtf", help="Roh-RTF einer einzelnen Notiz exportieren")
     note_rtf.add_argument("file")
     note_rtf.add_argument("output")
@@ -1415,6 +1531,18 @@ def main(argv: list[str] | None = None) -> int:
     search.add_argument("--context", type=int, default=40, help="Snippet-Kontextzeichen")
     search.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel durchsuchen")
     _add_password_arg(search)
+
+    search_occ = sub.add_parser("search-occurrences", help="einzelne Suchtreffer mit Positionen ausgeben")
+    search_occ.add_argument("file")
+    search_occ.add_argument("needle")
+    search_occ.add_argument("--case-sensitive", action="store_true")
+    search_occ.add_argument("--whole-words", action="store_true")
+    search_occ.add_argument("--json", action="store_true")
+    search_occ.add_argument("--context", type=int, default=40)
+    search_occ.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel durchsuchen")
+    search_occ.add_argument("--field", action="append", choices=["title", "text", "body", "inhalt"], help="Suchfeld; mehrfach nutzbar")
+    search_occ.add_argument("--limit", type=int)
+    _add_password_arg(search_occ)
 
     replace = sub.add_parser("replace", help="Text in Titeln und/oder Notiztext ersetzen")
     replace.add_argument("file")
@@ -1493,6 +1621,15 @@ def main(argv: list[str] | None = None) -> int:
     json_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
     _add_new_password_arg(json_imp)
     _add_password_arg(json_imp)
+
+    opml_imp = sub.add_parser("import-opml", help="OPML-Datei als Teilbaum importieren")
+    opml_imp.add_argument("file")
+    opml_imp.add_argument("output")
+    opml_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
+    opml_imp.add_argument("--input", required=True, help="zu importierende OPML-Datei")
+    opml_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
+    _add_new_password_arg(opml_imp)
+    _add_password_arg(opml_imp)
 
     file_imp = sub.add_parser("import-file", help="Root-Teilbaum einer anderen .alx/.xml/FTP-Datei importieren")
     file_imp.add_argument("file")
@@ -1741,6 +1878,25 @@ def main(argv: list[str] | None = None) -> int:
     _add_new_password_arg(combine)
     _add_password_arg(combine)
 
+    expand_state = sub.add_parser("expand-state", help="Auf-/Zu-Zustand einzelner Knoten oder aller Knoten setzen")
+    expand_state.add_argument("file")
+    expand_state.add_argument("output")
+    expand_target = expand_state.add_mutually_exclusive_group(required=True)
+    expand_target.add_argument("--title")
+    expand_target.add_argument("--all", action="store_true", help="alle Knoten ändern")
+    expand_value = expand_state.add_mutually_exclusive_group(required=True)
+    expand_value.add_argument("--expanded", action="store_true")
+    expand_value.add_argument("--collapsed", action="store_true")
+    expand_state.add_argument("--close-root", action="store_true", help="bei --all --collapsed auch die Wurzel schließen")
+    _add_new_password_arg(expand_state)
+    _add_password_arg(expand_state)
+
+    font_list = sub.add_parser("font-list", help="installierte Systemschriften portabel auflisten")
+    font_list.add_argument("--contains")
+    font_list.add_argument("--limit", type=int)
+    font_list.add_argument("--json", action="store_true")
+    font_list.add_argument("--path", action="append", help="zusätzlicher oder alternativer Font-Pfad; mehrfach nutzbar")
+
     backup_list = sub.add_parser("backup-list", help="lokale Sicherheitskopien einer Datei anzeigen")
     backup_list.add_argument("file")
     backup_list.add_argument("--json", action="store_true")
@@ -1880,6 +2036,10 @@ def main(argv: list[str] | None = None) -> int:
             _export_md(args.file, args.output, args.password, args.title)
         elif args.cmd == "export-json":
             _export_json(args.file, args.output, args.password, args.title)
+        elif args.cmd == "export-alx":
+            _export_alx(args.file, args.output, args.password, args.title, args.new_password)
+        elif args.cmd == "export-opml":
+            _export_opml(args.file, args.output, args.password, args.title, args.no_metadata, args.no_rtf, args.no_text)
         elif args.cmd == "export-note-rtf":
             _export_note_rtf(args.file, args.output, args.password, args.title)
         elif args.cmd == "extract-images":
@@ -1896,6 +2056,8 @@ def main(argv: list[str] | None = None) -> int:
             _stats(args.file, args.password)
         elif args.cmd == "search":
             _search(args.file, args.needle, args.password, args.case_sensitive, args.whole_words, "occurrences" if args.occurrences else args.details, args.json, args.context, args.title)
+        elif args.cmd == "search-occurrences":
+            _search_occurrences(args.file, args.needle, args.password, args.case_sensitive, args.whole_words, args.json, args.context, args.title, args.field, args.limit)
         elif args.cmd == "replace":
             _replace(args.file, args.output, args.needle, args.replacement, args.password, args.new_password, args.case_sensitive, args.whole_words, args.title, args.titles_only, args.text_only)
         elif args.cmd == "validate":
@@ -1916,6 +2078,8 @@ def main(argv: list[str] | None = None) -> int:
             _set_note(args.file, args.output, args.title, args.input, args.password, args.new_password, args.rtf)
         elif args.cmd == "import-json":
             _import_json(args.file, args.output, args.title, args.input, args.where, args.password, args.new_password)
+        elif args.cmd == "import-opml":
+            _import_opml(args.file, args.output, args.title, args.input, args.where, args.password, args.new_password)
         elif args.cmd == "import-file":
             _import_file(args.file, args.output, args.title, args.input, args.where, args.password, args.input_password, args.new_password)
         elif args.cmd == "insert-image":
@@ -1980,6 +2144,10 @@ def main(argv: list[str] | None = None) -> int:
             _clipboard_clear(args.clipboard)
         elif args.cmd == "combine-subtree":
             _combine_subtree(args.file, args.output, args.title, args.new_title, args.password, args.new_password, not args.plain, args.attach_to_selected)
+        elif args.cmd == "expand-state":
+            _expand_state(args.file, args.output, args.password, args.new_password, args.title, args.all, args.expanded, not args.close_root)
+        elif args.cmd == "font-list":
+            _font_list(args.contains, args.limit, args.json, args.path)
         elif args.cmd == "backup-list":
             _backup_list(args.file, args.json)
         elif args.cmd == "backup-restore":

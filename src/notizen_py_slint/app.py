@@ -11,6 +11,7 @@ from .config import AppConfig, load_config, save_config
 from .context_menus import format_context_actions
 from .legacy_config import import_legacy_config
 from .legacy_colors import legacy_light_color
+from .fonts import format_font_list, list_system_fonts
 from .dialogs import ask_directory, ask_open_file, ask_password, ask_save_file, ask_text
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import RemoteFileError, is_remote_uri, load_uri, save_uri
@@ -24,15 +25,18 @@ from .storage import (
     NotizenFileError,
     WrongPasswordError,
     combine_subtree_to_new_note,
+    export_alx,
     export_document_images,
     export_html,
     export_json,
     export_markdown,
     export_note_rtf,
+    export_opml,
     export_sticky_html,
     export_rtf,
     export_text,
     import_json_into_document,
+    import_opml_into_document,
     import_rtf_into_note,
     import_text_into_note,
     insert_image_into_note,
@@ -152,6 +156,8 @@ class NotizenSlintApp:
         self.window.export_html = self.export_html_file
         self.window.export_markdown = self.export_markdown_file
         self.window.export_json = self.export_json_file
+        self.window.export_alx = self.export_alx_file
+        self.window.export_opml = self.export_opml_file
         self.window.export_subtree_text = self.export_subtree_text_file
         self.window.export_subtree_rtf = self.export_subtree_rtf_file
         self.window.export_note_rtf = self.export_note_rtf_file
@@ -160,6 +166,7 @@ class NotizenSlintApp:
         self.window.import_text = self.import_text_file
         self.window.import_rtf = self.import_rtf_file
         self.window.import_json = self.import_json_file
+        self.window.import_opml = self.import_opml_file
         self.window.insert_image = self.insert_image_file
         self.window.append_date = self.append_date
         self.window.append_bullet = self.append_bullet
@@ -208,6 +215,7 @@ class NotizenSlintApp:
         self.window.show_about = self.show_about
         self.window.show_shortcuts = self.show_shortcuts
         self.window.show_context_menus = self.show_context_menus
+        self.window.show_fonts = self.show_fonts
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:
@@ -398,6 +406,28 @@ class NotizenSlintApp:
         except Exception as exc:  # noqa: BLE001
             self._set_status(f"JSON-Export fehlgeschlagen: {exc}")
 
+    def export_alx_file(self) -> None:
+        note = self.document.selected_note
+        path = ask_save_file("Ausgewählten Teilbaum als ALX/XML exportieren", suggested=f"{_safe_filename(note.title)}.alx", suffix=".alx")
+        if path is None:
+            return
+        try:
+            export_alx(self.document, path, start=note, password=self._current_password, backup_count=0)
+            self._set_status(f"Teilbaum-ALX exportiert: {path}")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"Teilbaum-ALX-Export fehlgeschlagen: {exc}")
+
+    def export_opml_file(self) -> None:
+        note = self.document.selected_note
+        path = ask_save_file("Ausgewählten Teilbaum als OPML exportieren", suggested=f"{_safe_filename(note.title)}.opml", suffix=".opml")
+        if path is None:
+            return
+        try:
+            export_opml(self.document, path, start=note)
+            self._set_status(f"OPML exportiert: {path}")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"OPML-Export fehlgeschlagen: {exc}")
+
     def export_subtree_text_file(self) -> None:
         note = self.document.selected_note
         path = ask_save_file("Teilbaum als Text exportieren", suggested=f"{_safe_filename(note.title)}.txt", suffix=".txt")
@@ -495,6 +525,18 @@ class NotizenSlintApp:
             return
         self._refresh_all()
         self._set_status(f"JSON-Teilbaum importiert: {created.title}")
+
+    def import_opml_file(self) -> None:
+        path = ask_open_file("OPML-Teilbaum unter aktueller Notiz importieren", filetypes=[("OPML", "*.opml *.xml"), ("Alle Dateien", "*.*")])
+        if path is None:
+            return
+        try:
+            created = import_opml_into_document(self.document, path, target=self.document.selected_note, where="child")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"OPML-Import fehlgeschlagen: {exc}")
+            return
+        self._refresh_all()
+        self._set_status(f"OPML-Teilbaum importiert: {created.title}")
 
     def insert_image_file(self) -> None:
         path = ask_open_file(
@@ -665,16 +707,17 @@ class NotizenSlintApp:
 
     def search_all(self, needle: str) -> None:
         case_sensitive, whole_words, start = self._search_options()
-        hits = self.document.find_all(str(needle), case_sensitive=case_sensitive, whole_words=whole_words, start=start)
+        hits = self.document.find_occurrences(str(needle), case_sensitive=case_sensitive, whole_words=whole_words, start=start, limit=50)
         if not hits:
             self._set_status("Keine Treffer.")
             return
         self.document.select(hits[0].note)
         self._refresh_all()
-        sample = "; ".join(hit.note.path_string() for hit in hits[:3])
-        more = " …" if len(hits) > 3 else ""
+        sample = "; ".join(f"{hit.note.path_string()}:{hit.field}@{hit.start}" for hit in hits[:4])
+        more = " …" if len(hits) > 4 else ""
         scope = " im Teilbaum" if start is not None else ""
-        self._set_status(f"{len(hits)} Treffer{scope}: {sample}{more}")
+        self.window.meta_text = sample + more
+        self._set_status(f"{len(hits)} Einzel-Treffer{scope}: {sample}{more}")
 
     def replace_text(self, needle: str) -> None:
         needle_text = str(needle or "")
@@ -956,6 +999,15 @@ class NotizenSlintApp:
             compact = compact[:277].rstrip() + "…"
         self.window.meta_text = compact
         self._set_status(f"{len(lines)} alte Kontextmenüzeilen manifestiert; vollständig: notizen-alx context-menus")
+
+
+    def show_fonts(self) -> None:
+        fonts = list_system_fonts(limit=25)
+        compact = " | ".join(font.family for font in fonts[:12])
+        if len(compact) > 260:
+            compact = compact[:257].rstrip() + "…"
+        self.window.meta_text = compact or "Keine Schriften gefunden."
+        self._set_status(f"{len(fonts)} Schrift(en) gefunden; vollständig: notizen-alx font-list")
 
 
     # Alarm actions --------------------------------------------------------

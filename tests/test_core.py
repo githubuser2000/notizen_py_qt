@@ -12,6 +12,8 @@ import unittest
 from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
 from notizen_py_slint.feedback import feedback_gzip_payload, read_feedback_gzip
+from notizen_py_slint.fonts import list_system_fonts
+from notizen_py_slint.opml import document_to_opml, opml_to_note
 from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
@@ -35,8 +37,10 @@ from notizen_py_slint.storage import (
     document_to_xml_bytes,
     export_html,
     export_legacy_text,
+    export_alx,
     export_json,
     export_markdown,
+    export_opml,
     export_sticky_html,
     export_unity_rtf,
     load_document,
@@ -44,6 +48,7 @@ from notizen_py_slint.storage import (
     save_document,
     save_document_to_bytes,
     import_json_into_document,
+    import_opml_into_document,
     insert_image_into_note,
     insert_text_into_note,
     append_bullet_into_note,
@@ -957,6 +962,91 @@ class CliIntegrationTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out:
                 self.assertEqual(cli_main(["sticky-opacity", "--json"]), 0)
             self.assertIn('"label": "90 %"', out.getvalue())
+
+
+
+class OpmlAndFontsTests(unittest.TestCase):
+    def test_opml_roundtrip_preserves_metadata(self) -> None:
+        root = Note("Root", text_to_rtf("Root Text"), bg_color=-256, fg_color=-16777216)
+        child = root.add_child(Note("Kind", text_to_rtf("Alpha"), sticky=StickyWindow(True, 10, 20, 250, 160, 0.7, -256)))
+        doc = NoteDocument(root=root)
+        xml = document_to_opml(doc)
+        self.assertIn("<opml", xml)
+        self.assertIn("_notizen_rtf_b64", xml)
+        imported = opml_to_note(xml)
+        self.assertEqual(imported.title, "Root")
+        self.assertEqual(imported.text, "Root Text")
+        self.assertEqual(imported.children[0].title, "Kind")
+        self.assertEqual(imported.children[0].text, "Alpha")
+        self.assertIsNotNone(imported.children[0].sticky)
+        self.assertAlmostEqual(imported.children[0].sticky.opacity, 0.7)  # type: ignore[union-attr]
+
+    def test_storage_export_import_opml_and_export_alx_subtree(self) -> None:
+        root = Note("Root", text_to_rtf("root"))
+        a = root.add_child(Note("A", text_to_rtf("alpha")))
+        a.add_child(Note("A1", text_to_rtf("alpha child")))
+        root.add_child(Note("B", text_to_rtf("beta")))
+        doc = NoteDocument(root=root)
+        with tempfile.TemporaryDirectory() as tmp:
+            opml = Path(tmp) / "a.opml"
+            base = Path(tmp) / "base.alx"
+            imported_path = Path(tmp) / "imported.alx"
+            subtree = Path(tmp) / "subtree.alx"
+            export_opml(doc, opml, start=a)
+            save_document(doc, path=base, backup_count=0)
+            loaded = load_document(base)
+            created = import_opml_into_document(loaded, opml, target=loaded.root.children[1], where="after")
+            self.assertEqual(created.title, "A")
+            save_document(loaded, path=imported_path, backup_count=0)
+            self.assertEqual([child.title for child in load_document(imported_path).root.children], ["A", "B", "A"])
+            export_alx(doc, subtree, start=a)
+            subdoc = load_document(subtree)
+            self.assertEqual(subdoc.root.title, "A")
+            self.assertEqual(subdoc.root.children[0].title, "A1")
+
+    def test_cli_opml_alx_search_expand_and_font_list(self) -> None:
+        root = Note("Root", text_to_rtf("Root Text"))
+        a = root.add_child(Note("A", text_to_rtf("Alpha Alpha")))
+        a.add_child(Note("A1", text_to_rtf("Kind Alpha")))
+        root.add_child(Note("B", text_to_rtf("Beta")))
+        doc = NoteDocument(root=root)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            opml = Path(tmp) / "a.opml"
+            subtree = Path(tmp) / "a.alx"
+            imported = Path(tmp) / "imported.alx"
+            collapsed = Path(tmp) / "collapsed.alx"
+            fonts_dir = Path(tmp) / "fonts"
+            fonts_dir.mkdir()
+            (fonts_dir / "DemoSans-Regular.ttf").write_bytes(b"not a real font")
+            save_document(doc, path=source, backup_count=0)
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["export-opml", str(source), str(opml), "--title", "A"]), 0)
+                self.assertEqual(cli_main(["export-alx", str(source), str(subtree), "--title", "A"]), 0)
+                self.assertEqual(cli_main(["import-opml", str(source), str(imported), "--title", "B", "--where", "after", "--input", str(opml)]), 0)
+                self.assertEqual(cli_main(["expand-state", str(source), str(collapsed), "--all", "--collapsed"]), 0)
+            self.assertEqual(load_document(subtree).root.title, "A")
+            self.assertFalse(load_document(collapsed).root.children[0].expanded)
+            self.assertEqual([child.title for child in load_document(imported).root.children], ["A", "B", "A"])
+
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["search-occurrences", str(source), "Alpha", "--json"]), 0)
+            payload = json.loads(out.getvalue())
+            self.assertGreaterEqual(len(payload), 3)
+            self.assertIn("start", payload[0])
+
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["font-list", "--path", str(fonts_dir), "--contains", "DemoSans", "--json"]), 0)
+            fonts = json.loads(out.getvalue())
+            self.assertEqual(fonts[0]["family"], "DemoSans")
+
+    def test_font_scanner_uses_filename_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            font = Path(tmp) / "ExampleFont-Regular.ttf"
+            font.write_bytes(b"dummy")
+            entries = list_system_fonts(paths=[tmp])
+        self.assertEqual(entries[0].family, "ExampleFont")
 
 
 

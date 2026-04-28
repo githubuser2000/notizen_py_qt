@@ -37,6 +37,8 @@ export component AppWindow inherits Window {
     callback export-html();
     callback export-markdown();
     callback export-json();
+    callback export-alx();
+    callback export-opml();
     callback export-subtree-text();
     callback export-subtree-rtf();
     callback export-note-rtf();
@@ -45,6 +47,7 @@ export component AppWindow inherits Window {
     callback import-text();
     callback import-rtf();
     callback import-json();
+    callback import-opml();
     callback insert-image();
     callback append-date();
     callback append-bullet();
@@ -93,6 +96,7 @@ export component AppWindow inherits Window {
     callback show-about();
     callback show-shortcuts();
     callback show-context-menus();
+    callback show-fonts();
 
     VerticalLayout {
         padding: 8px;
@@ -122,6 +126,8 @@ export component AppWindow inherits Window {
                     Button { text: "HTML"; clicked => { root.export-html(); } }
                     Button { text: "MD"; clicked => { root.export-markdown(); } }
                     Button { text: "JSON"; clicked => { root.export-json(); } }
+                    Button { text: "Teil ALX"; clicked => { root.export-alx(); } }
+                    Button { text: "OPML"; clicked => { root.export-opml(); } }
                     Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
                     Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
                     Rectangle { horizontal-stretch: 1; }
@@ -169,13 +175,14 @@ export component AppWindow inherits Window {
                     Button { text: "Info"; clicked => { root.show-about(); } }
                     Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
                     Button { text: "Kontext"; clicked => { root.show-context-menus(); } }
+                    Button { text: "Fonts"; clicked => { root.show-fonts(); } }
                     Button { text: "Einstellungen"; clicked => { root.open-settings(); } }
                     Button { text: "Wecker"; clicked => { root.open-alarm(); } }
                     Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
                     Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Button { text: "Alt-Config importieren"; clicked => { root.import-legacy-config(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Suche/Stile/Farben/Sprache/Kontext erweitert"; vertical-alignment: center; color: #666666; }
+                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Suche/Stile/Farben/Sprache/Kontext/OPML erweitert"; vertical-alignment: center; color: #666666; }
                 }
             }
         }
@@ -250,6 +257,7 @@ export component AppWindow inherits Window {
                         Button { text: "Import TXT"; clicked => { root.import-text(); } }
                         Button { text: "Import RTF"; clicked => { root.import-rtf(); } }
                         Button { text: "Import JSON"; clicked => { root.import-json(); } }
+                        Button { text: "Import OPML"; clicked => { root.import-opml(); } }
                         Button { text: "Bild+"; clicked => { root.insert-image(); } }
                         Button { text: "Datum+"; clicked => { root.append-date(); } }
                         Button { text: "•+"; clicked => { root.append-bullet(); } }

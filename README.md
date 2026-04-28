@@ -13,7 +13,8 @@ Funktioniert im Port:
 - portable Notizen-Zwischenablage für ganze Teilbäume, inklusive Datei-Zwischenablage und Best-Effort-Systemclipboard
 - Knoten hoch/runter verschieben, einrücken, ausrücken, unter Zielknoten hängen sowie relativ als Kind/vor/nach Zielknoten verschieben oder kopieren
 - Suche über Titel und Text, einmalig, als Trefferliste oder als exakte alte `suchergebnisse.SelectionStart`-Trefferpositionen; in der UI jetzt mit Groß-/Kleinschreibung, Ganzwortsuche und Suche nur im aktuellen Teilbaum
-- TXT-, RTF-, Markdown-, JSON- und HTML-Export für ganze Datei oder ausgewählten Teilbaum
+- OPML-Export und -Import mit optionalen privaten Notizen-Metadaten für RTF, Text, Farben, Sticky-Fenster und Auf-/Zu-Zustand
+- TXT-, RTF-, Markdown-, JSON-, HTML-, OPML- und eigenständiger `.alx`-Export für ganze Datei oder ausgewählten Teilbaum
 - Legacy-TXT-Export mit CRLF und wählbarem Windows-Codepage-Encoding sowie Einheit/Zusammenfassen-RTF-Export nach altem Workflow
 - Roh-RTF einer einzelnen Notiz exportieren, Text/RTF in aktuelle Notiz importieren
 - PNG/JPEG/BMP als RTF-`\pict` an Notizen anhängen
@@ -25,6 +26,7 @@ Funktioniert im Port:
 - Textgröße per A+/A- beziehungsweise CLI wie im alten Ctrl+Plus/Ctrl+Minus-Workflow ändern
 - Raw-RTF-Modus in der UI, damit alte RichTextBox-Inhalte notfalls direkt bearbeitet werden können
 - alte Intellibit-`notes_doc`-Dateien importieren
+- aufgeklappte/eingeklappte Baumzustände skriptbar setzen
 - Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten, Geometrie/Farbe bearbeiten, alte Transparenz-Menüwerte abbilden, automatisch grob dimensionieren, als HTML-Board exportieren und optional als kleine Tk-Fenster öffnen
 - Knotenfarben (`bgcolor`, `fgcolor`) lesen, speichern, löschen, per alter heller Notizen.NET-Palette setzen und wieder als WinForms-kompatible signed ARGB-Werte schreiben
 - Sicherheitskopien beim lokalen Speichern und Autosave-Timer aus der Konfiguration
@@ -37,6 +39,7 @@ Funktioniert im Port:
 - alte Tastenkürzel aus `Notizen.tastendruck` als dokumentiertes Manifest mit CLI-Ausgabe und UI-Kurzhinweis
 - alte WinForms-Kontextmenüs aus `kontext_inhalt.vb`, `Baum_Kontext_.vb`, `desknote_kontext.vb` und der Desktop-Notiz-Transparenzauswahl als Portierungsmanifest mit CLI- und UI-Hook
 - allgemeine Konfigurationsschalter per `config-set`/`config-path`, damit Teile des alten Einstellungsdialogs auch ohne GUI skriptbar sind
+- installierte Systemschriften portabel auflisten, damit alte Font-Dialog-/Toolbar-Arbeitsweisen besser nachbaubar sind
 - Feedback-Dialog als lokaler GZip-/UTF-16-Draft kompatibel zum alten Payloadformat, aber ohne automatischen Upload zu alten Servern
 - erweiterte Kommandozeile ohne GUI als Fallback
 
@@ -87,6 +90,12 @@ notizen-alx tree tests/fixtures/test.alx
 notizen-alx stats tests/fixtures/test.alx
 notizen-alx search tests/fixtures/test.alx test
 notizen-alx search tests/fixtures/test.alx test --occurrences --json
+notizen-alx search-occurrences tests/fixtures/test.alx test --json
+notizen-alx export-alx tests/fixtures/test.alx /tmp/teilbaum.alx --title "PC"
+notizen-alx export-opml tests/fixtures/test.alx /tmp/notizen.opml
+notizen-alx import-opml input.alx output.alx --title "Archiv" --input /tmp/notizen.opml
+notizen-alx expand-state input.alx output.alx --title "Archiv" --collapsed
+notizen-alx font-list --contains Arial --limit 20
 notizen-alx export-txt tests/fixtures/test.alx /tmp/notizen.txt --numbered
 notizen-alx export-rtf tests/fixtures/test.alx /tmp/notizen.rtf --title "PC" --numbered
 notizen-alx export-html tests/fixtures/test.alx /tmp/notizen.html
@@ -177,7 +186,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 67 tests
+Ran 71 tests
 OK
 ```
 
@@ -196,8 +205,8 @@ Getestet wurden:
 - HTML-Export, Sticky-HTML-Export, Bildexport, Bildimport und Notiz-Anhänge
 - alte Konfigurationsmigration inklusive FTP-Feldern
 - Wecker-Wiederholungen, Wecker-Store, fällige Wecker, Benachrichtigungs-Dry-Run und CLI-Weckerpfade
-- CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, `insert-text`, `delete-range`, `style-range`, `search --occurrences`, `context-menus`, portable TreeView-Zwischenablage, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
-- Sprach-/Übersetzungstabelle aus `languages.vb`, Tastenkürzelmanifest, `config-set`/`config-path`, About-Ausgabe und lokaler Feedback-Draft
+- CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, `insert-text`, `delete-range`, `style-range`, `search --occurrences`, `search-occurrences`, `export-alx`, `export-opml`, `import-opml`, `expand-state`, `font-list`, `context-menus`, portable TreeView-Zwischenablage, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
+- Sprach-/Übersetzungstabelle aus `languages.vb`, Tastenkürzelmanifest, `config-set`/`config-path`, OPML-Roundtrip, Teilbaum-ALX-Export, Systemfont-Scanner, About-Ausgabe und lokaler Feedback-Draft
 
 ## Projektstruktur
 
@@ -216,6 +225,8 @@ src/notizen_py_slint/
   legacy_sticky.py    alte Desktop-Notiz-Transparenzauswahl
   context_menus.py    alte WinForms-Kontextmenüs als Manifest
   clipboard.py        portable Teilbaum-Zwischenablage
+  opml.py             OPML-Export/-Import mit privaten Notizen-Metadaten
+  fonts.py            portable Systemfont-Erkennung
   sticky_runtime.py   optionale Tk-Sticky-Fenster und normalisierte Sticky-Spezifikationen
   translations.py     alte languages.vb-Texte und Sprachschlüssel
   shortcuts.py        alte Tastenkürzel aus Notizen.tastendruck
