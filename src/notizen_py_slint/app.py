@@ -9,9 +9,11 @@ from .autostart import sync_autostart
 from .alarm import AlarmRule, add_or_replace_alarm, load_alarms, next_alarm, parse_weekdays
 from .config import AppConfig, load_config, save_config
 from .context_menus import format_context_actions
+from .compat import analyze_document, format_report
 from .legacy_config import import_legacy_config
 from .legacy_colors import legacy_light_color
 from .fonts import format_font_list, list_system_fonts
+from .paths import default_paths
 from .dialogs import ask_directory, ask_open_file, ask_password, ask_save_file, ask_text
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import RemoteFileError, is_remote_uri, load_uri, save_uri
@@ -32,6 +34,7 @@ from .storage import (
     export_markdown,
     export_note_rtf,
     export_opml,
+    export_notes_doc,
     export_sticky_html,
     export_rtf,
     export_text,
@@ -158,6 +161,7 @@ class NotizenSlintApp:
         self.window.export_json = self.export_json_file
         self.window.export_alx = self.export_alx_file
         self.window.export_opml = self.export_opml_file
+        self.window.export_notes_doc = self.export_notes_doc_file
         self.window.export_subtree_text = self.export_subtree_text_file
         self.window.export_subtree_rtf = self.export_subtree_rtf_file
         self.window.export_note_rtf = self.export_note_rtf_file
@@ -216,6 +220,8 @@ class NotizenSlintApp:
         self.window.show_shortcuts = self.show_shortcuts
         self.window.show_context_menus = self.show_context_menus
         self.window.show_fonts = self.show_fonts
+        self.window.show_compat_report = self.show_compat_report
+        self.window.show_default_paths = self.show_default_paths
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:
@@ -427,6 +433,17 @@ class NotizenSlintApp:
             self._set_status(f"OPML exportiert: {path}")
         except Exception as exc:  # noqa: BLE001
             self._set_status(f"OPML-Export fehlgeschlagen: {exc}")
+
+    def export_notes_doc_file(self) -> None:
+        note = self.document.selected_note
+        path = ask_save_file("Ausgewählten Teilbaum als notes_doc-XML exportieren", suggested=f"{_safe_filename(note.title)}-notes_doc.xml", suffix=".xml")
+        if path is None:
+            return
+        try:
+            export_notes_doc(self.document, path, start=note)
+            self._set_status(f"notes_doc-XML exportiert: {path}")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"notes_doc-Export fehlgeschlagen: {exc}")
 
     def export_subtree_text_file(self) -> None:
         note = self.document.selected_note
@@ -1008,6 +1025,20 @@ class NotizenSlintApp:
             compact = compact[:257].rstrip() + "…"
         self.window.meta_text = compact or "Keine Schriften gefunden."
         self._set_status(f"{len(fonts)} Schrift(en) gefunden; vollständig: notizen-alx font-list")
+
+    def show_compat_report(self) -> None:
+        report = analyze_document(self.document, source=self.document.path, encrypted=bool(self._current_password))
+        lines = format_report(report).splitlines()
+        compact = " | ".join(line.strip() for line in lines[:7])
+        if len(compact) > 300:
+            compact = compact[:297].rstrip() + "…"
+        self.window.meta_text = compact
+        self._set_status(f"Kompatibilität: {report.notes} Notizen, {report.warnings} Hinweis(e), {report.errors} Fehler; vollständig: notizen-alx compat-report")
+
+    def show_default_paths(self) -> None:
+        info = default_paths(create=False)
+        self.window.meta_text = f"Documents: {info.documents_dir} | Notizen: {info.notes_dir} | Datei: {info.default_file}"
+        self._set_status("Alte Datei.vb-Standardpfade berechnet; CLI: notizen-alx default-paths --create")
 
 
     # Alarm actions --------------------------------------------------------

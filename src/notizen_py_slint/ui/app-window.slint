@@ -39,6 +39,7 @@ export component AppWindow inherits Window {
     callback export-json();
     callback export-alx();
     callback export-opml();
+    callback export-notes-doc();
     callback export-subtree-text();
     callback export-subtree-rtf();
     callback export-note-rtf();
@@ -97,6 +98,8 @@ export component AppWindow inherits Window {
     callback show-shortcuts();
     callback show-context-menus();
     callback show-fonts();
+    callback show-compat-report();
+    callback show-default-paths();
 
     VerticalLayout {
         padding: 8px;
@@ -128,6 +131,7 @@ export component AppWindow inherits Window {
                     Button { text: "JSON"; clicked => { root.export-json(); } }
                     Button { text: "Teil ALX"; clicked => { root.export-alx(); } }
                     Button { text: "OPML"; clicked => { root.export-opml(); } }
+                    Button { text: "NotesDoc"; clicked => { root.export-notes-doc(); } }
                     Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
                     Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
                     Rectangle { horizontal-stretch: 1; }
@@ -176,13 +180,15 @@ export component AppWindow inherits Window {
                     Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
                     Button { text: "Kontext"; clicked => { root.show-context-menus(); } }
                     Button { text: "Fonts"; clicked => { root.show-fonts(); } }
+                    Button { text: "Compat"; clicked => { root.show-compat-report(); } }
+                    Button { text: "Pfade"; clicked => { root.show-default-paths(); } }
                     Button { text: "Einstellungen"; clicked => { root.open-settings(); } }
                     Button { text: "Wecker"; clicked => { root.open-alarm(); } }
                     Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
                     Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Button { text: "Alt-Config importieren"; clicked => { root.import-legacy-config(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Suche/Stile/Farben/Sprache/Kontext/OPML erweitert"; vertical-alignment: center; color: #666666; }
+                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Suche/Stile/Farben/Sprache/Kontext/OPML/notes_doc erweitert"; vertical-alignment: center; color: #666666; }
                 }
             }
         }

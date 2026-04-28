@@ -153,3 +153,13 @@ Dieser Schritt ergänzt Export-/Importpfade, die früher in mehreren WinForms-Me
 Die Suchlogik wurde um einen eigenen `search-occurrences`-Befehl erweitert. Er liefert Treffer nicht nur pro Notiz, sondern mit Feld, Start-/Endposition, Trefferindex, Pfad und Snippet. Das ist der robustere Python-Ersatz für die alten `SelectionStart`-basierten Suchergebnislisten.
 
 `expand-state` macht gespeicherte Baumzustände per CLI setzbar, inklusive einer Option, die Wurzel beim Massenlauf nicht zu schließen. `font-list` scannt installierte Systemschriften ohne externe Pakete über Font-Dateien und nutzt bei unlesbaren Dateien einen Dateinamen-Fallback. Damit sind alte Font-Dialog-/Toolbar-Arbeitsweisen besser skriptbar, auch wenn Slint weiterhin keinen WinForms-Fontdialog nachbildet.
+
+## v13: Datei.vb-Standardpfade, notes_doc-Export und Kompatibilitätsbericht
+
+Dieser Schritt schließt weitere alte Randlogik aus dem WinForms-Projekt. `paths.py` bildet das frühere `Datei.vb`-Verhalten nach: Der alte Standardordner liegt unter `Documents/Notizen`, die Standarddatei heißt `unbenannt.alx`, und `notizen-alx default-paths` beziehungsweise `notizen-alx init-file` machen diesen Workflow auch ohne GUI nutzbar.
+
+Die alte Intellibit-Struktur wurde bisher gelesen, aber nicht wieder geschrieben. Mit `intellibit.py` und `export-notes-doc` kann der Port nun wieder `notes_doc`-XML mit `node`/`leaf` und `leaf_text`/`p` erzeugen. Damit ist ein zusätzlicher Roundtrip-Pfad für sehr alte oder fremde Notizen-Dateien vorhanden, auch wenn das bevorzugte neue Format weiterhin `notizen-alx2` bleibt.
+
+Neu ist außerdem `compat.py`: `notizen-alx compat-report` analysiert lokale `.alx`- und `.xml`-Dateien und meldet Format, vermutete Verschlüsselung, Strukturgrößen, RTF-/Plain-Anteile, Bilder, Farben, Sticky-Metadaten, zugeklappte Knoten und konkrete Warnungen. Dadurch lassen sich Migrationen gezielter prüfen, bevor Dateien im neuen Port weiterbearbeitet werden.
+
+In der Slint-Datei wurden passende Hooks ergänzt: `NotesDoc` exportiert den aktuellen Teilbaum in das alte XML-Format, `Compat` zeigt die Diagnose im Infofeld, und `Pfade` zeigt die alten Standardpfade. Nebenbei wurde die doppelte `Import OPML`-Schaltfläche bereinigt.

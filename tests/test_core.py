@@ -13,12 +13,15 @@ from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, 
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
 from notizen_py_slint.feedback import feedback_gzip_payload, read_feedback_gzip
 from notizen_py_slint.fonts import list_system_fonts
+from notizen_py_slint.intellibit import document_to_notes_doc_xml
 from notizen_py_slint.opml import document_to_opml, opml_to_note
+from notizen_py_slint.paths import default_file_path, default_paths
 from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
 from notizen_py_slint.context_menus import context_actions_payload, format_context_actions, sticky_opacity_payload
 from notizen_py_slint.clipboard import clipboard_info, entry_from_clipboard_text, note_to_clipboard_text, read_clipboard_file, write_clipboard_file
+from notizen_py_slint.compat import analyze_document, analyze_file
 from notizen_py_slint.legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table
 from notizen_py_slint.legacy_sticky import legacy_opacity_choices, opacity_from_legacy_choice
 from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config
@@ -41,6 +44,7 @@ from notizen_py_slint.storage import (
     export_json,
     export_markdown,
     export_opml,
+    export_notes_doc,
     export_sticky_html,
     export_unity_rtf,
     load_document,
@@ -1050,6 +1054,94 @@ class OpmlAndFontsTests(unittest.TestCase):
 
 
 
+class NotesDocCompatPathTests(unittest.TestCase):
+    def test_notes_doc_export_loads_back_through_legacy_parser(self) -> None:
+        root = Note("Root", text_to_rtf("A\nB"))
+        child = root.add_child(Note("Kind", text_to_rtf("C")))
+        doc = NoteDocument(root=root, selected_id=child.note_id)
+        xml = document_to_notes_doc_xml(doc)
+        self.assertIn(b"notes_doc", xml)
+        self.assertIn(b"leaf_text", xml)
+        loaded = load_document_from_bytes(xml)
+        self.assertEqual(loaded.root.title, "Root")
+        self.assertEqual(loaded.root.text, "A\nB")
+        self.assertEqual(loaded.root.children[0].title, "Kind")
+        self.assertEqual(loaded.root.children[0].text, "C")
+        with tempfile.TemporaryDirectory() as tmp:
+            out_xml = Path(tmp) / "legacy-notes-doc.xml"
+            export_notes_doc(doc, out_xml)
+            reloaded = load_document(out_xml)
+        self.assertEqual(reloaded.root.title, "Root")
+        self.assertEqual(reloaded.root.children[0].title, "Kind")
+
+    def test_compat_report_flags_metadata_and_counts(self) -> None:
+        root = Note("Root", "plain body", bg_color=0x00112233)
+        root.sticky = StickyWindow(True, 0, 0, 0, 1, 2.0, 0x00112233)
+        root.add_child(Note("", text_to_rtf("Kind")))
+        doc = NoteDocument(root=root)
+        report = analyze_document(doc, encrypted=False, source="memory.alx")
+        codes = {issue.code for issue in report.issues}
+        self.assertIn("plain-body", codes)
+        self.assertIn("empty-title", codes)
+        self.assertIn("transparent-bgcolor", codes)
+        self.assertIn("sticky-width", codes)
+        self.assertIn("sticky-opacity", codes)
+        self.assertEqual(report.summary["notes"], 2)
+        self.assertEqual(report.summary["sticky_notes"], 1)
+
+    def test_default_paths_create_documents_notizen(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            old_home = os.environ.get("HOME")
+            old_userprofile = os.environ.get("USERPROFILE")
+            os.environ["HOME"] = tmp
+            os.environ.pop("USERPROFILE", None)
+            try:
+                paths = default_paths(create=True)
+                default_path = default_file_path(create_dir=False)
+                self.assertTrue(Path(paths.notes_dir).exists())
+                self.assertEqual(Path(paths.notes_dir).name, "Notizen")
+                self.assertEqual(default_path.name, "unbenannt.alx")
+                self.assertIn("Documents", str(default_path))
+            finally:
+                if old_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = old_home
+                if old_userprofile is None:
+                    os.environ.pop("USERPROFILE", None)
+                else:
+                    os.environ["USERPROFILE"] = old_userprofile
+
+    def test_cli_notes_doc_init_paths_and_compat(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "new.alx"
+            out_xml = Path(tmp) / "new-notes-doc.xml"
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["init-file", str(path), "--title", "Root", "--text", "Hallo", "--overwrite"]), 0)
+            self.assertEqual(load_document(path).root.text, "Hallo")
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["compat-report", str(path), "--json"]), 0)
+            payload = json.loads(out.getvalue())
+            self.assertEqual(payload["summary"]["notes"], 1)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["export-notes-doc", str(path), str(out_xml)]), 0)
+            self.assertEqual(load_document(out_xml).root.title, "Root")
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["default-paths", "--json"]), 0)
+            self.assertIn("default_file", json.loads(out.getvalue()))
+
+    def test_analyze_file_detects_plain_xml_notes_doc(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Text")))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "legacy.xml"
+            export_notes_doc(doc, path)
+            report = analyze_file(path)
+        self.assertEqual(report.format_name, "notes_doc")
+        self.assertFalse(report.encrypted)
+        self.assertEqual(report.summary["notes"], 1)
+
+
+
 class AppCompatTests(unittest.TestCase):
     def test_about_and_shortcut_ui_hooks(self) -> None:
         class DummyWindow:
@@ -1074,6 +1166,22 @@ class AppCompatTests(unittest.TestCase):
         self.assertEqual(_normalize_legacy_argv(["-min"]), ["--minimized"])
         self.assertEqual(_normalize_legacy_argv(["/h"]), ["--help"])
         self.assertEqual(_normalize_legacy_argv(["/?"]), ["--help"])
+
+    def test_compat_and_default_path_ui_hooks(self) -> None:
+        class DummyWindow:
+            meta_text = ""
+            status_text = ""
+
+        app = object.__new__(NotizenSlintApp)
+        app.window = DummyWindow()
+        app.document = NoteDocument(root=Note("Root", text_to_rtf("Text")))
+        app._current_password = None
+        NotizenSlintApp.show_compat_report(app)
+        self.assertIn("Kompatibilität", app.window.status_text)
+        self.assertIn("Notizen", app.window.meta_text)
+        NotizenSlintApp.show_default_paths(app)
+        self.assertIn("Standardpfade", app.window.status_text)
+        self.assertIn("unbenannt.alx", app.window.meta_text)
 
 class NotificationTests(unittest.TestCase):
     def test_notify_dry_run_is_dependency_free(self) -> None:

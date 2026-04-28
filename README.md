@@ -25,10 +25,12 @@ Funktioniert im Port:
 - RichTextBox-Toolbar-Stile `B`, `I`, `U`, `S` und `Normal` als Ganznotiz-Aktionen in UI und CLI sowie als Bereichsformatierung per `style-range`
 - Textgröße per A+/A- beziehungsweise CLI wie im alten Ctrl+Plus/Ctrl+Minus-Workflow ändern
 - Raw-RTF-Modus in der UI, damit alte RichTextBox-Inhalte notfalls direkt bearbeitet werden können
-- alte Intellibit-`notes_doc`-Dateien importieren
+- alte Intellibit-`notes_doc`-Dateien importieren und wieder als `notes_doc`/`node`/`leaf`-XML exportieren
 - aufgeklappte/eingeklappte Baumzustände skriptbar setzen
 - Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten, Geometrie/Farbe bearbeiten, alte Transparenz-Menüwerte abbilden, automatisch grob dimensionieren, als HTML-Board exportieren und optional als kleine Tk-Fenster öffnen
 - Knotenfarben (`bgcolor`, `fgcolor`) lesen, speichern, löschen, per alter heller Notizen.NET-Palette setzen und wieder als WinForms-kompatible signed ARGB-Werte schreiben
+- alte `Datei.vb`-Standardpfade (`~/Documents/Notizen/unbenannt.alx`) berechnen, bei Bedarf anlegen und neue Dateien dort initialisieren
+- Kompatibilitätsbericht für `.alx`/`.xml`-Dateien mit Format-, Verschlüsselungs-, RTF-, Farb-, Sticky- und Strukturhinweisen
 - Sicherheitskopien beim lokalen Speichern und Autosave-Timer aus der Konfiguration
 - alte `notizen.config.xml` lesen/importieren/exportieren, inklusive Backup-Anzahl, Autosave, Autostart, Fensterdaten, Sticky-Rahmen und FTP-Feldern
 - portabler Autostart-Stub für Linux, Windows und macOS aus der neuen Konfiguration
@@ -92,10 +94,14 @@ notizen-alx search tests/fixtures/test.alx test
 notizen-alx search tests/fixtures/test.alx test --occurrences --json
 notizen-alx search-occurrences tests/fixtures/test.alx test --json
 notizen-alx export-alx tests/fixtures/test.alx /tmp/teilbaum.alx --title "PC"
+notizen-alx export-notes-doc tests/fixtures/test.alx /tmp/notizen-notes-doc.xml
 notizen-alx export-opml tests/fixtures/test.alx /tmp/notizen.opml
 notizen-alx import-opml input.alx output.alx --title "Archiv" --input /tmp/notizen.opml
 notizen-alx expand-state input.alx output.alx --title "Archiv" --collapsed
 notizen-alx font-list --contains Arial --limit 20
+notizen-alx default-paths --json
+notizen-alx init-file ~/Documents/Notizen/unbenannt.alx --title "Notes" --text "erste Notiz"
+notizen-alx compat-report tests/fixtures/test.alx --json
 notizen-alx export-txt tests/fixtures/test.alx /tmp/notizen.txt --numbered
 notizen-alx export-rtf tests/fixtures/test.alx /tmp/notizen.rtf --title "PC" --numbered
 notizen-alx export-html tests/fixtures/test.alx /tmp/notizen.html
@@ -241,3 +247,14 @@ src/notizen_py_slint/
 ## Lizenz
 
 Der Ursprungscode steht unter GPL-3.0. Dieser Port behält die GPL-Lizenz bei; siehe `LICENSE`.
+
+## Neu in v13 / 0.13.0
+
+Dieser Schritt zieht drei alte Randbereiche nach, die im Alltag wichtig sind:
+
+- `Datei.vb`-Verhalten: `default-paths` berechnet den alten Standardordner `Documents/Notizen` und `init-file` legt eine neue `.alx` mit Startnotiz an.
+- Alte Intellibit-Kompatibilität: `export-notes-doc` schreibt wieder das historische `notes_doc`/`node`/`leaf`-XML, das der Port bereits lesen konnte.
+- Migrationsprüfung: `compat-report` zeigt Format, Verschlüsselungsstatus, Strukturgrößen und Warnungen zu Plain-Text-Inhalten, transparenten Farben, Sticky-Geometrie und leeren Titeln.
+
+In der Slint-Oberfläche sind dafür die Hooks `NotesDoc`, `Compat` und `Pfade` ergänzt.
+

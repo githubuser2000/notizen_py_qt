@@ -24,11 +24,13 @@ from .alarm import AlarmRule, add_or_replace_alarm, alarm_message, due_alarms, l
 from . import __version__
 from .config import AppConfig, config_dir
 from .context_menus import context_actions_json, format_context_actions
+from .compat import analyze_file, format_report, report_json
 from .legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table, readable_color_lines
 from .legacy_sticky import legacy_opacity_choices, opacity_from_legacy_choice
 from .feedback import FeedbackError, write_feedback_gzip
 from .fonts import format_font_list, list_system_fonts
 from .legacy_config import import_legacy_config, load_legacy_config, write_legacy_like_config
+from .paths import default_file_path, default_paths
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import load_uri, save_uri
 from .notify import notify
@@ -53,6 +55,7 @@ from .storage import (
     export_legacy_text,
     export_markdown,
     export_note_images,
+    export_notes_doc,
     export_opml,
     export_note_rtf,
     export_rtf,
@@ -179,6 +182,28 @@ def _export_opml(
         include_metadata=not no_metadata,
         include_rtf=not no_rtf,
         include_plain_text=not no_text,
+    )
+    print(output)
+
+
+def _export_notes_doc(
+    file: str,
+    output: str,
+    password: str | None,
+    title: str | None,
+    no_leaf_terminal_nodes: bool,
+    include_empty_paragraphs: bool,
+    encoding: str,
+) -> None:
+    doc = load_uri(file, password=password)
+    _select_by_title(doc, title)
+    export_notes_doc(
+        doc,
+        output,
+        start=doc.selected_note if title else None,
+        leaf_terminal_nodes=not no_leaf_terminal_nodes,
+        include_empty_paragraphs=include_empty_paragraphs,
+        encoding=encoding,
     )
     print(output)
 
@@ -1072,6 +1097,35 @@ def _font_list(contains: str | None, limit: int | None, as_json: bool, paths: li
     print(f"{len(entries)} Schrift(en)", file=sys.stderr)
 
 
+def _default_paths(create: bool, as_json: bool) -> None:
+    info = default_paths(create=create)
+    if as_json:
+        print(json.dumps(info.as_dict(), indent=2, ensure_ascii=False))
+    else:
+        print(f"Documents: {info.documents_dir}")
+        print(f"Notizen:   {info.notes_dir}")
+        print(f"Datei:     {info.default_file}")
+        if info.created_notes_dir:
+            print("Notizen-Verzeichnis wurde angelegt.")
+
+
+def _init_file(output: str | None, title: str, text_value: str | None, password: str | None, overwrite: bool) -> None:
+    target = Path(output) if output else default_file_path(create_dir=True)
+    if target.exists() and not overwrite:
+        raise NotizenFileError(f"Zieldatei existiert bereits: {target}. Nutze --overwrite zum Ersetzen.")
+    doc = NoteDocument.empty()
+    doc.root.title = title or "start"
+    if text_value:
+        doc.root.set_text(text_value)
+    save_uri(doc, str(target), password=password, backup_count=0)
+    print(target)
+
+
+def _compat_report(file: str, password: str | None, as_json: bool) -> None:
+    report = analyze_file(file, password=password)
+    print(report_json(report) if as_json else format_report(report))
+
+
 def _backup_list(file: str, as_json: bool) -> None:
     backups = list_backups(file)
     if as_json:
@@ -1481,6 +1535,15 @@ def main(argv: list[str] | None = None) -> int:
     opml_exp.add_argument("--no-rtf", action="store_true", help="RTF nicht als Base64-Metadatum mitschreiben")
     opml_exp.add_argument("--no-text", action="store_true", help="Klartext nicht als OPML-Notiz/Metadatum mitschreiben")
     _add_password_arg(opml_exp)
+
+    notes_doc = sub.add_parser("export-notes-doc", help="älteres notes_doc/node/leaf-XML exportieren")
+    notes_doc.add_argument("file")
+    notes_doc.add_argument("output")
+    notes_doc.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+    notes_doc.add_argument("--no-leaf-terminal-nodes", action="store_true", help="alle Knoten als <node> statt Blätter als <leaf> schreiben")
+    notes_doc.add_argument("--include-empty-paragraphs", action="store_true", help="leere Absätze mitschreiben")
+    notes_doc.add_argument("--encoding", default="utf-8", help="XML-Encoding, Standard utf-8")
+    _add_password_arg(notes_doc)
 
     note_rtf = sub.add_parser("export-note-rtf", help="Roh-RTF einer einzelnen Notiz exportieren")
     note_rtf.add_argument("file")
@@ -1897,6 +1960,22 @@ def main(argv: list[str] | None = None) -> int:
     font_list.add_argument("--json", action="store_true")
     font_list.add_argument("--path", action="append", help="zusätzlicher oder alternativer Font-Pfad; mehrfach nutzbar")
 
+    defaults = sub.add_parser("default-paths", help="alte Datei.vb-Standardpfade anzeigen/optional anlegen")
+    defaults.add_argument("--create", action="store_true", help="Documents/Notizen wie im alten Programm anlegen")
+    defaults.add_argument("--json", action="store_true")
+
+    init_file = sub.add_parser("init-file", help="neue leere Notizen-Datei am alten Standardpfad oder Zielpfad erzeugen")
+    init_file.add_argument("output", nargs="?", help="Zieldatei; ohne Angabe Documents/Notizen/unbenannt.alx")
+    init_file.add_argument("--title", default="start")
+    init_file.add_argument("--text", help="optionaler Anfangstext")
+    init_file.add_argument("--overwrite", action="store_true", help="existierende Datei ersetzen")
+    _add_password_arg(init_file)
+
+    compat = sub.add_parser("compat-report", help="Migration-/Kompatibilitätsbericht für alte .alx/.xml-Dateien")
+    compat.add_argument("file")
+    compat.add_argument("--json", action="store_true")
+    _add_password_arg(compat)
+
     backup_list = sub.add_parser("backup-list", help="lokale Sicherheitskopien einer Datei anzeigen")
     backup_list.add_argument("file")
     backup_list.add_argument("--json", action="store_true")
@@ -2040,6 +2119,8 @@ def main(argv: list[str] | None = None) -> int:
             _export_alx(args.file, args.output, args.password, args.title, args.new_password)
         elif args.cmd == "export-opml":
             _export_opml(args.file, args.output, args.password, args.title, args.no_metadata, args.no_rtf, args.no_text)
+        elif args.cmd == "export-notes-doc":
+            _export_notes_doc(args.file, args.output, args.password, args.title, args.no_leaf_terminal_nodes, args.include_empty_paragraphs, args.encoding)
         elif args.cmd == "export-note-rtf":
             _export_note_rtf(args.file, args.output, args.password, args.title)
         elif args.cmd == "extract-images":
@@ -2148,6 +2229,12 @@ def main(argv: list[str] | None = None) -> int:
             _expand_state(args.file, args.output, args.password, args.new_password, args.title, args.all, args.expanded, not args.close_root)
         elif args.cmd == "font-list":
             _font_list(args.contains, args.limit, args.json, args.path)
+        elif args.cmd == "default-paths":
+            _default_paths(args.create, args.json)
+        elif args.cmd == "init-file":
+            _init_file(args.output, args.title, args.text, args.password, args.overwrite)
+        elif args.cmd == "compat-report":
+            _compat_report(args.file, args.password, args.json)
         elif args.cmd == "backup-list":
             _backup_list(args.file, args.json)
         elif args.cmd == "backup-restore":

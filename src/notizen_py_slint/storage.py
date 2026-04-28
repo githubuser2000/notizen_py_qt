@@ -255,6 +255,29 @@ def export_alx(
     return save_document(subdoc, path=path, password=password, backup_count=backup_count)
 
 
+
+
+def export_notes_doc(
+    document: NoteDocument,
+    path: str | Path,
+    *,
+    start: Note | None = None,
+    leaf_terminal_nodes: bool = True,
+    include_empty_paragraphs: bool = False,
+    encoding: str = "utf-8",
+) -> Path:
+    """Export a tree as the older notes_doc/node/leaf XML variant."""
+    from .intellibit import write_notes_doc
+
+    return write_notes_doc(
+        document,
+        path,
+        start=start,
+        leaf_terminal_nodes=leaf_terminal_nodes,
+        include_empty_paragraphs=include_empty_paragraphs,
+        encoding=encoding,
+    )
+
 def export_opml(
     document: NoteDocument,
     path: str | Path,
