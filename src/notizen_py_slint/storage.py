@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 from .des_compat import NotizenCryptoError, decrypt_notizen_payload, encrypt_notizen_payload, is_blank_password
 from .model import Note, NoteDocument, StickyWindow
-from .rtf import append_picture_to_rtf, append_text_to_rtf, change_rtf_font_size, extract_pictures, is_rtf, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf, write_extracted_pictures
+from .rtf import append_picture_to_rtf, append_text_to_rtf, change_rtf_font_size, extract_pictures, is_rtf, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf, write_extracted_pictures
 
 
 class NotizenFileError(Exception):
@@ -179,6 +179,52 @@ def export_json(document: NoteDocument, path: str | Path, *, start: Note | None 
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
 
+
+
+def apply_toolbar_style_to_note(
+    note: Note,
+    style: str = "regular",
+    *,
+    font_family: str | None = None,
+    font_size_half_points: int | None = None,
+    fg_color: int | None = None,
+    bg_color: int | None = None,
+) -> None:
+    """Apply the old toolbar-style action to the whole note.
+
+    The WinForms app applied bold/italic/underline/strike/regular to the current
+    RichTextBox selection, or to the whole note when nothing was selected. Slint's
+    editor is plain text, so this portable version deliberately formats the whole
+    note while preserving unspecified global font defaults.
+    """
+    style_key = (style or "regular").strip().lower()
+    styles = {
+        "bold": dict(bold=True, italic=False, underline=False, strike=False),
+        "b": dict(bold=True, italic=False, underline=False, strike=False),
+        "italic": dict(bold=False, italic=True, underline=False, strike=False),
+        "i": dict(bold=False, italic=True, underline=False, strike=False),
+        "underline": dict(bold=False, italic=False, underline=True, strike=False),
+        "u": dict(bold=False, italic=False, underline=True, strike=False),
+        "strike": dict(bold=False, italic=False, underline=False, strike=True),
+        "strikeout": dict(bold=False, italic=False, underline=False, strike=True),
+        "s": dict(bold=False, italic=False, underline=False, strike=True),
+        "regular": dict(bold=False, italic=False, underline=False, strike=False),
+        "normal": dict(bold=False, italic=False, underline=False, strike=False),
+    }
+    if style_key not in styles:
+        raise ValueError(f"Unbekannter Stil: {style}")
+    note.rtf = restyle_rtf_with_defaults(
+        note.rtf,
+        font_family=font_family,
+        font_size_half_points=font_size_half_points,
+        fg_color=fg_color,
+        bg_color=bg_color,
+        **styles[style_key],
+    )
+
+
+def apply_font_family_to_note(note: Note, font_family: str) -> None:
+    note.rtf = restyle_rtf_with_defaults(note.rtf, font_family=font_family or "Sans Serif")
 
 def export_note_images(note: Note, directory: str | Path) -> list[Path]:
     return write_extracted_pictures(note.rtf, directory)

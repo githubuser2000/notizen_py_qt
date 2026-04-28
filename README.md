@@ -11,13 +11,14 @@ Funktioniert im Port:
 - verschlüsselte `.alx`-Dateien lesen/schreiben, kompatibel zur alten dreifachen DES-CBC-Kaskade mit den alten Passwort-Slicing-Eigenheiten
 - Notizbaum anzeigen, Kind-/Nachbarnotizen anlegen, löschen, duplizieren, kopieren/ausschneiden/einfügen
 - Knoten hoch/runter verschieben, einrücken, ausrücken, alle auf-/zuklappen
-- Suche über Titel und Text, einmalig oder als Trefferliste
+- Suche über Titel und Text, einmalig oder als Trefferliste; in der UI jetzt mit Groß-/Kleinschreibung, Ganzwortsuche und Suche nur im aktuellen Teilbaum
 - TXT-, RTF-, Markdown-, JSON- und HTML-Export für ganze Datei oder ausgewählten Teilbaum
 - Roh-RTF einer einzelnen Notiz exportieren, Text/RTF in aktuelle Notiz importieren
 - PNG/JPEG/BMP als RTF-`\pict` an Notizen anhängen
 - eingebettete RichTextBox-/RTF-Bilder aus alten Notizen extrahieren
 - Datum/Uhrzeit und Aufzählungszeichen an Notizen anhängen
 - einfache Ganznotiz-Formatierung als portabler Ersatz für RichTextBox-Auswahlformatierung
+- RichTextBox-Toolbar-Stile `B`, `I`, `U`, `S` und `Normal` als Ganznotiz-Aktionen in UI und CLI
 - Textgröße per A+/A- beziehungsweise CLI wie im alten Ctrl+Plus/Ctrl+Minus-Workflow ändern
 - Raw-RTF-Modus in der UI, damit alte RichTextBox-Inhalte notfalls direkt bearbeitet werden können
 - alte Intellibit-`notes_doc`-Dateien importieren
@@ -28,13 +29,14 @@ Funktioniert im Port:
 - portabler Autostart-Stub für Linux, Windows und macOS aus der neuen Konfiguration
 - FTP/FTPS laden und speichern über `ftp://`/`ftps://`-URLs, inklusive `.netrc`-Fallback und migrierbarem Standardziel
 - Wecker-/Erinnerungsregeln mit einmaliger, täglicher, wöchentlicher, monatlicher und jährlicher Wiederholung
+- fällige Wecker prüfen beziehungsweise als dauernde CLI-Schleife beobachten, optional mit nativer Best-Effort-Desktop-Benachrichtigung über Plattformwerkzeuge
 - erweiterte Kommandozeile ohne GUI als Fallback
 
 Bewusst vereinfacht oder nicht vollständig portiert:
 
-- Slints `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der neue Raw-RTF-Modus erlaubt aber direkten Zugriff auf das gespeicherte RTF.
+- Slints `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der Raw-RTF-Modus erlaubt aber direkten Zugriff auf das gespeicherte RTF.
 - Sticky/Desktop-Notizen werden nicht als separate, frei schwebende Desktop-Fenster nachgebaut. Ihre Metadaten bleiben aber im Dateiformat erhalten, können bearbeitet/automatisch dimensioniert und als HTML-Board exportiert werden.
-- Der Wecker speichert und berechnet Erinnerungen, erzeugt aber noch keine native OS-Benachrichtigung oder Popup-Schleife. CLI/UI können Regeln anlegen und den nächsten Termin anzeigen.
+- Wecker-Benachrichtigungen sind bewusst best-effort: Linux nutzt `notify-send`, macOS `osascript`, Windows PowerShell/MessageBox. Wenn das jeweilige Werkzeug fehlt oder die Umgebung headless ist, läuft die CLI trotzdem weiter und gibt den Grund aus.
 - Trayicon, native Drag-and-drop-Mauslogik, Druckdialog und die alte mehrsprachige WinForms-Menülogik sind nicht 1:1 in der neuen UI enthalten. Autostart, HTML-Export und RTF-Bildzugriff sind portabel nachgebaut, aber nicht identisch mit WinForms.
 - Die alte Verschlüsselung ist absichtlich nur kompatibel, nicht sicher. Für echte Sicherheit die `.alx` zusätzlich mit einem modernen Werkzeug verschlüsseln.
 
@@ -54,7 +56,7 @@ cd notizen_py_slint
 python3 -m pip install -e ".[slint]"
 ```
 
-Hinweis: Das Projekt ist jetzt ein normales Python-Projekt. Die alte Pinning-Logik für PyPy wurde entfernt. Die Slint-Extra-Abhängigkeit nutzt aktuelle Slint-Python-Versionen (`slint>=1.16.1b1`); diese verlangen derzeit Python 3.12 oder neuer. Mit Python 3.14 ist das die passende Richtung. Kern und CLI bleiben bewusst ohne Slint lauffähig.
+Hinweis: Das Projekt ist ein normales Python-Projekt. Die alte Pinning-Logik für PyPy wurde entfernt. Die Slint-Extra-Abhängigkeit nutzt aktuelle Slint-Python-Versionen (`slint>=1.16.1b1`); Kern und CLI bleiben bewusst ohne Slint lauffähig.
 
 ## Starten
 
@@ -89,6 +91,8 @@ notizen-alx append-bullet input.alx output.alx --title "todo"
 notizen-alx change-password input.alx output.alx --old-password alt --new-password neu
 notizen-alx set-note input.alx output.alx --title "todo" --input /tmp/neuer-text.txt
 notizen-alx format-note input.alx output.alx --title "todo" --bold --fg-color '#112233'
+notizen-alx style-note input.alx output.alx --title "todo" --style bold
+notizen-alx style-note input.alx output.alx --title "todo" --font-family "Arial" --font-size 22 --show
 notizen-alx font-size input.alx output.alx --title "todo" --bigger
 notizen-alx sticky input.alx output.alx --title "todo" --show --autosize --x 100 --y 100
 notizen-alx rename input.alx output.alx --title "todo" --new-title "erledigen"
@@ -103,6 +107,8 @@ notizen-alx autostart --enable
 notizen-alx alarm-add --name "Review" --at "2026-04-27 09:00" --repeat weekly --weekday mo,mi --message "prüfen"
 notizen-alx alarm-list
 notizen-alx alarm-next
+notizen-alx alarm-due --now "2026-04-27 09:00" --grace-seconds 60 --notify --dry-run
+notizen-alx alarm-watch --poll-seconds 30
 notizen-alx alarm-remove --name "Review"
 ```
 
@@ -125,7 +131,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 40 tests in 2.516s
+Ran 45 tests
 OK
 ```
 
@@ -133,7 +139,7 @@ Getestet wurden:
 
 - DES-Known-Vector
 - Notizen-DES-Kaskaden-Roundtrip
-- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, Textgrößenänderung, RTF-Bildextraktion und RTF-Bildeinfügen
+- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, Toolbar-Stilerkennung, Textgrößenänderung, RTF-Bildextraktion und RTF-Bildeinfügen
 - Laden der originalen `test.alx`-Fixture mit 65 Knoten
 - Speichern/Laden unverschlüsselt
 - Speichern/Laden verschlüsselt
@@ -143,8 +149,8 @@ Getestet wurden:
 - Suche, Statistik und Farb-Hilfsfunktionen
 - HTML-Export, Sticky-HTML-Export, Bildexport, Bildimport und Notiz-Anhänge
 - alte Konfigurationsmigration inklusive FTP-Feldern
-- Wecker-Wiederholungen, Wecker-Store und CLI-Weckerpfade
-- CLI-Integrationspfade inklusive XML-Dump/Pack, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
+- Wecker-Wiederholungen, Wecker-Store, fällige Wecker, Benachrichtigungs-Dry-Run und CLI-Weckerpfade
+- CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
 
 ## Projektstruktur
 
@@ -158,6 +164,7 @@ src/notizen_py_slint/
   legacy_config.py    alte notizen.config.xml migrieren
   autostart.py        portable Autostart-Einträge
   alarm.py            Wecker-/Erinnerungsregeln
+  notify.py           native Best-Effort-Benachrichtigungen ohne externe Pakete
   des_compat.py       pure-Python DES/CBC-Kompatibilität
   rtf.py              RTF<->Text-Konvertierung, einfache Formatierung, Bildzugriff
   cli.py              CLI-Fallback ohne Slint

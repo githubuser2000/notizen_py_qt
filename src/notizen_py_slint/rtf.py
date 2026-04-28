@@ -9,6 +9,7 @@ import re
 _HEX_RE = re.compile(r"^[0-9a-fA-F]{2}$")
 _PICT_CONTROL_RE = re.compile(r"\\([a-zA-Z]+)(-?\d+)? ?")
 _FS_CONTROL_RE = re.compile(r"(\\fs)(\d+)")
+_FONT0_RE = re.compile(r"\{\\f0(?:[^;{}]*)\s([^;{}]+);\}")
 _IMAGE_KIND_BY_SUFFIX = {
     ".png": ("png", "pngblip"),
     ".jpg": ("jpg", "jpegblip"),
@@ -336,6 +337,62 @@ def restyle_rtf_as_plain(
         bg_color=bg_color,
     )
 
+
+
+def detect_rtf_style(rtf_or_text: str, *, default_family: str = "Sans Serif", default_half_points: int = 18) -> RtfStyle:
+    """Best-effort style inspection for old RichTextBox RTF.
+
+    It intentionally returns only the first/global-ish style values. This matches
+    the Python/Slint port's whole-note formatting model and gives toolbar actions
+    sensible defaults without pretending to be a full RTF layout engine.
+    """
+    value = rtf_or_text or ""
+    if not is_rtf(value):
+        return RtfStyle(font_family=default_family, font_size_half_points=max(2, int(default_half_points or 18)))
+    family = default_family
+    match = _FONT0_RE.search(value)
+    if match is not None:
+        family = match.group(1).strip() or default_family
+    return RtfStyle(
+        font_family=family,
+        font_size_half_points=first_rtf_font_size(value, default_half_points=default_half_points),
+        bold=_has_rtf_switch(value, "b"),
+        italic=_has_rtf_switch(value, "i"),
+        underline=_has_rtf_switch(value, "ul"),
+        strike=_has_rtf_switch(value, "strike"),
+    )
+
+
+def restyle_rtf_with_defaults(
+    rtf_or_text: str,
+    *,
+    font_family: str | None = None,
+    font_size_half_points: int | None = None,
+    bold: bool | None = None,
+    italic: bool | None = None,
+    underline: bool | None = None,
+    strike: bool | None = None,
+    fg_color: int | None = None,
+    bg_color: int | None = None,
+) -> str:
+    """Rewrite a note as simple RTF while preserving unspecified global style bits."""
+    current = detect_rtf_style(rtf_or_text)
+    return restyle_rtf_as_plain(
+        rtf_or_text,
+        font_family=font_family if font_family is not None else current.font_family,
+        font_size_half_points=font_size_half_points if font_size_half_points is not None else current.font_size_half_points,
+        bold=current.bold if bold is None else bold,
+        italic=current.italic if italic is None else italic,
+        underline=current.underline if underline is None else underline,
+        strike=current.strike if strike is None else strike,
+        fg_color=fg_color,
+        bg_color=bg_color,
+    )
+
+
+def _has_rtf_switch(value: str, name: str) -> bool:
+    # True for ``\b``/``\b ``/``\b\i`` but false for ``\b0`` and words like ``\blue``.
+    return re.search(rf"\\{re.escape(name)}(?![a-zA-Z0-9])", value or "") is not None
 
 def first_rtf_font_size(rtf_or_text: str, *, default_half_points: int = 18) -> int:
     """Return the first RTF ``\fs`` font size in half-points.

@@ -16,6 +16,7 @@ from .storage import (
     EncryptedFileError,
     append_bullet_into_note,
     append_current_date_into_note,
+    apply_toolbar_style_to_note,
     autosize_sticky as autosize_note_sticky,
     change_note_font_size,
     NotizenFileError,
@@ -36,7 +37,7 @@ from .storage import (
     list_backups,
     save_document as write_document,
 )
-from .rtf import restyle_rtf_as_plain
+from .rtf import detect_rtf_style, restyle_rtf_as_plain
 
 
 def _format_slint_compile_error(exc: Exception, ui_path: Path) -> str:
@@ -184,6 +185,11 @@ class NotizenSlintApp:
         self.window.set_colors = self.set_colors
         self.window.clear_colors = self.clear_colors
         self.window.format_note = self.format_note
+        self.window.apply_bold = lambda: self.apply_toolbar_style("bold")
+        self.window.apply_italic = lambda: self.apply_toolbar_style("italic")
+        self.window.apply_underline = lambda: self.apply_toolbar_style("underline")
+        self.window.apply_strike = lambda: self.apply_toolbar_style("strike")
+        self.window.apply_regular = lambda: self.apply_toolbar_style("regular")
         self.window.increase_font_size = self.increase_font_size
         self.window.decrease_font_size = self.decrease_font_size
         self.window.open_settings = self.open_settings
@@ -608,8 +614,15 @@ class NotizenSlintApp:
         self._refresh_title_dirty()
         self._refresh_metadata()
 
+    def _search_options(self) -> tuple[bool, bool, Note | None]:
+        case_sensitive = bool(getattr(self.window, "search_case_sensitive", False))
+        whole_words = bool(getattr(self.window, "search_whole_words", False))
+        start = self.document.selected_note if bool(getattr(self.window, "search_current_subtree", False)) else None
+        return case_sensitive, whole_words, start
+
     def search_next(self, needle: str) -> None:
-        found = self.document.find_next(str(needle))
+        case_sensitive, whole_words, start = self._search_options()
+        found = self.document.find_next(str(needle), case_sensitive=case_sensitive, whole_words=whole_words, start=start)
         if found is None:
             self._set_status("Kein Treffer.")
         else:
@@ -617,7 +630,8 @@ class NotizenSlintApp:
             self._set_status(f"Treffer: {found.path_string()}")
 
     def search_all(self, needle: str) -> None:
-        hits = self.document.find_all(str(needle))
+        case_sensitive, whole_words, start = self._search_options()
+        hits = self.document.find_all(str(needle), case_sensitive=case_sensitive, whole_words=whole_words, start=start)
         if not hits:
             self._set_status("Keine Treffer.")
             return
@@ -625,7 +639,8 @@ class NotizenSlintApp:
         self._refresh_all()
         sample = "; ".join(hit.note.path_string() for hit in hits[:3])
         more = " …" if len(hits) > 3 else ""
-        self._set_status(f"{len(hits)} Treffer: {sample}{more}")
+        scope = " im Teilbaum" if start is not None else ""
+        self._set_status(f"{len(hits)} Treffer{scope}: {sample}{more}")
 
     # Metadata / raw RTF ---------------------------------------------------
     def toggle_raw_rtf(self) -> None:
@@ -733,6 +748,28 @@ class NotizenSlintApp:
         self.document.modified = True
         self._refresh_all()
         self._set_status(f"Notiz formatiert: {note.title}")
+
+
+    def apply_toolbar_style(self, style: str) -> None:
+        note = self.document.selected_note
+        try:
+            apply_toolbar_style_to_note(note, style)
+            current = detect_rtf_style(note.rtf)
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"Stil konnte nicht gesetzt werden: {exc}")
+            return
+        self.document.modified = True
+        self._refresh_all()
+        active = []
+        if current.bold:
+            active.append("fett")
+        if current.italic:
+            active.append("kursiv")
+        if current.underline:
+            active.append("unterstrichen")
+        if current.strike:
+            active.append("durchgestrichen")
+        self._set_status(f"Toolbar-Stil gesetzt: {', '.join(active) if active else 'normal'} ({note.title})")
 
     def increase_font_size(self) -> None:
         self._change_current_font_size(2)

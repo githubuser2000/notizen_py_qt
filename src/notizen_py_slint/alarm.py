@@ -271,6 +271,38 @@ def next_alarm(alarms: list[AlarmRule], *, now: datetime | None = None) -> tuple
     return alarm, when  # type: ignore[return-value]
 
 
+
+def due_alarms(
+    alarms: list[AlarmRule],
+    *,
+    now: datetime | None = None,
+    grace_seconds: int = 60,
+) -> list[tuple[AlarmRule, datetime]]:
+    """Return alarm occurrences whose due time lies in the recent grace window.
+
+    This is the dependency-free core for the old ``wecker`` popup behavior. A
+    watcher can call it periodically; it asks each rule for the first occurrence
+    after ``now - grace`` and accepts it when that occurrence is not later than
+    ``now``. Repeating rules therefore work without mutating the stored rule.
+    """
+    now = now or datetime.now()
+    grace = max(0, int(grace_seconds or 0))
+    window_start = now - timedelta(seconds=grace)
+    hits: list[tuple[AlarmRule, datetime]] = []
+    for alarm in alarms:
+        when = alarm.next_after(window_start)
+        if when is not None and window_start <= when <= now:
+            hits.append((alarm, when))
+    hits.sort(key=lambda item: item[1])
+    return hits
+
+
+def alarm_message(alarm: AlarmRule, when: datetime) -> str:
+    """Human-readable message for due/next alarm output."""
+    note = f" [{alarm.note_title}]" if alarm.note_title else ""
+    message = f" - {alarm.message}" if alarm.message else ""
+    return f"{when:%Y-%m-%d %H:%M} {alarm.name}{note}{message}"
+
 def _days_in_month(year: int, month: int) -> int:
     if month == 12:
         next_month = datetime(year + 1, 1, 1)

@@ -15,7 +15,7 @@ Der Ausgangscode ist das gelieferte VB.NET/WinForms-Projekt **Notizen.NET**. Rel
 
 ## Weiterer Transpilationsstand
 
-Diese weitere Runde hat vor allem Logik portiert, die im ersten Stand noch fehlte oder nur als Platzhalter vorhanden war:
+Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in portable Python-/Slint-Form:
 
 - Baumoperationen: kopieren, ausschneiden, einfügen, duplizieren, hoch/runter, einrücken, ausrücken
 - alte Drag-and-drop-Verschiebeidee als explizite Buttons/Methoden, weil Slint/Python hier portabler ist als native Maus-TreeView-Draglogik
@@ -31,12 +31,17 @@ Diese weitere Runde hat vor allem Logik portiert, die im ersten Stand noch fehlt
 - CLI erweitert um Statistik, Suche, XML-Dump/Pack, Einzelnotiz-RTF-Export, Notizinhalt ersetzen, Bewegung, Duplizieren, strukturelles Einfügen/Löschen/Umbenennen, Bild einfügen, Datum/Bullet anhängen und FTP-Konfiguration
 - HTML-Export als portabler Ersatz für Drucken/Vorschau-Zusammenfassungen
 - einfache Ganznotiz-Formatierung (`bold`, `italic`, `underline`, `strike`, Vorder-/Hintergrundfarbe, Schriftfamilie/-größe)
+- RichTextBox-Toolbar-Buttons `B`, `I`, `U`, `S` und `Normal` aus der alten UI als Ganznotiz-Aktionen in Slint und als CLI-Befehl `style-note`
+- globale RTF-Stilerkennung, damit vorhandene einfache RichTextBox-RTF-Dokumente beim Umformatieren Schriftfamilie/Schriftgröße/Stil sinnvoll weitertragen
 - Ctrl+Plus/Ctrl+Minus aus `Notizen.vb` als RTF-weite Textgrößenänderung (`font-size`, A+/A-) portiert
+- Suchoptionen aus der alten Dialog-/Suchlogik als UI-Checkboxen: Groß-/Kleinschreibung, Ganzwortsuche, nur aktueller Teilbaum
 - Sticky-Autogröße und Sticky-HTML-Board als portabler Ersatz für Teile von `desknote.vb`
 - alte `notizen.config.xml` aus `xml_kram.vb` lesen, in die neue JSON-Konfiguration übernehmen und diagnostisch wieder als alte XML-Struktur schreiben
 - Autostart portabel nachgebaut: `.desktop` unter Linux, `.cmd` im Windows-Startup-Ordner, LaunchAgent unter macOS
 - Autosave-Timer aus der Konfiguration für lokale Dateien
 - Wecker-Regeln mit einmaliger, täglicher, wöchentlicher, monatlicher und jährlicher Wiederholung als speicherbare Python-Logik plus CLI/UI-Hooks
+- fällige Wecker (`alarm-due`) und eine einfache dauernde Wecker-Schleife (`alarm-watch`) als portabler Ersatz für die alte Popup-Auslösung
+- native Best-Effort-Benachrichtigung ohne externe Pakete: `notify-send` unter Linux/BSD, `osascript` unter macOS, PowerShell-MessageBox unter Windows
 
 ## Dateiformat
 
@@ -73,7 +78,7 @@ Slints `TextEdit` ist kein RichTextBox-Ersatz. Deshalb gibt es zwei Modi:
 - Textmodus: gespeichertes RTF wird best-effort zu Plain-Text konvertiert; Änderungen werden als schlichtes RTF gespeichert.
 - Raw-RTF-Modus: der gespeicherte RTF-String wird direkt editiert/exportiert/importiert.
 
-Damit bleiben alte formatierte Inhalte erreichbar, auch wenn die neue UI keine vollständige Rich-Text-Bearbeitung bietet. Zusätzlich kann der Port Bilder aus `\pict`-Gruppen extrahieren und PNG/JPEG/BMP wieder als `\pict`-Gruppen anhängen. Das ersetzt nicht die alte RichTextBox-Auswahlformatierung, erhält aber praktische Kontextmenü-Fälle aus `kontext_inhalt.vb`.
+Damit bleiben alte formatierte Inhalte erreichbar, auch wenn die neue UI keine vollständige Rich-Text-Bearbeitung bietet. Zusätzlich kann der Port Bilder aus `\pict`-Gruppen extrahieren und PNG/JPEG/BMP wieder als `\pict`-Gruppen anhängen. Die alten Auswahlformatierungen werden nicht Zeichen-für-Zeichen nachgebildet; `format-note`, `style-note` und die Slint-Buttons wenden Stiländerungen bewusst auf die ganze Notiz an. Das ist ehrlich begrenzt, aber stabil und ohne native RichTextBox-Abhängigkeit.
 
 ## Alte Konfiguration, FTP und Autostart
 
@@ -93,7 +98,13 @@ Der alte Windows-spezifische Autostart wurde nicht per Registry/COM 1:1 übernom
 
 `wecker.vb` war stark WinForms-Dialoglogik: Auswahl von Wiederholungsart, Intervall und Wochentagen. Der Port übersetzt diesen Teil als Datenmodell in `alarm.py`. Regeln werden als JSON gespeichert und können per CLI/UI angelegt, entfernt und abgefragt werden.
 
-Noch nicht enthalten ist ein nativer Benachrichtigungsdienst oder eine dauerhafte Popup-Schleife. Das ist bewusst getrennt, damit der Kern weiter ohne externe Pakete unter Python läuft.
+Neu ist ein tatsächlicher Auslösepfad ohne externe Pakete:
+
+- `notizen-alx alarm-due` prüft fällige Alarme in einem Zeitfenster.
+- `notizen-alx alarm-watch` läuft dauerhaft, prüft periodisch und meldet Treffer.
+- `notify.py` versucht Desktop-Benachrichtigungen über vorhandene Plattformwerkzeuge.
+
+Das ist kein vollständiger Dienst/Daemon und kein WinForms-Popup mit eigener Dialogoberfläche, aber es schließt die wichtigste funktionale Lücke: gespeicherte Erinnerungen können jetzt auslösen.
 
 ## Nicht 1:1 portiert
 
@@ -105,6 +116,6 @@ Nicht sinnvoll 1:1 übernommen wurden:
 - Druckdialog; HTML-Export dient als portabler Ersatz
 - vollständige mehrsprachige Menülogik aus den `.resx`-/`languages.vb`-Dateien
 - echte RichTextBox-Auswahlformatierung mit gemischten Fonts/Farben pro Zeichenbereich
-- native OS-Weckerbenachrichtigung
+- permanenter OS-Hintergrunddienst für Wecker/Tray
 
 Diese Punkte sind entweder stark Windows-/WinForms-spezifisch oder passen nicht sauber zu Python/Slint. Die zugrunde liegenden Daten werden aber so weit wie möglich erhalten.

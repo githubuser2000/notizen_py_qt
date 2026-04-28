@@ -9,14 +9,15 @@ from datetime import datetime
 from pathlib import Path
 import unittest
 
-from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, load_alarms, next_alarm, parse_weekdays, remove_alarm
+from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
 from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config
 from notizen_py_slint.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
+from notizen_py_slint.notify import notify
 from notizen_py_slint.remote import parse_ftp_url
-from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
+from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
 from notizen_py_slint.storage import (
     autosize_sticky,
     change_note_font_size,
@@ -33,6 +34,7 @@ from notizen_py_slint.storage import (
     import_json_into_document,
     insert_image_into_note,
     append_bullet_into_note,
+    apply_toolbar_style_to_note,
     set_note_font_size,
     list_backups,
     read_raw_xml,
@@ -91,6 +93,18 @@ class RtfTests(unittest.TestCase):
         self.assertIn(r"\cf1", styled)
         self.assertIn(r"\highlight2", styled)
         self.assertEqual(rtf_to_text(styled), "Hallo")
+
+    def test_detect_and_restyle_with_defaults(self) -> None:
+        rtf = text_to_rtf("Hallo", font_family="Arial", font_size_half_points=22, bold=True)
+        detected = detect_rtf_style(rtf)
+        self.assertEqual(detected.font_family, "Arial")
+        self.assertEqual(detected.font_size_half_points, 22)
+        self.assertTrue(detected.bold)
+        changed = restyle_rtf_with_defaults(rtf, italic=True)
+        after = detect_rtf_style(changed)
+        self.assertTrue(after.bold)
+        self.assertTrue(after.italic)
+        self.assertEqual(rtf_to_text(changed), "Hallo")
 
     def test_font_size_change_preserves_rtf(self) -> None:
         rtf = text_to_rtf("Hallo", font_size_half_points=18)
@@ -179,6 +193,18 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(loaded.root.bg_color, 0xFFEEDDCC)
         self.assertEqual(loaded.root.children[0].sticky.width, 300)  # type: ignore[union-attr]
         self.assertTrue(loaded.root.children[0].sticky.visible)  # type: ignore[union-attr]
+
+    def test_toolbar_style_helper_formats_whole_note(self) -> None:
+        note = Note("Root", text_to_rtf("Toolbar", font_family="Arial", font_size_half_points=20))
+        apply_toolbar_style_to_note(note, "bold")
+        style = detect_rtf_style(note.rtf)
+        self.assertTrue(style.bold)
+        self.assertFalse(style.italic)
+        self.assertEqual(style.font_family, "Arial")
+        apply_toolbar_style_to_note(note, "regular")
+        style = detect_rtf_style(note.rtf)
+        self.assertFalse(style.bold)
+        self.assertEqual(rtf_to_text(note.rtf), "Toolbar")
 
     def test_plain_xml_load_and_save(self) -> None:
         doc = NoteDocument(root=Note("Root", text_to_rtf("XML Text")), selected_id=None)
@@ -347,6 +373,14 @@ class ModelOperationTests(unittest.TestCase):
 
 
 class AlarmTests(unittest.TestCase):
+
+    def test_due_alarms_and_message(self) -> None:
+        alarm = AlarmRule.create("Review", "2026-04-27 09:00", repeat="daily", message="prüfen", note_title="Todo")
+        hits = due_alarms([alarm], now=datetime(2026, 4, 28, 9, 0), grace_seconds=60)
+        self.assertEqual(len(hits), 1)
+        self.assertIn("Review", alarm_message(*hits[0]))
+        self.assertFalse(due_alarms([alarm], now=datetime(2026, 4, 28, 9, 2), grace_seconds=60))
+
     def test_weekly_and_monthly_alarm_recurrence(self) -> None:
         alarm = AlarmRule.create(
             "Review",
@@ -421,6 +455,8 @@ class ConfigMigrationTests(unittest.TestCase):
         self.assertEqual(config.default_remote_url(), "ftps://u%20ser:p%40ss@example.org/dir/file.alx")
 
 
+
+
 class CliIntegrationTests(unittest.TestCase):
     def test_cli_rename_export_html_and_format(self) -> None:
         doc = NoteDocument(root=Note("Root", text_to_rtf("Text")))
@@ -463,6 +499,32 @@ class CliIntegrationTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(cli_main(["export-sticky-html", str(sticky_file), str(sticky_html)]), 0)
             self.assertIn("Root", sticky_html.read_text(encoding="utf-8"))
+
+    def test_cli_style_note_and_alarm_due(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Text", font_family="Arial", font_size_half_points=18)))
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            styled = Path(tmp) / "styled.alx"
+            save_document(doc, path=source, backup_count=0)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["style-note", str(source), str(styled), "--title", "Root", "--style", "italic"]), 0)
+            style = detect_rtf_style(load_document(styled).root.rtf)
+            self.assertTrue(style.italic)
+
+            old_home = os.environ.get("XDG_CONFIG_HOME")
+            os.environ["XDG_CONFIG_HOME"] = tmp
+            try:
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                    self.assertEqual(cli_main(["alarm-add", "--name", "Due", "--at", "2026-04-27 09:00", "--message", "ping"]), 0)
+                with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                    self.assertEqual(cli_main(["alarm-due", "--now", "2026-04-27 09:00", "--grace-seconds", "60", "--notify", "--dry-run"]), 0)
+                self.assertIn("Due", out.getvalue())
+            finally:
+                if old_home is None:
+                    os.environ.pop("XDG_CONFIG_HOME", None)
+                else:
+                    os.environ["XDG_CONFIG_HOME"] = old_home
+
 
     def test_cli_config_show_outputs_json(self) -> None:
         with redirect_stdout(io.StringIO()) as buf:
@@ -548,6 +610,14 @@ class CliIntegrationTests(unittest.TestCase):
                     os.environ.pop("XDG_CONFIG_HOME", None)
                 else:
                     os.environ["XDG_CONFIG_HOME"] = old_home
+
+
+class NotificationTests(unittest.TestCase):
+    def test_notify_dry_run_is_dependency_free(self) -> None:
+        result = notify("Titel", "Text", dry_run=True)
+        self.assertTrue(result.delivered)
+        self.assertEqual(result.backend, "dry-run")
+        self.assertIn("Titel", result.message)
 
 
 class RemoteTests(unittest.TestCase):

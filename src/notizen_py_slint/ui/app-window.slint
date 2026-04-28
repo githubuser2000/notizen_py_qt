@@ -1,4 +1,4 @@
-import { Button, LineEdit, TextEdit, ListView } from "std-widgets.slint";
+import { Button, CheckBox, LineEdit, TextEdit, ListView } from "std-widgets.slint";
 
 export struct NoteRow {
     label: string,
@@ -16,6 +16,9 @@ export component AppWindow inherits Window {
     in-out property <string> editor-text;
     in-out property <string> note-title;
     in-out property <string> search-text;
+    in-out property <bool> search-case-sensitive: false;
+    in-out property <bool> search-whole-words: false;
+    in-out property <bool> search-current-subtree: false;
     in-out property <string> status-text: "Bereit";
     in-out property <string> meta-text: "";
     in-out property <string> mode-label: "Modus: Text";
@@ -71,6 +74,11 @@ export component AppWindow inherits Window {
     callback set-colors();
     callback clear-colors();
     callback format-note();
+    callback apply-bold();
+    callback apply-italic();
+    callback apply-underline();
+    callback apply-strike();
+    callback apply-regular();
     callback increase-font-size();
     callback decrease-font-size();
     callback open-settings();
@@ -137,6 +145,11 @@ export component AppWindow inherits Window {
                     Button { text: "Farben"; clicked => { root.set-colors(); } }
                     Button { text: "Farbe weg"; clicked => { root.clear-colors(); } }
                     Button { text: "Format"; clicked => { root.format-note(); } }
+                    Button { text: "B"; clicked => { root.apply-bold(); } }
+                    Button { text: "I"; clicked => { root.apply-italic(); } }
+                    Button { text: "U"; clicked => { root.apply-underline(); } }
+                    Button { text: "S"; clicked => { root.apply-strike(); } }
+                    Button { text: "Normal"; clicked => { root.apply-regular(); } }
                     Button { text: "A+"; clicked => { root.increase-font-size(); } }
                     Button { text: "A-"; clicked => { root.decrease-font-size(); } }
                     Button { text: "Bilder"; clicked => { root.extract-images(); } }
@@ -151,7 +164,7 @@ export component AppWindow inherits Window {
                     Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Button { text: "Alt-Config importieren"; clicked => { root.import-legacy-config(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Autosave erweitert"; vertical-alignment: center; color: #666666; }
+                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Autosave/Suche/Stile erweitert"; vertical-alignment: center; color: #666666; }
                 }
             }
         }
@@ -175,6 +188,12 @@ export component AppWindow inherits Window {
                         }
                         Button { text: "Weiter"; clicked => { root.search-next(root.search-text); } }
                         Button { text: "Alle"; clicked => { root.search-all(root.search-text); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        CheckBox { text: "Aa"; checked <=> root.search-case-sensitive; }
+                        CheckBox { text: "Wort"; checked <=> root.search-whole-words; }
+                        CheckBox { text: "Teilbaum"; checked <=> root.search-current-subtree; }
                     }
                     ListView {
                         for row[i] in root.rows: Rectangle {

@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 from pathlib import Path
 import sys
+import time
 
 from .autostart import autostart_status, sync_autostart
-from .alarm import AlarmRule, add_or_replace_alarm, load_alarms, next_alarm, parse_weekdays, remove_alarm
+from .alarm import AlarmRule, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_alarm_datetime, parse_weekdays, remove_alarm
 from .config import AppConfig
 from .legacy_config import import_legacy_config, load_legacy_config, write_legacy_like_config
-from .model import Note, NoteDocument, StickyWindow, parse_int_or_hex
+from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import load_uri, save_uri
-from .rtf import restyle_rtf_as_plain, text_to_rtf
+from .notify import notify
+from .rtf import detect_rtf_style, restyle_rtf_as_plain, restyle_rtf_with_defaults, text_to_rtf
 from .storage import (
     NotizenFileError,
     append_bullet_into_note,
+    apply_font_family_to_note,
+    apply_toolbar_style_to_note,
     append_current_date_into_note,
     autosize_sticky,
     change_note_font_size,
@@ -433,6 +438,59 @@ def _format_note(
     _save_after_edit(doc, output, password, new_password)
 
 
+
+def _toolbar_style(
+    file: str,
+    output: str,
+    title: str,
+    password: str | None,
+    new_password: str | None,
+    style: str | None,
+    font_family: str | None,
+    font_size: int | None,
+    fg_color: str | None,
+    bg_color: str | None,
+    show: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    note = _note_by_title(doc, title)
+    if show:
+        current = detect_rtf_style(note.rtf)
+        print(json.dumps({
+            "font_family": current.font_family,
+            "font_size_half_points": current.font_size_half_points,
+            "bold": current.bold,
+            "italic": current.italic,
+            "underline": current.underline,
+            "strike": current.strike,
+            "bg_color": argb_to_hex(note.bg_color) if note.bg_color is not None else None,
+            "fg_color": argb_to_hex(note.fg_color) if note.fg_color is not None else None,
+        }, indent=2, ensure_ascii=False))
+    if style is None and font_family is None and font_size is None and fg_color is None and bg_color is None:
+        if show:
+            return
+        raise NotizenFileError("Bitte --style, --font-family, --font-size, --fg-color, --bg-color oder --show angeben.")
+    if style is not None:
+        apply_toolbar_style_to_note(
+            note,
+            style,
+            font_family=font_family,
+            font_size_half_points=font_size,
+            fg_color=parse_int_or_hex(fg_color) if fg_color else None,
+            bg_color=parse_int_or_hex(bg_color) if bg_color else None,
+        )
+    else:
+        note.rtf = restyle_rtf_with_defaults(
+            note.rtf,
+            font_family=font_family,
+            font_size_half_points=font_size,
+            fg_color=parse_int_or_hex(fg_color) if fg_color else None,
+            bg_color=parse_int_or_hex(bg_color) if bg_color else None,
+        )
+    doc.select(note)
+    doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+
 def _font_size(
     file: str,
     output: str,
@@ -665,6 +723,46 @@ def _alarm_remove(name: str) -> None:
     print("entfernt" if removed else "nicht gefunden")
 
 
+
+def _parse_optional_now(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return parse_alarm_datetime(value)
+
+
+def _alarm_due(now_text: str | None, grace_seconds: int, notify_desktop: bool, dry_run: bool) -> None:
+    now = _parse_optional_now(now_text)
+    hits = due_alarms(load_alarms(), now=now, grace_seconds=grace_seconds)
+    for alarm, when in hits:
+        line = alarm_message(alarm, when)
+        print(line)
+        if notify_desktop:
+            result = notify(alarm.name, alarm.message or line, dry_run=dry_run)
+            print(f"notify: {result.backend} {'ok' if result.delivered else 'fehlgeschlagen'} {result.message}".rstrip(), file=sys.stderr)
+    print(f"{len(hits)} fällige Wecker", file=sys.stderr)
+
+
+def _alarm_watch(poll_seconds: float, grace_seconds: int, once: bool, notify_desktop: bool, dry_run: bool) -> None:
+    poll = max(1.0, float(poll_seconds or 30))
+    grace = max(1, int(grace_seconds or poll))
+    fired: set[tuple[str, str]] = set()
+    while True:
+        now = datetime.now()
+        hits = due_alarms(load_alarms(), now=now, grace_seconds=grace)
+        for alarm, when in hits:
+            key = (alarm.name, when.strftime("%Y-%m-%d %H:%M"))
+            if key in fired:
+                continue
+            fired.add(key)
+            line = alarm_message(alarm, when)
+            print(line, flush=True)
+            if notify_desktop:
+                result = notify(alarm.name, alarm.message or line, dry_run=dry_run)
+                print(f"notify: {result.backend} {'ok' if result.delivered else 'fehlgeschlagen'} {result.message}".rstrip(), file=sys.stderr, flush=True)
+        if once:
+            return
+        time.sleep(poll)
+
 def _slots_dict(obj: object) -> dict[str, object]:
     result: dict[str, object] = {}
     for cls in type(obj).mro():
@@ -862,6 +960,19 @@ def main(argv: list[str] | None = None) -> int:
     _add_new_password_arg(fmt)
     _add_password_arg(fmt)
 
+    style = sub.add_parser("style-note", help="alte RichTextBox-Toolbar-Stile auf eine ganze Notiz anwenden")
+    style.add_argument("file")
+    style.add_argument("output")
+    style.add_argument("--title", required=True)
+    style.add_argument("--style", choices=["bold", "italic", "underline", "strike", "regular"], help="Toolbar-Stil wie im Original")
+    style.add_argument("--font-family", help="Schriftfamilie setzen")
+    style.add_argument("--font-size", type=int, help="RTF-Halbpunkte setzen, 18 = 9pt")
+    style.add_argument("--fg-color")
+    style.add_argument("--bg-color")
+    style.add_argument("--show", action="store_true", help="erkannte globale Formatwerte anzeigen")
+    _add_new_password_arg(style)
+    _add_password_arg(style)
+
     font_size = sub.add_parser("font-size", help="Textgröße einer Notiz wie Ctrl+Plus/Ctrl+Minus ändern")
     font_size.add_argument("file")
     font_size.add_argument("output")
@@ -1000,6 +1111,19 @@ def main(argv: list[str] | None = None) -> int:
     alarm_remove = sub.add_parser("alarm-remove", help="Wecker entfernen")
     alarm_remove.add_argument("--name", required=True)
 
+    alarm_due = sub.add_parser("alarm-due", help="fällige Wecker im aktuellen Zeitfenster prüfen")
+    alarm_due.add_argument("--now", help="Test-/Vergleichszeit, z.B. 2026-04-27 09:30")
+    alarm_due.add_argument("--grace-seconds", type=int, default=60, help="Rückblickfenster für fällige Termine")
+    alarm_due.add_argument("--notify", action="store_true", help="Desktop-Benachrichtigung auslösen")
+    alarm_due.add_argument("--dry-run", action="store_true", help="Benachrichtigung nur simulieren")
+
+    alarm_watch = sub.add_parser("alarm-watch", help="Wecker-Schleife starten und bei Fälligkeit melden")
+    alarm_watch.add_argument("--poll-seconds", type=float, default=30)
+    alarm_watch.add_argument("--grace-seconds", type=int, default=60)
+    alarm_watch.add_argument("--once", action="store_true", help="nur einmal prüfen und beenden")
+    alarm_watch.add_argument("--no-notify", action="store_true", help="nur in stdout ausgeben")
+    alarm_watch.add_argument("--dry-run", action="store_true", help="Benachrichtigung nur simulieren")
+
     args = parser.parse_args(argv)
     try:
         if args.cmd == "tree":
@@ -1064,6 +1188,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.fg_color,
                 args.bg_color,
             )
+        elif args.cmd == "style-note":
+            _toolbar_style(args.file, args.output, args.title, args.password, args.new_password, args.style, args.font_family, args.font_size, args.fg_color, args.bg_color, args.show)
         elif args.cmd == "font-size":
             _font_size(args.file, args.output, args.title, args.password, args.new_password, args.bigger, args.smaller, args.set_size, args.step)
         elif args.cmd == "sticky":
@@ -1104,6 +1230,10 @@ def main(argv: list[str] | None = None) -> int:
             _alarm_list()
         elif args.cmd == "alarm-next":
             _alarm_next()
+        elif args.cmd == "alarm-due":
+            _alarm_due(args.now, args.grace_seconds, args.notify, args.dry_run)
+        elif args.cmd == "alarm-watch":
+            _alarm_watch(args.poll_seconds, args.grace_seconds, args.once, not args.no_notify, args.dry_run)
         elif args.cmd == "alarm-remove":
             _alarm_remove(args.name)
         else:  # pragma: no cover
