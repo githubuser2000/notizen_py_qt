@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "notizen-pypy-slint"
-version = "0.1.0"
-description = "PyPy3/Slint port of the old VB.NET Notizen.NET application"
+name = "notizen-py-slint"
+version = "0.5.0"
+description = "Python3/Slint port of the old VB.NET Notizen.NET application"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "GPL-3.0-or-later" }
@@ -16,22 +16,29 @@ classifiers = [
   "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: Implementation :: PyPy",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
   "Topic :: Office/Business",
 ]
 
 dependencies = []
 
 [project.optional-dependencies]
-# The current Slint Python releases require Python >=3.12. PyPy's current stable
-# line is 3.11, so the PyPy-oriented extra pins the older alpha that still has
-# Python >=3.10 metadata. Depending on platform this may still need a source
-# build of Slint's native extension.
-slint = ["slint==1.8.0a1"]
+# Current Slint-Python releases target Python >=3.12. The pure-Python core and
+# CLI below still run without Slint on older Python 3 versions.
+slint = ["slint>=1.16.1b1"]
+# Kept for older Python installations that cannot install current Slint wheels.
+slint-legacy = ["slint==1.8.0a1"]
 
 [project.scripts]
+notizen-py-slint = "notizen_py_slint.app:main"
+notizen-slint = "notizen_py_slint.app:main"
 notizen-pypy-slint = "notizen_pypy_slint.app:main"
-notizen-alx = "notizen_pypy_slint.cli:main"
+notizen-alx = "notizen_py_slint.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -41,5 +48,5 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-notizen_pypy_slint = ["ui/*.slint"]
-"notizen_pypy_slint.ui" = ["*.slint"]
+notizen_py_slint = ["ui/*.slint"]
+"notizen_py_slint.ui" = ["*.slint"]

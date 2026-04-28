@@ -1,58 +1,108 @@
-# Porting Notes
+# Portierungsnotizen
 
-## Ausgangsprojekt
+## Herkunft
 
-Das Archiv enthielt ein VB.NET/WinForms-Projekt. Die zentrale Datei war `Notizen.vb`; der Inhalt der einzelnen Notizen lag in `TreeNode.Tag.text` als `RichTextBox.Rtf`. Gespeichert wurde in `.alx`-Dateien.
+Der Ausgangscode ist das gelieferte VB.NET/WinForms-Projekt **Notizen.NET**. Relevante alte Dateien:
 
-## `.alx`-Format
+- `Notizen.vb`: Hauptformular, Speichern/Laden, Verschlüsselung, Export, Tastatur-/Toolbar-Logik
+- `Baum.vb`: TreeView-Operationen, Anlegen/Löschen, Verschieben per Drag-and-drop
+- `CText.vb` und `inhalt.vb`: Knoteninhalt als RichTextBox-RTF
+- `desknote.vb`: Desktop-/Sticky-Notizen
+- `xml_kram.vb`: Konfigurations-/Autostart-Fragmente
+- `ftpkram.vb`: FTP-Konfiguration der alten Anwendung
+- `kontext_inhalt.vb`: Kontextmenü für Kopieren/Ausschneiden/Einfügen, Bild einfügen, Datum, Löschen und Suchen
+- `wecker.vb`: Wecker-/Wiederholungsdialog
 
-Das moderne Notizen.NET-Format ist:
+## Weiterer Transpilationsstand
 
-1. XML-Wurzel `<notizen-alx2>`
-2. Verschachtelte `<Notiz>`-Elemente
-3. Attribute wie `name`, `isexpanded`, Farben und Sticky-Window-Metadaten
-4. Elementtext enthält RTF
-5. Gesamtes XML wird als UTF-16 serialisiert
-6. Bytes werden per GZip komprimiert
-7. Optional wird der GZip-Payload historisch verschlüsselt
+Diese weitere Runde hat vor allem Logik portiert, die im ersten Stand noch fehlte oder nur als Platzhalter vorhanden war:
 
-## Historische Verschlüsselung
+- Baumoperationen: kopieren, ausschneiden, einfügen, duplizieren, hoch/runter, einrücken, ausrücken
+- alte Drag-and-drop-Verschiebeidee als explizite Buttons/Methoden, weil Slint/Python hier portabler ist als native Maus-TreeView-Draglogik
+- Teilbaum-Export ähnlich der alten „Einheit/Zusammenfassen“-Funktion, jetzt als nummerierter TXT-/RTF-Export
+- Roh-RTF-Modus, damit RichTextBox-Daten nicht nur nach Plain-Text konvertiert werden müssen
+- Text-/RTF-Import in die aktuelle Notiz
+- RichTextBox-Kontextfunktionen als portable Aktionen: Datum anhängen, Aufzählungszeichen anhängen, Bild anhängen
+- PNG/JPEG/BMP als RTF-`\pict`-Gruppen an Notizen anhängen
+- RTF-Bilder aus alten `\pict`-Gruppen extrahieren
+- Sticky-Metadaten-Editor für `visible`, `x`, `y`, `width`, `height`, `opacity`, `argb`
+- Knotenfarben `bgcolor` und `fgcolor` werden wie im Original geschrieben und können bearbeitet werden
+- FTP/FTPS-Transport mit `ftp://`/`ftps://`-URLs, `.netrc`-Fallback und migrierbarer Standardverbindung
+- CLI erweitert um Statistik, Suche, XML-Dump/Pack, Einzelnotiz-RTF-Export, Notizinhalt ersetzen, Bewegung, Duplizieren, strukturelles Einfügen/Löschen/Umbenennen, Bild einfügen, Datum/Bullet anhängen und FTP-Konfiguration
+- HTML-Export als portabler Ersatz für Drucken/Vorschau-Zusammenfassungen
+- einfache Ganznotiz-Formatierung (`bold`, `italic`, `underline`, `strike`, Vorder-/Hintergrundfarbe, Schriftfamilie/-größe)
+- alte `notizen.config.xml` aus `xml_kram.vb` lesen, in die neue JSON-Konfiguration übernehmen und diagnostisch wieder als alte XML-Struktur schreiben
+- Autostart portabel nachgebaut: `.desktop` unter Linux, `.cmd` im Windows-Startup-Ordner, LaunchAgent unter macOS
+- Autosave-Timer aus der Konfiguration für lokale Dateien
+- Wecker-Regeln mit einmaliger, täglicher, wöchentlicher, monatlicher und jährlicher Wiederholung als speicherbare Python-Logik plus CLI/UI-Hooks
 
-Die alte Anwendung nutzt keine normale 3DES-Implementierung, sondern drei hintereinandergeschaltete `DESCryptoServiceProvider`-Streams. Jeder Layer hat eigenen CBC-Status und eigene PKCS#7-Padding-Phase.
+## Dateiformat
 
-Passwortlogik:
+Das alte Hauptformat ist:
 
-- Passwort auf 24 Zeichen auffüllen oder abschneiden
-- Key/IV 1: Zeichen `0..7`
-- Key/IV 2: Zeichen `7..14`
-- Key/IV 3: Zeichen `15..22`
-- Zeichen 23 bleibt effektiv unbenutzt
-- ASCII-Passwörter wie in der alten Implementierung
-
-Schreibreihenfolge:
-
-```text
-DES1(DES2(DES3(GZip(XML))))
+```xml
+<notizen-alx2>
+  <Notiz name="..." isexpanded="True" bgcolor="0" fgcolor="0">RTF...</Notiz>
+</notizen-alx2>
 ```
 
-Lesereihenfolge:
+Desktop-/Sticky-Notizen hängen als Attribute am selben `Notiz`-Element:
 
-```text
-DES1 decrypt -> DES2 decrypt -> DES3 decrypt -> GZip decompress
+```xml
+visible="True" x="100" y="100" width="260" height="180" opacity="0.85" argb="-1"
 ```
 
-Der Port implementiert DES/CBC pure Python, damit der Kern ohne externe Kryptobibliothek unter PyPy läuft.
+Der Port schreibt weiterhin UTF-16-XML, komprimiert mit GZip. Bei gesetztem Passwort wird anschließend die historische dreifache DES-CBC-Kaskade verwendet. Zusätzlich kann der Python-Kern lesbares Roh-XML direkt laden/speichern und per CLI mit `dump-xml`/`pack-xml` zwischen XML und `.alx` wechseln.
 
-## Slint/PyPy-Entscheidung
+## Verschlüsselung
 
-Die Slint-Oberfläche ist bewusst von Kern und CLI getrennt. Der Kern importiert Slint nicht. Dadurch bleiben Dateiverarbeitung und Tests lauffähig, selbst wenn Slints native Python-Integration auf einer PyPy-Plattform nicht gebaut werden kann.
+Die alte Anwendung verwendet drei DES-Provider mit überlappenden 8-Byte-Schlüsseln:
 
-## RTF-Kompromiss
+- `p.Substring(0, 8)`
+- `p.Substring(7, 8)`
+- `p.Substring(15, 8)`
 
-WinForms `RichTextBox` kann echtes RTF editieren. Slints Standard-`TextEdit` editiert Plain-Text. Deshalb:
+Key und IV sind jeweils identisch. Das ist kryptographisch schwach, wird aber zur Dateikompatibilität nachgebaut. Der Port implementiert DES und CBC vollständig in Python, damit der Kern ohne OpenSSL-/Crypto-Abhängigkeit unter Python läuft.
 
-- Beim Anzeigen wird RTF best-effort in Text gewandelt.
-- Solange eine Notiz nicht verändert wird, bleibt ihr originaler RTF-String im Modell erhalten.
-- Beim Bearbeiten wird der neue Text als einfaches RTF gespeichert.
+## RTF und Bilder
 
-Das ist für Notizen sinnvoll, aber nicht identisch mit dem alten RichTextBox-Verhalten bei Bildern, Tabellen, mehreren Fonts usw.
+Slints `TextEdit` ist kein RichTextBox-Ersatz. Deshalb gibt es zwei Modi:
+
+- Textmodus: gespeichertes RTF wird best-effort zu Plain-Text konvertiert; Änderungen werden als schlichtes RTF gespeichert.
+- Raw-RTF-Modus: der gespeicherte RTF-String wird direkt editiert/exportiert/importiert.
+
+Damit bleiben alte formatierte Inhalte erreichbar, auch wenn die neue UI keine vollständige Rich-Text-Bearbeitung bietet. Zusätzlich kann der Port Bilder aus `\pict`-Gruppen extrahieren und PNG/JPEG/BMP wieder als `\pict`-Gruppen anhängen. Das ersetzt nicht die alte RichTextBox-Auswahlformatierung, erhält aber praktische Kontextmenü-Fälle aus `kontext_inhalt.vb`.
+
+## Alte Konfiguration, FTP und Autostart
+
+`xml_kram.vb` schrieb die alte `notizen.config.xml` unter anderem mit Backup-Anzahl, Autosave-Sekunden, zuletzt geöffneten Dateien, Sprache, Fensterposition, Sticky-Rahmen, Autostart-Werten und FTP-Feldern. Der Port migriert diese Felder nach `~/.config/notizen-py-slint/config.json` beziehungsweise unter Windows nach `%APPDATA%`.
+
+Die alte FTP-Konfiguration aus `ftpkram.vb` (`name`, `pass`, `host`, `path`) wird in die neue Konfiguration übernommen und kann als Standard-Remote-URL genutzt werden. Der eigentliche Transport nutzt nur die Standardbibliothek (`ftplib`) und unterstützt:
+
+- `ftp://user:pass@host/path/file.alx`
+- `ftps://user:pass@host/path/file.alx`
+- Zugangsdaten aus `~/.netrc`, wenn sie nicht in der URL stehen
+
+Backups werden nur lokal erzeugt. Bei Remote-Speichern wird direkt hochgeladen.
+
+Der alte Windows-spezifische Autostart wurde nicht per Registry/COM 1:1 übernommen. Stattdessen erzeugt der Port plattformübliche Starterdateien und akzeptiert `--minimized` als kompatibles, aber momentan nicht fensterzustandswirksames Startargument.
+
+## Wecker
+
+`wecker.vb` war stark WinForms-Dialoglogik: Auswahl von Wiederholungsart, Intervall und Wochentagen. Der Port übersetzt diesen Teil als Datenmodell in `alarm.py`. Regeln werden als JSON gespeichert und können per CLI/UI angelegt, entfernt und abgefragt werden.
+
+Noch nicht enthalten ist ein nativer Benachrichtigungsdienst oder eine dauerhafte Popup-Schleife. Das ist bewusst getrennt, damit der Kern weiter ohne externe Pakete unter Python läuft.
+
+## Nicht 1:1 portiert
+
+Nicht sinnvoll 1:1 übernommen wurden:
+
+- WinForms-Trayicon als natives System-Tray-Objekt
+- separate borderlose Desktop-Sticky-Fenster
+- native TreeView-Drag-and-drop-Gesten
+- Druckdialog; HTML-Export dient als portabler Ersatz
+- vollständige mehrsprachige Menülogik aus den `.resx`-/`languages.vb`-Dateien
+- echte RichTextBox-Auswahlformatierung mit gemischten Fonts/Farben pro Zeichenbereich
+- native OS-Weckerbenachrichtigung
+
+Diese Punkte sind entweder stark Windows-/WinForms-spezifisch oder passen nicht sauber zu Python/Slint. Die zugrunde liegenden Daten werden aber so weit wie möglich erhalten.

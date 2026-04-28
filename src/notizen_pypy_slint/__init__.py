@@ -1,3 +1,6 @@
-"""PyPy3/Slint port of the old Notizen.NET application."""
+"""Compatibility package for the old notizen_pypy_slint import path.
 
-__version__ = "0.1.0"
+Use notizen_py_slint for new code.
+"""
+
+from notizen_py_slint import *  # noqa: F401,F403
