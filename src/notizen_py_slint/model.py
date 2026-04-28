@@ -231,6 +231,20 @@ class SearchDetail:
 
 
 @dataclass(slots=True)
+class SearchOccurrence:
+    note: Note
+    field: str
+    start: int
+    end: int
+    occurrence_index: int
+    snippet: str = ""
+
+    @property
+    def length(self) -> int:
+        return max(0, self.end - self.start)
+
+
+@dataclass(slots=True)
 class NoteStats:
     notes: int
     leaves: int
@@ -576,6 +590,49 @@ class NoteDocument:
                 snippets.append("Text: " + _make_snippet(text, match_start, match_end, context=context))
             details.append(SearchDetail(note=note, title_matches=len(title_spans), text_matches=len(text_spans), snippets=snippets))
         return details
+
+    def find_occurrences(
+        self,
+        needle: str,
+        *,
+        case_sensitive: bool = False,
+        whole_words: bool = False,
+        context: int = 40,
+        start: Note | None = None,
+        max_hits: int | None = None,
+    ) -> list[SearchOccurrence]:
+        """Return every individual search result with field and character range.
+
+        The old WinForms search dialog stored a ``suchergebnisse`` object for
+        each match: selected tree node plus ``SelectionStart`` in the text box.
+        This method keeps that information in a pure data form so CLI and Slint
+        code can count, export or jump through exact hits instead of only
+        reporting matching notes. Title hits are included as ``field="title"``;
+        body hits keep the old text-selection idea as ``field="text"``.
+        """
+        pattern = _make_pattern(needle, case_sensitive=case_sensitive, whole_words=whole_words)
+        if pattern is None:
+            return []
+        hits: list[SearchOccurrence] = []
+        per_note_counter: dict[int, int] = {}
+        for note in self.iter_subtree(start):
+            for field_name, value in (("title", note.title or ""), ("text", note.text or "")):
+                for match in pattern.finditer(value):
+                    index = per_note_counter.get(note.note_id, 0) + 1
+                    per_note_counter[note.note_id] = index
+                    hits.append(
+                        SearchOccurrence(
+                            note=note,
+                            field=field_name,
+                            start=match.start(),
+                            end=match.end(),
+                            occurrence_index=index,
+                            snippet=_make_snippet(value, match.start(), match.end(), context=context),
+                        )
+                    )
+                    if max_hits is not None and len(hits) >= max_hits:
+                        return hits
+        return hits
 
     def replace_all(
         self,

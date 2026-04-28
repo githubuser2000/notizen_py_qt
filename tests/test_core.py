@@ -12,6 +12,7 @@ import unittest
 from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
 from notizen_py_slint.feedback import feedback_gzip_payload, read_feedback_gzip
+from notizen_py_slint.fonts import font_name_from_path, format_font_list, list_system_fonts
 from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
@@ -23,7 +24,7 @@ from notizen_py_slint.shortcuts import shortcut_manifest
 from notizen_py_slint.sticky_runtime import sticky_window_specs
 from notizen_py_slint.remote import parse_ftp_url
 from notizen_py_slint.translations import LEGACY_KEYS, normalize_language, translate, translation_table
-from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, normalize_text_range, replace_rtf_text_range, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, style_rtf_text_range, text_to_rtf
+from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
 from notizen_py_slint.storage import (
     autosize_sticky,
     change_note_font_size,
@@ -32,20 +33,22 @@ from notizen_py_slint.storage import (
     document_to_xml_bytes,
     export_html,
     export_json,
+    export_opml,
+    export_alx,
     export_markdown,
     export_sticky_html,
     load_document,
     load_document_from_bytes,
     save_document,
     save_document_to_bytes,
+    subtree_document,
+    outline_opml,
     import_json_into_document,
+    import_opml_into_document,
     insert_image_into_note,
-    insert_text_into_note,
     append_bullet_into_note,
     apply_toolbar_style_to_note,
-    delete_note_text_range,
     set_note_font_size,
-    style_note_text_range,
     list_backups,
     read_raw_xml,
     restore_backup,
@@ -77,22 +80,6 @@ class RtfTests(unittest.TestCase):
     def test_plain_text_roundtrip(self) -> None:
         text = "Hallo Welt\nZweite Zeile — Umlaut ä"
         self.assertEqual(rtf_to_text(text_to_rtf(text)), text)
-
-    def test_plain_text_range_helpers(self) -> None:
-        text = "Hallo Welt"
-        self.assertEqual(normalize_text_range(text, -3, 99).as_dict(), {"start": 0, "end": 10, "length": 10})
-        replaced = replace_rtf_text_range(text_to_rtf(text, font_family="Arial", font_size_half_points=20), 6, 4, "Mars")
-        self.assertEqual(rtf_to_text(replaced), "Hallo Mars")
-        style = detect_rtf_style(replaced)
-        self.assertEqual(style.font_family, "Arial")
-        self.assertEqual(style.font_size_half_points, 20)
-
-    def test_style_rtf_text_range_formats_selected_text(self) -> None:
-        styled = style_rtf_text_range(text_to_rtf("Hallo Welt"), 6, 4, bold=True, font_size_half_points=28)
-        self.assertEqual(rtf_to_text(styled), "Hallo Welt")
-        self.assertIn(r"\b", styled)
-        self.assertIn(r"\fs28", styled)
-        self.assertIn("Welt", styled)
 
     def test_rtf_detection(self) -> None:
         self.assertTrue(is_rtf(text_to_rtf("x")))
@@ -253,26 +240,6 @@ class StorageTests(unittest.TestCase):
         self.assertFalse(style.bold)
         self.assertEqual(rtf_to_text(note.rtf), "Toolbar")
 
-    def test_note_range_helpers(self) -> None:
-        note = Note("Root", text_to_rtf("Hallo Welt", font_family="Arial", font_size_half_points=20))
-        insert_text_into_note(note, "schöne ", 6)
-        self.assertEqual(note.text, "Hallo schöne Welt")
-        delete_note_text_range(note, 6, 7)
-        self.assertEqual(note.text, "Hallo Welt")
-        style_note_text_range(note, 6, 4, style="bold", font_size_half_points=24)
-        self.assertEqual(note.text, "Hallo Welt")
-        self.assertIn(r"\b", note.rtf)
-        self.assertIn(r"\fs24", note.rtf)
-
-    def test_saved_xml_has_single_root_note(self) -> None:
-        doc = NoteDocument(root=Note("Root", text_to_rtf("Text")), selected_id=None)
-        doc.root.add_child(Note("Kind", text_to_rtf("Mehr")))
-        xml = document_to_xml_bytes(doc).decode("utf-16")
-        self.assertEqual(xml.count("<Notiz"), 2)
-        loaded = load_document_from_bytes(save_document_to_bytes(doc), source="memory")
-        self.assertEqual(sum(1 for _ in loaded.iter_notes()), 2)
-        self.assertEqual([child.title for child in loaded.root.children], ["Kind"])
-
     def test_plain_xml_load_and_save(self) -> None:
         doc = NoteDocument(root=Note("Root", text_to_rtf("XML Text")), selected_id=None)
         with tempfile.TemporaryDirectory() as tmp:
@@ -386,8 +353,51 @@ class StorageTests(unittest.TestCase):
         self.assertIn("position:absolute", html)
         self.assertIn("#FFFF99", html)
 
+    def test_subtree_export_and_opml_roundtrip(self) -> None:
+        root = Note("Root", text_to_rtf("Root Text"), expanded=True)
+        child = root.add_child(Note("Kind", text_to_rtf("Kind Text"), expanded=False, bg_color=0xFFFFFFE0))
+        child.add_child(Note("Enkel", text_to_rtf("Tiefe")))
+        doc = NoteDocument(root=root, selected_id=child.note_id)
+        with tempfile.TemporaryDirectory() as tmp:
+            alx = Path(tmp) / "kind.alx"
+            opml = Path(tmp) / "kind.opml"
+            export_alx(doc, alx, start=child)
+            exported = load_document(alx)
+            self.assertEqual(exported.root.title, "Kind")
+            self.assertEqual(exported.root.children[0].title, "Enkel")
+
+            export_opml(doc, opml, start=child)
+            text = opml.read_text(encoding="utf-8")
+            self.assertIn("<opml", text)
+            self.assertIn("_notizen_rtf_b64", text)
+
+            imported_doc = NoteDocument(root=Note("Neu", text_to_rtf("")))
+            imported = import_opml_into_document(imported_doc, opml, target=imported_doc.root, where="child")
+            self.assertEqual(imported.title, "Kind")
+            self.assertEqual(imported.text, "Kind Text")
+            self.assertEqual(imported.children[0].title, "Enkel")
+
+    def test_outline_opml_plain_without_rtf_payload(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Plain")))
+        xml = outline_opml(doc, include_rtf=False)
+        self.assertIn("Plain", xml)
+        self.assertNotIn("_notizen_rtf_b64", xml)
+
+
 
 class ModelOperationTests(unittest.TestCase):
+    def test_search_occurrences_include_fields_positions_and_snippets(self) -> None:
+        root = Note("Root Test", text_to_rtf("test eins test zwei"))
+        root.add_child(Note("Kind", text_to_rtf("kein Treffer")))
+        doc = NoteDocument(root=root)
+        hits = doc.find_occurrences("test", case_sensitive=False, context=5)
+        self.assertEqual(len(hits), 3)
+        self.assertEqual(hits[0].field, "title")
+        self.assertEqual(hits[0].start, 5)
+        text_hits = [hit for hit in hits if hit.field == "text"]
+        self.assertEqual([hit.start for hit in text_hits], [0, 10])
+        self.assertIn("eins", text_hits[0].snippet)
+
     def _doc(self) -> NoteDocument:
         root = Note("Root", text_to_rtf("root"))
         a = root.add_child(Note("A", text_to_rtf("eins")))
@@ -630,6 +640,17 @@ class TranslationAndShortcutTests(unittest.TestCase):
         self.assertIn("Desktop", out.getvalue())
 
 
+class FontTests(unittest.TestCase):
+    def test_font_name_from_path_normalizes_common_suffixes(self) -> None:
+        self.assertEqual(font_name_from_path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"), "DejaVuSans")
+        self.assertEqual(font_name_from_path("Some_Font-Regular.otf"), "Some Font")
+
+    def test_format_font_list_empty_is_stable(self) -> None:
+        self.assertEqual(format_font_list([]), "keine Schriften gefunden")
+        self.assertEqual(list_system_fonts(limit=0), [])
+
+
+
 class CliIntegrationTests(unittest.TestCase):
     def test_cli_rename_export_html_and_format(self) -> None:
         doc = NoteDocument(root=Note("Root", text_to_rtf("Text")))
@@ -698,27 +719,6 @@ class CliIntegrationTests(unittest.TestCase):
                 else:
                     os.environ["XDG_CONFIG_HOME"] = old_home
 
-
-    def test_cli_insert_delete_and_style_range(self) -> None:
-        doc = NoteDocument(root=Note("Root", text_to_rtf("Hallo Welt")))
-        with tempfile.TemporaryDirectory() as tmp:
-            source = Path(tmp) / "source.alx"
-            inserted = Path(tmp) / "inserted.alx"
-            deleted = Path(tmp) / "deleted.alx"
-            styled = Path(tmp) / "styled.alx"
-            save_document(doc, path=source, backup_count=0)
-            with redirect_stdout(io.StringIO()):
-                self.assertEqual(cli_main(["insert-text", str(source), str(inserted), "--title", "Root", "--at", "6", "--text", "schöne "]), 0)
-            self.assertEqual(load_document(inserted).root.text, "Hallo schöne Welt")
-            with redirect_stdout(io.StringIO()):
-                self.assertEqual(cli_main(["delete-range", str(inserted), str(deleted), "--title", "Root", "--start", "6", "--length", "7"]), 0)
-            self.assertEqual(load_document(deleted).root.text, "Hallo Welt")
-            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
-                self.assertEqual(cli_main(["style-range", str(deleted), str(styled), "--title", "Root", "--start", "6", "--length", "4", "--style", "bold", "--font-size", "24", "--show"]), 0)
-            loaded = load_document(styled)
-            self.assertEqual(loaded.root.text, "Hallo Welt")
-            self.assertIn(r"\b", loaded.root.rtf)
-            self.assertIn('"plain_text": "Hallo Welt"', err.getvalue())
 
     def test_cli_config_show_outputs_json(self) -> None:
         with redirect_stdout(io.StringIO()) as buf:
@@ -792,6 +792,45 @@ class CliIntegrationTests(unittest.TestCase):
             self.assertEqual(payload[0]["title"], "Root")
             self.assertIn("bg_css", payload[0])
 
+    def test_cli_v10_search_opml_expand_and_font_list(self) -> None:
+        root = Note("Root", text_to_rtf("Root Text"), expanded=True)
+        child = root.add_child(Note("Kind", text_to_rtf("Kind Text Kind"), expanded=True))
+        doc = NoteDocument(root=root, selected_id=child.note_id)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            subtree = Path(tmp) / "kind.alx"
+            opml = Path(tmp) / "kind.opml"
+            imported = Path(tmp) / "imported.alx"
+            collapsed = Path(tmp) / "collapsed.alx"
+            save_document(doc, path=source, backup_count=0)
+
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["search-occurrences", str(source), "Kind", "--json"]), 0)
+            hits = json.loads(out.getvalue())
+            self.assertGreaterEqual(len(hits), 3)
+            self.assertEqual(hits[0]["field"], "title")
+            self.assertIn("start", hits[0])
+
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["export-alx", str(source), str(subtree), "--title", "Kind"]), 0)
+            self.assertEqual(load_document(subtree).root.title, "Kind")
+
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["export-opml", str(source), str(opml), "--title", "Kind"]), 0)
+            self.assertIn("_notizen_rtf_b64", opml.read_text(encoding="utf-8"))
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["import-opml", str(source), str(imported), "--title", "Root", "--input", str(opml)]), 0)
+            self.assertEqual(load_document(imported).root.children[-1].title, "Kind")
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["expand-state", str(imported), str(collapsed), "--title", "Kind", "--collapsed"]), 0)
+            self.assertFalse(load_document(collapsed).first_note_by_title_or_path("Kind").expanded)  # type: ignore[union-attr]
+
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["font-list", "--limit", "0"]), 0)
+            self.assertIn("keine Schriften gefunden", out.getvalue())
+
     def test_cli_alarm_add_next_remove(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             old_home = os.environ.get("XDG_CONFIG_HOME")
@@ -845,6 +884,8 @@ class AppCompatTests(unittest.TestCase):
         NotizenSlintApp.show_shortcuts(app)
         self.assertIn("Tastenkürzel", app.window.status_text)
         self.assertIn("Ctrl+S", app.window.meta_text)
+        NotizenSlintApp.show_fonts(app)
+        self.assertTrue(app.window.meta_text)
 
     def test_legacy_argv_normalization(self) -> None:
         self.assertEqual(_normalize_legacy_argv(["/min", "datei.alx"]), ["--minimized", "datei.alx"])

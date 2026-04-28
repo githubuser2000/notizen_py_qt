@@ -37,6 +37,8 @@ export component AppWindow inherits Window {
     callback export-html();
     callback export-markdown();
     callback export-json();
+    callback export-opml();
+    callback export-subtree-alx();
     callback export-subtree-text();
     callback export-subtree-rtf();
     callback export-note-rtf();
@@ -92,6 +94,7 @@ export component AppWindow inherits Window {
     callback show-backups();
     callback show-about();
     callback show-shortcuts();
+    callback show-fonts();
 
     VerticalLayout {
         padding: 8px;
@@ -121,6 +124,8 @@ export component AppWindow inherits Window {
                     Button { text: "HTML"; clicked => { root.export-html(); } }
                     Button { text: "MD"; clicked => { root.export-markdown(); } }
                     Button { text: "JSON"; clicked => { root.export-json(); } }
+                    Button { text: "OPML"; clicked => { root.export-opml(); } }
+                    Button { text: "Teil ALX"; clicked => { root.export-subtree-alx(); } }
                     Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
                     Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
                     Rectangle { horizontal-stretch: 1; }
@@ -167,6 +172,7 @@ export component AppWindow inherits Window {
                     Button { text: "Backups"; clicked => { root.show-backups(); } }
                     Button { text: "Info"; clicked => { root.show-about(); } }
                     Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
+                    Button { text: "Fonts"; clicked => { root.show-fonts(); } }
                     Button { text: "Einstellungen"; clicked => { root.open-settings(); } }
                     Button { text: "Wecker"; clicked => { root.open-alarm(); } }
                     Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
