@@ -10,23 +10,22 @@ Funktioniert im Port:
 - GZip-komprimiertes UTF-16-XML-Format `<notizen-alx2>` lesen/schreiben
 - verschlüsselte `.alx`-Dateien lesen/schreiben, kompatibel zur alten dreifachen DES-CBC-Kaskade mit den alten Passwort-Slicing-Eigenheiten
 - Notizbaum anzeigen, Kind-/Nachbarnotizen anlegen, löschen, duplizieren, kopieren/ausschneiden/einfügen
-- Knoten hoch/runter verschieben, einrücken, ausrücken, alle auf-/zuklappen
-- Suche über Titel und Text, einmalig oder als Trefferliste; in der UI jetzt mit Groß-/Kleinschreibung, Ganzwortsuche und Suche nur im aktuellen Teilbaum
-- einzelne Suchtreffer mit Feld, Position, Länge und Snippet als CLI-Liste/JSON ähnlich der alten Suchergebnislogik
+- portable Notizen-Zwischenablage für ganze Teilbäume, inklusive Datei-Zwischenablage und Best-Effort-Systemclipboard
+- Knoten hoch/runter verschieben, einrücken, ausrücken, unter Zielknoten hängen sowie relativ als Kind/vor/nach Zielknoten verschieben oder kopieren
+- Suche über Titel und Text, einmalig, als Trefferliste oder als exakte alte `suchergebnisse.SelectionStart`-Trefferpositionen; in der UI jetzt mit Groß-/Kleinschreibung, Ganzwortsuche und Suche nur im aktuellen Teilbaum
 - TXT-, RTF-, Markdown-, JSON- und HTML-Export für ganze Datei oder ausgewählten Teilbaum
-- eigenständiger Teilbaum-Export als neue `.alx`/`.xml`/Remote-Datei
-- OPML-Export und OPML-Import mit privaten Notizen-Metadaten für RTF, Farben, Sticky-Daten und Auf-/Zu-Zustand
+- Legacy-TXT-Export mit CRLF und wählbarem Windows-Codepage-Encoding sowie Einheit/Zusammenfassen-RTF-Export nach altem Workflow
 - Roh-RTF einer einzelnen Notiz exportieren, Text/RTF in aktuelle Notiz importieren
 - PNG/JPEG/BMP als RTF-`\pict` an Notizen anhängen
 - eingebettete RichTextBox-/RTF-Bilder aus alten Notizen extrahieren
 - Datum/Uhrzeit und Aufzählungszeichen an Notizen anhängen
 - einfache Ganznotiz-Formatierung als portabler Ersatz für RichTextBox-Auswahlformatierung
-- RichTextBox-Toolbar-Stile `B`, `I`, `U`, `S` und `Normal` als Ganznotiz-Aktionen in UI und CLI
+- auswahlbezogene RichTextBox-Aktionen als Plain-Text-Range-Operationen im Python-Kern und in der CLI: Text einfügen, Bereich löschen und Bereich formatieren
+- RichTextBox-Toolbar-Stile `B`, `I`, `U`, `S` und `Normal` als Ganznotiz-Aktionen in UI und CLI sowie als Bereichsformatierung per `style-range`
 - Textgröße per A+/A- beziehungsweise CLI wie im alten Ctrl+Plus/Ctrl+Minus-Workflow ändern
-- installierte Systemschriften per CLI/UI-Hook auflisten, als portabler Ersatz für die alte RichTextBox-Schriftliste
 - Raw-RTF-Modus in der UI, damit alte RichTextBox-Inhalte notfalls direkt bearbeitet werden können
 - alte Intellibit-`notes_doc`-Dateien importieren
-- Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten, Geometrie/Farbe bearbeiten, automatisch grob dimensionieren, als HTML-Board exportieren und optional als kleine Tk-Fenster öffnen
+- Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten, Geometrie/Farbe bearbeiten, alte Transparenz-Menüwerte abbilden, automatisch grob dimensionieren, als HTML-Board exportieren und optional als kleine Tk-Fenster öffnen
 - Knotenfarben (`bgcolor`, `fgcolor`) lesen, speichern, löschen, per alter heller Notizen.NET-Palette setzen und wieder als WinForms-kompatible signed ARGB-Werte schreiben
 - Sicherheitskopien beim lokalen Speichern und Autosave-Timer aus der Konfiguration
 - alte `notizen.config.xml` lesen/importieren/exportieren, inklusive Backup-Anzahl, Autosave, Autostart, Fensterdaten, Sticky-Rahmen und FTP-Feldern
@@ -36,6 +35,7 @@ Funktioniert im Port:
 - fällige Wecker prüfen beziehungsweise als dauernde CLI-Schleife beobachten, optional mit nativer Best-Effort-Desktop-Benachrichtigung über Plattformwerkzeuge
 - alte Sprachtexte aus `languages.vb` als Python-Tabelle mit CLI-Abfrage, About-Text und UI-Info-Hook
 - alte Tastenkürzel aus `Notizen.tastendruck` als dokumentiertes Manifest mit CLI-Ausgabe und UI-Kurzhinweis
+- alte WinForms-Kontextmenüs aus `kontext_inhalt.vb`, `Baum_Kontext_.vb`, `desknote_kontext.vb` und der Desktop-Notiz-Transparenzauswahl als Portierungsmanifest mit CLI- und UI-Hook
 - allgemeine Konfigurationsschalter per `config-set`/`config-path`, damit Teile des alten Einstellungsdialogs auch ohne GUI skriptbar sind
 - Feedback-Dialog als lokaler GZip-/UTF-16-Draft kompatibel zum alten Payloadformat, aber ohne automatischen Upload zu alten Servern
 - erweiterte Kommandozeile ohne GUI als Fallback
@@ -86,13 +86,13 @@ CLI-Fallback ohne Slint:
 notizen-alx tree tests/fixtures/test.alx
 notizen-alx stats tests/fixtures/test.alx
 notizen-alx search tests/fixtures/test.alx test
-notizen-alx search-occurrences tests/fixtures/test.alx test --json
+notizen-alx search tests/fixtures/test.alx test --occurrences --json
 notizen-alx export-txt tests/fixtures/test.alx /tmp/notizen.txt --numbered
 notizen-alx export-rtf tests/fixtures/test.alx /tmp/notizen.rtf --title "PC" --numbered
 notizen-alx export-html tests/fixtures/test.alx /tmp/notizen.html
+notizen-alx export-legacy-txt tests/fixtures/test.alx /tmp/notizen-win.txt --encoding cp1252
+notizen-alx export-unity-rtf tests/fixtures/test.alx /tmp/einheit.rtf
 notizen-alx export-sticky-html tests/fixtures/test.alx /tmp/sticky.html --all
-notizen-alx export-alx tests/fixtures/test.alx /tmp/teilbaum.alx --title "PC"
-notizen-alx export-opml tests/fixtures/test.alx /tmp/notizen.opml --title "PC"
 notizen-alx export-note-rtf tests/fixtures/test.alx /tmp/notiz.rtf --title "todo"
 notizen-alx dump-xml input.alx /tmp/notizen.xml
 notizen-alx pack-xml /tmp/notizen.xml output.alx --password geheim
@@ -102,7 +102,6 @@ notizen-alx append-date input.alx output.alx --title "todo"
 notizen-alx append-bullet input.alx output.alx --title "todo"
 notizen-alx change-password input.alx output.alx --old-password alt --new-password neu
 notizen-alx set-note input.alx output.alx --title "todo" --input /tmp/neuer-text.txt
-notizen-alx import-opml input.alx output.alx --title "todo" --input /tmp/notizen.opml
 notizen-alx format-note input.alx output.alx --title "todo" --bold --fg-color '#112233'
 notizen-alx color-palette
 notizen-alx color-note input.alx output.alx --title "todo" --bg-name LightYellow --show
@@ -110,17 +109,22 @@ notizen-alx color-note input.alx output.alx --title "todo" --random-bg --random-
 notizen-alx style-note input.alx output.alx --title "todo" --style bold
 notizen-alx style-note input.alx output.alx --title "todo" --font-family "Arial" --font-size 22 --show
 notizen-alx font-size input.alx output.alx --title "todo" --bigger
-notizen-alx font-list --contains Arial --limit 20
-notizen-alx expand-state input.alx output.alx --title "todo" --collapsed
-notizen-alx expand-state input.alx output.alx --all --expanded
 notizen-alx sticky input.alx output.alx --title "todo" --show --autosize --x 100 --y 100
+notizen-alx sticky input.alx output.alx --title "todo" --show --opacity-choice "90%"
+notizen-alx sticky-opacity --json
 notizen-alx sticky-list input.alx --all --json
 notizen-alx sticky-run input.alx --readonly
 notizen-alx rename input.alx output.alx --title "todo" --new-title "erledigen"
 notizen-alx add-note input.alx output.alx --title "todo" --new-title "Unterpunkt" --where child
 notizen-alx move input.alx output.alx --title "todo" --action down
 notizen-alx move-under input.alx output.alx --title "todo" --target-title "Archiv"
+notizen-alx move-relative input.alx output.alx --title "todo" --target-title "Archiv" --where after
+notizen-alx copy-relative input.alx output.alx --title "todo" --target-title "Archiv" --where child
 notizen-alx duplicate input.alx output.alx --title "todo"
+notizen-alx copy-node input.alx --title "todo" --clipboard /tmp/notizen-clip.json
+notizen-alx paste-node input.alx output.alx --target-title "Archiv" --where child --clipboard /tmp/notizen-clip.json
+notizen-alx clipboard-show --clipboard /tmp/notizen-clip.json --json
+notizen-alx context-menus --menu tree --include-opacity
 notizen-alx config-read-legacy /pfad/notizen.config.xml
 notizen-alx config-import-legacy /pfad/notizen.config.xml
 notizen-alx config-set-ftp --host example.org --user name --password geheim --path /pfad/notizen.alx --tls
@@ -151,17 +155,29 @@ notizen-alx change-password local.alx 'ftps://user:pass@example.org/pfad/notizen
 
 Benutzername/Passwort können in der URL stehen, aus der neuen Konfiguration kommen oder über `~/.netrc` gelesen werden. Ohne Angaben wird anonymes FTP versucht.
 
+
+### Auswahlnachbau / Plain-Text-Bereiche
+
+Die alte WinForms-RichTextBox arbeitete oft mit der aktuellen Markierung. Slint stellt diese RichTextBox-Markierung nicht nativ bereit; der Port bildet sie deshalb über Klartext-Zeichenbereiche nach. Die Zeichenpositionen beziehen sich immer auf den durch `rtf_to_text` sichtbaren Text der Notiz.
+
+```bash
+notizen-alx insert-text input.alx output.alx --title "Todo" --at 6 --text "neuer Text"
+notizen-alx insert-text input.alx output.alx --title "Todo" --at 0 --date
+notizen-alx delete-range input.alx output.alx --title "Todo" --start 6 --length 4
+notizen-alx style-range input.alx output.alx --title "Todo" --start 6 --length 4 --style bold --font-size 24
+```
+
 ## Tests
 
 ```bash
 cd notizen_py_slint
-PYTHONPATH=src python3 -m unittest discover -s tests -t . -v
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft. Hinweis zum Container: ein normaler `unittest`-Prozess hing dort gelegentlich beim Interpreter-Shutdown in der Umgebung, nachdem alle Tests bereits `OK` gemeldet hatten; die Testergebnisse selbst waren erfolgreich und reproduzierbar.
+Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 63 tests
+Ran 67 tests
 OK
 ```
 
@@ -169,7 +185,7 @@ Getestet wurden:
 
 - DES-Known-Vector
 - Notizen-DES-Kaskaden-Roundtrip
-- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, Toolbar-Stilerkennung, Textgrößenänderung, RTF-Bildextraktion und RTF-Bildeinfügen
+- RTF Plain-Text-Konvertierung, RTF-Erkennung, Unicode-Surrogates, Ganznotiz-Formatierung, Toolbar-Stilerkennung, Plain-Text-Range-Ersetzen/-Formatieren, Textgrößenänderung, RTF-Bildextraktion und RTF-Bildeinfügen
 - Laden der originalen `test.alx`-Fixture mit 65 Knoten
 - Speichern/Laden unverschlüsselt
 - Speichern/Laden verschlüsselt
@@ -180,7 +196,7 @@ Getestet wurden:
 - HTML-Export, Sticky-HTML-Export, Bildexport, Bildimport und Notiz-Anhänge
 - alte Konfigurationsmigration inklusive FTP-Feldern
 - Wecker-Wiederholungen, Wecker-Store, fällige Wecker, Benachrichtigungs-Dry-Run und CLI-Weckerpfade
-- CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
+- CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, `insert-text`, `delete-range`, `style-range`, `search --occurrences`, `context-menus`, portable TreeView-Zwischenablage, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
 - Sprach-/Übersetzungstabelle aus `languages.vb`, Tastenkürzelmanifest, `config-set`/`config-path`, About-Ausgabe und lokaler Feedback-Draft
 
 ## Projektstruktur
@@ -197,6 +213,9 @@ src/notizen_py_slint/
   alarm.py            Wecker-/Erinnerungsregeln
   notify.py           native Best-Effort-Benachrichtigungen ohne externe Pakete
   legacy_colors.py    alte Notizen.NET-Farbpalette und signed-ARGB-Kompatibilität
+  legacy_sticky.py    alte Desktop-Notiz-Transparenzauswahl
+  context_menus.py    alte WinForms-Kontextmenüs als Manifest
+  clipboard.py        portable Teilbaum-Zwischenablage
   sticky_runtime.py   optionale Tk-Sticky-Fenster und normalisierte Sticky-Spezifikationen
   translations.py     alte languages.vb-Texte und Sprachschlüssel
   shortcuts.py        alte Tastenkürzel aus Notizen.tastendruck

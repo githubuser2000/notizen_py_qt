@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import base64
 import gzip
 import json
 from html import escape
@@ -13,7 +12,21 @@ import xml.etree.ElementTree as ET
 from .des_compat import NotizenCryptoError, decrypt_notizen_payload, encrypt_notizen_payload, is_blank_password
 from .model import Note, NoteDocument, StickyWindow
 from .legacy_colors import argb_to_signed
-from .rtf import append_picture_to_rtf, append_text_to_rtf, change_rtf_font_size, extract_pictures, is_rtf, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf, write_extracted_pictures
+from .rtf import (
+    append_picture_to_rtf,
+    append_text_to_rtf,
+    change_rtf_font_size,
+    extract_pictures,
+    is_rtf,
+    replace_rtf_text_range,
+    restyle_rtf_with_defaults,
+    rtf_to_html_fragment,
+    rtf_to_text,
+    set_rtf_font_size,
+    style_rtf_text_range,
+    text_to_rtf,
+    write_extracted_pictures,
+)
 
 
 class NotizenFileError(Exception):
@@ -149,6 +162,47 @@ def export_rtf(document: NoteDocument, path: str | Path, *, start: Note | None =
     return path
 
 
+def legacy_export_text(document: NoteDocument, *, start: Note | None = None, numbered: bool = True) -> str:
+    """Return text close to the old Notizen.NET TXT export.
+
+    The original ``export_txt`` path converted the RichTextBox text through the
+    system default codepage and normalized line endings to CRLF.  The portable
+    version keeps the same outline semantics and CRLF normalization while letting
+    callers choose the target encoding explicitly.
+    """
+    text = outline_text(document, start=start, numbered=numbered)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return text.replace("\n", "\r\n")
+
+
+def export_legacy_text(
+    document: NoteDocument,
+    path: str | Path,
+    *,
+    start: Note | None = None,
+    numbered: bool = True,
+    encoding: str = "cp1252",
+    errors: str = "replace",
+) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(legacy_export_text(document, start=start, numbered=numbered).encode(encoding, errors=errors))
+    return path
+
+
+def export_unity_rtf(document: NoteDocument, path: str | Path, *, start: Note | None = None, numbered: bool = True) -> Path:
+    """Export a subtree in the spirit of the old Einheit/Zusammenfassen RTF flow."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        text_to_rtf(
+            outline_text(document, start=start, numbered=numbered),
+            font_family="Arial",
+            font_size_half_points=20,
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def export_html(document: NoteDocument, path: str | Path, *, start: Note | None = None, title: str | None = None) -> Path:
@@ -179,37 +233,6 @@ def export_json(document: NoteDocument, path: str | Path, *, start: Note | None 
         "note": note_to_dict(start or document.root),
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    return path
-
-
-def subtree_document(document: NoteDocument, *, start: Note | None = None, keep_password: bool = False) -> NoteDocument:
-    """Return a standalone document containing a deep clone of a subtree."""
-    clone = (start or document.root).clone_deep()
-    return NoteDocument(
-        root=clone,
-        selected_id=clone.note_id,
-        password=document.password if keep_password else None,
-        modified=False,
-    )
-
-
-def export_alx(
-    document: NoteDocument,
-    path: str | Path,
-    *,
-    start: Note | None = None,
-    password: str | None = None,
-    backup_count: int = 0,
-) -> Path:
-    """Export a subtree as its own .alx/.xml document."""
-    exported = subtree_document(document, start=start, keep_password=False)
-    return save_document(exported, path=path, password=password, backup_count=backup_count)
-
-
-def export_opml(document: NoteDocument, path: str | Path, *, start: Note | None = None, title: str | None = None, include_rtf: bool = True) -> Path:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(outline_opml(document, start=start, title=title, include_rtf=include_rtf), encoding="utf-8")
     return path
 
 
@@ -523,95 +546,6 @@ def combine_subtree_to_new_note(
     return new_note
 
 
-def outline_opml(document: NoteDocument, *, start: Note | None = None, title: str | None = None, include_rtf: bool = True) -> str:
-    """Create an OPML outline for interoperability with other tree-note tools.
-
-    OPML only standardises the tree shape.  To keep Notizen-specific data useful,
-    the exporter writes plain text plus optional base64-encoded RTF and metadata
-    into private ``_notizen_*`` attributes. Other OPML readers will still see the
-    outline titles, while this port can import the richer payload again.
-    """
-    root_note = start or document.root
-    opml = ET.Element("opml", {"version": "2.0"})
-    head = ET.SubElement(opml, "head")
-    ET.SubElement(head, "title").text = title or root_note.title or "Notizen"
-    body = ET.SubElement(opml, "body")
-    body.append(_note_to_opml_outline(root_note, include_rtf=include_rtf))
-    xml = ET.tostring(opml, encoding="unicode", short_empty_elements=True)
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml + "\n"
-
-
-def import_opml_into_document(document: NoteDocument, path: str | Path, *, target: Note | None = None, where: str = "child") -> Note:
-    root_el = ET.fromstring(Path(path).read_text(encoding="utf-8"))
-    if root_el.tag.lower() != "opml":
-        raise NotizenFileError(f"Keine OPML-Datei: <{root_el.tag}>")
-    body = root_el.find("body")
-    if body is None:
-        raise NotizenFileError("OPML-Datei ohne <body>.")
-    outlines = [child for child in list(body) if child.tag == "outline"]
-    if not outlines:
-        raise NotizenFileError("OPML-Datei ohne <outline>.")
-    if len(outlines) == 1:
-        imported = _opml_outline_to_note(outlines[0])
-    else:
-        imported = Note(Path(path).stem or "OPML", text_to_rtf(""))
-        for outline in outlines:
-            imported.add_child(_opml_outline_to_note(outline))
-    return import_note_into_document(document, imported, target=target, where=where)
-
-
-def _note_to_opml_outline(note: Note, *, include_rtf: bool) -> ET.Element:
-    attrs: dict[str, str] = {"text": note.title or "..."}
-    plain = note.text or ""
-    if plain:
-        attrs["_notizen_text"] = plain
-    if include_rtf and note.rtf:
-        attrs["_notizen_rtf_b64"] = base64.b64encode(note.rtf.encode("utf-8")).decode("ascii")
-    attrs["_notizen_expanded"] = "true" if note.expanded else "false"
-    if note.bg_color not in (None, 0):
-        attrs["_notizen_bgcolor"] = str(argb_to_signed(note.bg_color))
-    if note.fg_color not in (None, 0):
-        attrs["_notizen_fgcolor"] = str(argb_to_signed(note.fg_color))
-    if note.sticky is not None:
-        for key, value in note.sticky.to_attrs().items():
-            attrs[f"_notizen_sticky_{key}"] = value
-    element = ET.Element("outline", attrs)
-    for child in note.children:
-        element.append(_note_to_opml_outline(child, include_rtf=include_rtf))
-    return element
-
-
-def _opml_outline_to_note(element: ET.Element) -> Note:
-    title = element.attrib.get("text") or element.attrib.get("title") or "..."
-    rtf = ""
-    encoded = element.attrib.get("_notizen_rtf_b64")
-    if encoded:
-        try:
-            rtf = base64.b64decode(encoded.encode("ascii"), validate=True).decode("utf-8")
-        except Exception:
-            rtf = ""
-    if not rtf:
-        plain = element.attrib.get("_notizen_text") or element.attrib.get("description") or element.attrib.get("_note") or ""
-        rtf = text_to_rtf(plain)
-    sticky_attrs = {
-        key.removeprefix("_notizen_sticky_"): value
-        for key, value in element.attrib.items()
-        if key.startswith("_notizen_sticky_")
-    }
-    note = Note(
-        title=title,
-        rtf=rtf,
-        expanded=_parse_bool(element.attrib.get("_notizen_expanded"), True),
-        bg_color=_parse_int(element.attrib.get("_notizen_bgcolor")),
-        fg_color=_parse_int(element.attrib.get("_notizen_fgcolor")),
-        sticky=StickyWindow.from_attrs(sticky_attrs),
-    )
-    for child in list(element):
-        if child.tag == "outline":
-            note.add_child(_opml_outline_to_note(child))
-    return note
-
-
 def note_to_dict(note: Note) -> dict[str, object]:
     payload: dict[str, object] = {
         "title": note.title,
@@ -801,6 +735,97 @@ def append_current_date_into_note(note: Note) -> Note:
 
 def append_bullet_into_note(note: Note) -> Note:
     return append_text_into_note(note, "\n•   ")
+
+
+def insert_text_into_note(note: Note, text: str, at: int) -> Note:
+    """Insert plain text at a RichTextBox-style character offset.
+
+    Offsets refer to the note's plain text after best-effort RTF conversion.  The
+    result is intentionally rewritten as simple RTF because Slint's editor has no
+    RichTextBox selection object.
+    """
+    note.rtf = replace_rtf_text_range(note.rtf, at, 0, text)
+    return note
+
+
+def replace_note_text_range(
+    note: Note,
+    start: int,
+    length: int | None,
+    replacement: str,
+    *,
+    end: int | None = None,
+) -> Note:
+    note.rtf = replace_rtf_text_range(note.rtf, start, length, replacement, end=end)
+    return note
+
+
+def delete_note_text_range(note: Note, start: int, length: int | None, *, end: int | None = None) -> Note:
+    return replace_note_text_range(note, start, length, "", end=end)
+
+
+def style_note_text_range(
+    note: Note,
+    start: int,
+    length: int | None,
+    *,
+    end: int | None = None,
+    style: str | None = None,
+    font_family: str | None = None,
+    font_size_half_points: int | None = None,
+    fg_color: int | None = None,
+    bg_color: int | None = None,
+) -> Note:
+    """Apply a toolbar-like style to a selected plain-text range."""
+    bold = italic = underline = strike = None
+    style_key = (style or "").strip().lower()
+    if style_key:
+        styles = {
+            "bold": dict(bold=True, italic=None, underline=None, strike=None),
+            "b": dict(bold=True, italic=None, underline=None, strike=None),
+            "italic": dict(bold=None, italic=True, underline=None, strike=None),
+            "i": dict(bold=None, italic=True, underline=None, strike=None),
+            "underline": dict(bold=None, italic=None, underline=True, strike=None),
+            "u": dict(bold=None, italic=None, underline=True, strike=None),
+            "strike": dict(bold=None, italic=None, underline=None, strike=True),
+            "strikeout": dict(bold=None, italic=None, underline=None, strike=True),
+            "s": dict(bold=None, italic=None, underline=None, strike=True),
+            "regular": dict(bold=False, italic=False, underline=False, strike=False),
+            "normal": dict(bold=False, italic=False, underline=False, strike=False),
+        }
+        if style_key not in styles:
+            raise ValueError(f"Unbekannter Stil: {style}")
+        selected = styles[style_key]
+        bold = selected["bold"]
+        italic = selected["italic"]
+        underline = selected["underline"]
+        strike = selected["strike"]
+    note.rtf = style_rtf_text_range(
+        note.rtf,
+        start,
+        length,
+        end=end,
+        font_family=font_family,
+        font_size_half_points=font_size_half_points,
+        bold=bold,
+        italic=italic,
+        underline=underline,
+        strike=strike,
+        fg_color=fg_color,
+        bg_color=bg_color,
+    )
+    return note
+
+
+def insert_current_date_into_note(note: Note, at: int) -> Note:
+    from datetime import datetime
+
+    stamp = datetime.now().strftime(" %d.%m.%Y %H:%M ")
+    return insert_text_into_note(note, stamp, at)
+
+
+def insert_bullet_into_note(note: Note, at: int) -> Note:
+    return insert_text_into_note(note, "\n•   ", at)
 
 
 def insert_image_into_note(note: Note, image_path: str | Path, *, width_twips: int | None = None, height_twips: int | None = None) -> Note:

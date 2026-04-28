@@ -12,11 +12,13 @@ import unittest
 from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
 from notizen_py_slint.feedback import feedback_gzip_payload, read_feedback_gzip
-from notizen_py_slint.fonts import font_name_from_path, format_font_list, list_system_fonts
 from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
+from notizen_py_slint.context_menus import context_actions_payload, format_context_actions, sticky_opacity_payload
+from notizen_py_slint.clipboard import clipboard_info, entry_from_clipboard_text, note_to_clipboard_text, read_clipboard_file, write_clipboard_file
 from notizen_py_slint.legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table
+from notizen_py_slint.legacy_sticky import legacy_opacity_choices, opacity_from_legacy_choice
 from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config
 from notizen_py_slint.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from notizen_py_slint.notify import notify
@@ -24,7 +26,7 @@ from notizen_py_slint.shortcuts import shortcut_manifest
 from notizen_py_slint.sticky_runtime import sticky_window_specs
 from notizen_py_slint.remote import parse_ftp_url
 from notizen_py_slint.translations import LEGACY_KEYS, normalize_language, translate, translation_table
-from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
+from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, normalize_text_range, replace_rtf_text_range, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, style_rtf_text_range, text_to_rtf
 from notizen_py_slint.storage import (
     autosize_sticky,
     change_note_font_size,
@@ -32,23 +34,23 @@ from notizen_py_slint.storage import (
     export_document_images,
     document_to_xml_bytes,
     export_html,
+    export_legacy_text,
     export_json,
-    export_opml,
-    export_alx,
     export_markdown,
     export_sticky_html,
+    export_unity_rtf,
     load_document,
     load_document_from_bytes,
     save_document,
     save_document_to_bytes,
-    subtree_document,
-    outline_opml,
     import_json_into_document,
-    import_opml_into_document,
     insert_image_into_note,
+    insert_text_into_note,
     append_bullet_into_note,
     apply_toolbar_style_to_note,
+    delete_note_text_range,
     set_note_font_size,
+    style_note_text_range,
     list_backups,
     read_raw_xml,
     restore_backup,
@@ -80,6 +82,22 @@ class RtfTests(unittest.TestCase):
     def test_plain_text_roundtrip(self) -> None:
         text = "Hallo Welt\nZweite Zeile — Umlaut ä"
         self.assertEqual(rtf_to_text(text_to_rtf(text)), text)
+
+    def test_plain_text_range_helpers(self) -> None:
+        text = "Hallo Welt"
+        self.assertEqual(normalize_text_range(text, -3, 99).as_dict(), {"start": 0, "end": 10, "length": 10})
+        replaced = replace_rtf_text_range(text_to_rtf(text, font_family="Arial", font_size_half_points=20), 6, 4, "Mars")
+        self.assertEqual(rtf_to_text(replaced), "Hallo Mars")
+        style = detect_rtf_style(replaced)
+        self.assertEqual(style.font_family, "Arial")
+        self.assertEqual(style.font_size_half_points, 20)
+
+    def test_style_rtf_text_range_formats_selected_text(self) -> None:
+        styled = style_rtf_text_range(text_to_rtf("Hallo Welt"), 6, 4, bold=True, font_size_half_points=28)
+        self.assertEqual(rtf_to_text(styled), "Hallo Welt")
+        self.assertIn(r"\b", styled)
+        self.assertIn(r"\fs28", styled)
+        self.assertIn("Welt", styled)
 
     def test_rtf_detection(self) -> None:
         self.assertTrue(is_rtf(text_to_rtf("x")))
@@ -240,6 +258,26 @@ class StorageTests(unittest.TestCase):
         self.assertFalse(style.bold)
         self.assertEqual(rtf_to_text(note.rtf), "Toolbar")
 
+    def test_note_range_helpers(self) -> None:
+        note = Note("Root", text_to_rtf("Hallo Welt", font_family="Arial", font_size_half_points=20))
+        insert_text_into_note(note, "schöne ", 6)
+        self.assertEqual(note.text, "Hallo schöne Welt")
+        delete_note_text_range(note, 6, 7)
+        self.assertEqual(note.text, "Hallo Welt")
+        style_note_text_range(note, 6, 4, style="bold", font_size_half_points=24)
+        self.assertEqual(note.text, "Hallo Welt")
+        self.assertIn(r"\b", note.rtf)
+        self.assertIn(r"\fs24", note.rtf)
+
+    def test_saved_xml_has_single_root_note(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Text")), selected_id=None)
+        doc.root.add_child(Note("Kind", text_to_rtf("Mehr")))
+        xml = document_to_xml_bytes(doc).decode("utf-16")
+        self.assertEqual(xml.count("<Notiz"), 2)
+        loaded = load_document_from_bytes(save_document_to_bytes(doc), source="memory")
+        self.assertEqual(sum(1 for _ in loaded.iter_notes()), 2)
+        self.assertEqual([child.title for child in loaded.root.children], ["Kind"])
+
     def test_plain_xml_load_and_save(self) -> None:
         doc = NoteDocument(root=Note("Root", text_to_rtf("XML Text")), selected_id=None)
         with tempfile.TemporaryDirectory() as tmp:
@@ -353,51 +391,8 @@ class StorageTests(unittest.TestCase):
         self.assertIn("position:absolute", html)
         self.assertIn("#FFFF99", html)
 
-    def test_subtree_export_and_opml_roundtrip(self) -> None:
-        root = Note("Root", text_to_rtf("Root Text"), expanded=True)
-        child = root.add_child(Note("Kind", text_to_rtf("Kind Text"), expanded=False, bg_color=0xFFFFFFE0))
-        child.add_child(Note("Enkel", text_to_rtf("Tiefe")))
-        doc = NoteDocument(root=root, selected_id=child.note_id)
-        with tempfile.TemporaryDirectory() as tmp:
-            alx = Path(tmp) / "kind.alx"
-            opml = Path(tmp) / "kind.opml"
-            export_alx(doc, alx, start=child)
-            exported = load_document(alx)
-            self.assertEqual(exported.root.title, "Kind")
-            self.assertEqual(exported.root.children[0].title, "Enkel")
-
-            export_opml(doc, opml, start=child)
-            text = opml.read_text(encoding="utf-8")
-            self.assertIn("<opml", text)
-            self.assertIn("_notizen_rtf_b64", text)
-
-            imported_doc = NoteDocument(root=Note("Neu", text_to_rtf("")))
-            imported = import_opml_into_document(imported_doc, opml, target=imported_doc.root, where="child")
-            self.assertEqual(imported.title, "Kind")
-            self.assertEqual(imported.text, "Kind Text")
-            self.assertEqual(imported.children[0].title, "Enkel")
-
-    def test_outline_opml_plain_without_rtf_payload(self) -> None:
-        doc = NoteDocument(root=Note("Root", text_to_rtf("Plain")))
-        xml = outline_opml(doc, include_rtf=False)
-        self.assertIn("Plain", xml)
-        self.assertNotIn("_notizen_rtf_b64", xml)
-
-
 
 class ModelOperationTests(unittest.TestCase):
-    def test_search_occurrences_include_fields_positions_and_snippets(self) -> None:
-        root = Note("Root Test", text_to_rtf("test eins test zwei"))
-        root.add_child(Note("Kind", text_to_rtf("kein Treffer")))
-        doc = NoteDocument(root=root)
-        hits = doc.find_occurrences("test", case_sensitive=False, context=5)
-        self.assertEqual(len(hits), 3)
-        self.assertEqual(hits[0].field, "title")
-        self.assertEqual(hits[0].start, 5)
-        text_hits = [hit for hit in hits if hit.field == "text"]
-        self.assertEqual([hit.start for hit in text_hits], [0, 10])
-        self.assertIn("eins", text_hits[0].snippet)
-
     def _doc(self) -> NoteDocument:
         root = Note("Root", text_to_rtf("root"))
         a = root.add_child(Note("A", text_to_rtf("eins")))
@@ -429,6 +424,16 @@ class ModelOperationTests(unittest.TestCase):
         stats = doc.stats()
         self.assertEqual(stats.notes, 4)
         self.assertEqual(stats.max_depth, 2)
+
+    def test_search_occurrences_match_old_selection_start(self) -> None:
+        root = Note("Root", text_to_rtf("Alpha Beta Alpha"))
+        root.add_child(Note("Alpha Child", text_to_rtf("child alpha")))
+        doc = NoteDocument(root=root)
+        hits = doc.find_occurrences("Alpha", case_sensitive=False, context=5)
+        self.assertEqual(hits[0].field, "text")
+        self.assertEqual((hits[0].start, hits[0].end), (0, 5))
+        self.assertTrue(any(hit.field == "title" and hit.note.title == "Alpha Child" for hit in hits))
+        self.assertEqual(doc.find_occurrences("Alpha", limit=1)[0].as_dict()["length"], 5)
 
     def test_path_selection_disambiguates_duplicate_titles(self) -> None:
         root = Note("Root", text_to_rtf(""))
@@ -601,6 +606,18 @@ class ConfigMigrationTests(unittest.TestCase):
 
 
 
+class LegacyContextMenuTests(unittest.TestCase):
+    def test_context_menu_manifest_matches_old_winforms_menus(self) -> None:
+        tree = context_actions_payload("tree", "en")
+        self.assertEqual(len(tree), 11)
+        self.assertIn("rename", {item["action"] for item in tree})
+        content_text = format_context_actions("content", "de")
+        self.assertIn("Bild", content_text)
+        opacity = sticky_opacity_payload()
+        self.assertEqual(opacity[0]["label"], "90 %")
+        self.assertEqual(opacity[0]["opacity"], 0.1)
+
+
 class TranslationAndShortcutTests(unittest.TestCase):
     def test_legacy_translation_table_is_available(self) -> None:
         self.assertEqual(len(LEGACY_KEYS), 118)
@@ -626,6 +643,10 @@ class TranslationAndShortcutTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as out:
             self.assertEqual(cli_main(["shortcuts", "--json"]), 0)
         self.assertIn("Ctrl+S", out.getvalue())
+        with redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cli_main(["context-menus", "--menu", "tree", "--include-opacity"]), 0)
+        self.assertIn("Desktop", out.getvalue())
+        self.assertIn("sticky-opacity", out.getvalue())
 
     def test_about_and_feedback_draft(self) -> None:
         payload = feedback_gzip_payload("Das ist ein längerer Testtext")
@@ -638,17 +659,6 @@ class TranslationAndShortcutTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()) as out:
             self.assertEqual(cli_main(["about", "--language", "de"]), 0)
         self.assertIn("Desktop", out.getvalue())
-
-
-class FontTests(unittest.TestCase):
-    def test_font_name_from_path_normalizes_common_suffixes(self) -> None:
-        self.assertEqual(font_name_from_path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"), "DejaVuSans")
-        self.assertEqual(font_name_from_path("Some_Font-Regular.otf"), "Some Font")
-
-    def test_format_font_list_empty_is_stable(self) -> None:
-        self.assertEqual(format_font_list([]), "keine Schriften gefunden")
-        self.assertEqual(list_system_fonts(limit=0), [])
-
 
 
 class CliIntegrationTests(unittest.TestCase):
@@ -720,6 +730,27 @@ class CliIntegrationTests(unittest.TestCase):
                     os.environ["XDG_CONFIG_HOME"] = old_home
 
 
+    def test_cli_insert_delete_and_style_range(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Hallo Welt")))
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            inserted = Path(tmp) / "inserted.alx"
+            deleted = Path(tmp) / "deleted.alx"
+            styled = Path(tmp) / "styled.alx"
+            save_document(doc, path=source, backup_count=0)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["insert-text", str(source), str(inserted), "--title", "Root", "--at", "6", "--text", "schöne "]), 0)
+            self.assertEqual(load_document(inserted).root.text, "Hallo schöne Welt")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["delete-range", str(inserted), str(deleted), "--title", "Root", "--start", "6", "--length", "7"]), 0)
+            self.assertEqual(load_document(deleted).root.text, "Hallo Welt")
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(cli_main(["style-range", str(deleted), str(styled), "--title", "Root", "--start", "6", "--length", "4", "--style", "bold", "--font-size", "24", "--show"]), 0)
+            loaded = load_document(styled)
+            self.assertEqual(loaded.root.text, "Hallo Welt")
+            self.assertIn(r"\b", loaded.root.rtf)
+            self.assertIn('"plain_text": "Hallo Welt"', err.getvalue())
+
     def test_cli_config_show_outputs_json(self) -> None:
         with redirect_stdout(io.StringIO()) as buf:
             code = cli_main(["config-show"])
@@ -753,6 +784,9 @@ class CliIntegrationTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 self.assertEqual(cli_main(["search", str(source), "Kind", "--json"]), 0)
             self.assertIn('"title": "Kind"', out.getvalue())
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["search", str(source), "Kind", "--occurrences", "--json"]), 0)
+            self.assertIn('"start"', out.getvalue())
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 self.assertEqual(cli_main(["combine-subtree", str(source), str(combined), "--title", "Kind", "--new-title", "Einheit"]), 0)
             self.assertEqual(load_document(combined).root.children[-1].title, "Einheit")
@@ -792,45 +826,6 @@ class CliIntegrationTests(unittest.TestCase):
             self.assertEqual(payload[0]["title"], "Root")
             self.assertIn("bg_css", payload[0])
 
-    def test_cli_v10_search_opml_expand_and_font_list(self) -> None:
-        root = Note("Root", text_to_rtf("Root Text"), expanded=True)
-        child = root.add_child(Note("Kind", text_to_rtf("Kind Text Kind"), expanded=True))
-        doc = NoteDocument(root=root, selected_id=child.note_id)
-        with tempfile.TemporaryDirectory() as tmp:
-            source = Path(tmp) / "source.alx"
-            subtree = Path(tmp) / "kind.alx"
-            opml = Path(tmp) / "kind.opml"
-            imported = Path(tmp) / "imported.alx"
-            collapsed = Path(tmp) / "collapsed.alx"
-            save_document(doc, path=source, backup_count=0)
-
-            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
-                self.assertEqual(cli_main(["search-occurrences", str(source), "Kind", "--json"]), 0)
-            hits = json.loads(out.getvalue())
-            self.assertGreaterEqual(len(hits), 3)
-            self.assertEqual(hits[0]["field"], "title")
-            self.assertIn("start", hits[0])
-
-            with redirect_stdout(io.StringIO()):
-                self.assertEqual(cli_main(["export-alx", str(source), str(subtree), "--title", "Kind"]), 0)
-            self.assertEqual(load_document(subtree).root.title, "Kind")
-
-            with redirect_stdout(io.StringIO()):
-                self.assertEqual(cli_main(["export-opml", str(source), str(opml), "--title", "Kind"]), 0)
-            self.assertIn("_notizen_rtf_b64", opml.read_text(encoding="utf-8"))
-
-            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                self.assertEqual(cli_main(["import-opml", str(source), str(imported), "--title", "Root", "--input", str(opml)]), 0)
-            self.assertEqual(load_document(imported).root.children[-1].title, "Kind")
-
-            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                self.assertEqual(cli_main(["expand-state", str(imported), str(collapsed), "--title", "Kind", "--collapsed"]), 0)
-            self.assertFalse(load_document(collapsed).first_note_by_title_or_path("Kind").expanded)  # type: ignore[union-attr]
-
-            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
-                self.assertEqual(cli_main(["font-list", "--limit", "0"]), 0)
-            self.assertIn("keine Schriften gefunden", out.getvalue())
-
     def test_cli_alarm_add_next_remove(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             old_home = os.environ.get("XDG_CONFIG_HOME")
@@ -867,6 +862,102 @@ class CliIntegrationTests(unittest.TestCase):
                     os.environ["XDG_CONFIG_HOME"] = old_home
 
 
+    def test_clipboard_roundtrip_and_relative_tree_operations(self) -> None:
+        root = Note("Root", text_to_rtf("Root Text"))
+        a = root.add_child(Note("A", text_to_rtf("Alpha")))
+        a.add_child(Note("A1", text_to_rtf("Alpha Kind")))
+        b = root.add_child(Note("B", text_to_rtf("Beta")))
+        doc = NoteDocument(root=root)
+
+        payload = note_to_clipboard_text(a, source_path="source.alx")
+        entry = entry_from_clipboard_text(payload)
+        self.assertEqual(entry.note.title, "A")
+        self.assertEqual(entry.note.children[0].title, "A1")
+
+        doc.select(a)
+        self.assertTrue(doc.move_selected_relative_to(b, where="after"))
+        self.assertEqual([child.title for child in doc.root.children], ["B", "A"])
+        created = doc.copy_selected_relative_to(b, where="before")
+        self.assertIsNotNone(created)
+        self.assertEqual([child.title for child in doc.root.children], ["A", "B", "A"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = Path(tmp) / "clip.json"
+            write_clipboard_file(a, clip, source_path="source.alx")
+            read_back = read_clipboard_file(clip)
+            self.assertEqual(read_back.note.title, "A")
+            info = clipboard_info(clip)
+            self.assertEqual(info["title"], "A")
+            self.assertEqual(info["nodes"], 2)
+
+    def test_legacy_exports_and_sticky_opacity_mapping(self) -> None:
+        root = Note("Root", text_to_rtf("äöü"))
+        root.add_child(Note("Kind", text_to_rtf("zweite Zeile")))
+        doc = NoteDocument(root=root)
+        choices = legacy_opacity_choices()
+        self.assertEqual(choices[0].label, "90 %")
+        self.assertAlmostEqual(opacity_from_legacy_choice("90%"), 0.1)
+        self.assertAlmostEqual(opacity_from_legacy_choice("0%"), 1.0)
+        self.assertAlmostEqual(opacity_from_legacy_choice("9"), 1.0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            txt = Path(tmp) / "legacy.txt"
+            rtf = Path(tmp) / "unity.rtf"
+            export_legacy_text(doc, txt, numbered=True, encoding="cp1252")
+            raw = txt.read_bytes()
+            self.assertIn(b"\r\n", raw)
+            self.assertIn("äöü".encode("cp1252"), raw)
+            export_unity_rtf(doc, rtf, numbered=True)
+            unity = rtf.read_text(encoding="utf-8")
+            self.assertTrue(is_rtf(unity))
+            self.assertIn("Root", rtf_to_text(unity))
+
+    def test_cli_clipboard_relative_exports_and_sticky_opacity(self) -> None:
+        root = Note("Root", text_to_rtf("Root Text"))
+        root.add_child(Note("A", text_to_rtf("Alpha")))
+        root.add_child(Note("B", text_to_rtf("Beta")))
+        doc = NoteDocument(root=root)
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            moved = Path(tmp) / "moved.alx"
+            copied = Path(tmp) / "copied.alx"
+            pasted = Path(tmp) / "pasted.alx"
+            sticky_file = Path(tmp) / "sticky.alx"
+            legacy_txt = Path(tmp) / "legacy.txt"
+            unity_rtf = Path(tmp) / "unity.rtf"
+            clip = Path(tmp) / "clip.json"
+            save_document(doc, path=source, backup_count=0)
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["move-relative", str(source), str(moved), "--title", "A", "--target-title", "B", "--where", "after"]), 0)
+            self.assertEqual([child.title for child in load_document(moved).root.children], ["B", "A"])
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["copy-node", str(source), "--title", "A", "--clipboard", str(clip)]), 0)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["paste-node", str(source), str(pasted), "--target-title", "B", "--where", "before", "--clipboard", str(clip)]), 0)
+            self.assertEqual([child.title for child in load_document(pasted).root.children], ["A", "A", "B"])
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(cli_main(["clipboard-show", "--clipboard", str(clip), "--json"]), 0)
+            self.assertIn('"title": "A"', out.getvalue())
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["copy-relative", str(source), str(copied), "--title", "A", "--target-title", "B", "--where", "after"]), 0)
+            self.assertEqual([child.title for child in load_document(copied).root.children], ["A", "B", "A"])
+
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["export-legacy-txt", str(source), str(legacy_txt)]), 0)
+                self.assertEqual(cli_main(["export-unity-rtf", str(source), str(unity_rtf), "--plain"]), 0)
+            self.assertIn(b"\r\n", legacy_txt.read_bytes())
+            self.assertIn("Root", rtf_to_text(unity_rtf.read_text(encoding="utf-8")))
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["sticky", str(source), str(sticky_file), "--title", "Root", "--show", "--opacity-choice", "90%"]), 0)
+            self.assertAlmostEqual(load_document(sticky_file).root.sticky.opacity, 0.1)  # type: ignore[union-attr]
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(cli_main(["sticky-opacity", "--json"]), 0)
+            self.assertIn('"label": "90 %"', out.getvalue())
+
 
 
 class AppCompatTests(unittest.TestCase):
@@ -884,8 +975,9 @@ class AppCompatTests(unittest.TestCase):
         NotizenSlintApp.show_shortcuts(app)
         self.assertIn("Tastenkürzel", app.window.status_text)
         self.assertIn("Ctrl+S", app.window.meta_text)
-        NotizenSlintApp.show_fonts(app)
-        self.assertTrue(app.window.meta_text)
+        NotizenSlintApp.show_context_menus(app)
+        self.assertIn("Kontext", app.window.status_text)
+        self.assertIn("content", app.window.meta_text)
 
     def test_legacy_argv_normalization(self) -> None:
         self.assertEqual(_normalize_legacy_argv(["/min", "datei.alx"]), ["--minimized", "datei.alx"])

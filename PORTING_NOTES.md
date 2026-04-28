@@ -46,18 +46,8 @@ Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in 
 - alte Tastaturbelegung aus `Notizen.tastendruck` als Manifest in `shortcuts.py` portiert, inklusive Ctrl+S/O/N/Q, Ctrl+F, Ctrl+Plus/Minus und TreeView-Tasten
 - weitere Felder des alten Einstellungsdialogs sind per `config-set` skriptbar: Sprache, Backup/Autosave, Autostart, Fensterposition, Taskbar-/Sticky-Rahmen-Optionen und zuletzt geöffnete Dateien
 - Feedback aus `info_help_and_feedback.vb` wird als lokales GZip-/UTF-16LE-Draftformat erzeugt; der alte harte FTP-Upload wurde bewusst nicht automatisiert
-
-## Runde v10 / 0.10.0
-
-Weiter portiert beziehungsweise ergänzt:
-
-- Teilbäume können jetzt als eigenständige `.alx`/`.xml`/FTP-Datei exportiert werden. Das ist näher an alten Speichern-/Zusammenfassen-Workflows als nur TXT/RTF/JSON.
-- OPML-Export und OPML-Import wurden als interoperables Outline-Format ergänzt. Normale OPML-Reader sehen die Baumstruktur; der Port erhält optional RTF, Plain-Text, Farben, Sticky-Daten und Expand-Zustand in privaten `_notizen_*`-Attributen.
-- Die Suchergebnislogik wurde von „Notiz enthält Treffer“ auf einzelne Treffer mit Feld, Start/Ende, Länge und Snippet erweitert. CLI: `search-occurrences`; UI: `Alle` zeigt nun Einzel-Treffer statt nur betroffener Notizen.
-- Der gespeicherte Auf-/Zu-Zustand (`isexpanded`) ist jetzt per CLI gezielt setzbar (`expand-state`).
-- Die alte RichTextBox-Schriftlisten-Idee wurde portabel als `fonts.py` umgesetzt: fontconfig, falls vorhanden, plus Dateisystem-Fallback ohne externe Python-Pakete. CLI: `font-list`; UI: `Fonts`.
-- Die Slint-Datei erhielt zusätzliche Export-Buttons `OPML` und `Teil ALX` sowie den Fonts-Hook.
-
+- Auswahl-/Kontextmenülogik aus `kontext_inhalt.vb` und den RichTextBox-Toolbar-Handlern wird weiter nachgezogen: Text kann an einer Klartextposition eingefügt, ein Klartextbereich gelöscht und ein Klartextbereich lokal als RTF-Gruppe formatiert werden
+- `document_to_xml_bytes` schreibt wieder genau einen Top-Level-Root-Knoten; zusätzliche Top-Level-Notizen werden nur noch defensiv beim Laden malformed/alter Dateien zusammengeführt
 
 ## Dateiformat
 
@@ -144,3 +134,14 @@ Nicht sinnvoll 1:1 übernommen wurden:
 - automatischer Feedback-Upload zum alten FTP-Ziel
 
 Diese Punkte sind entweder stark Windows-/WinForms-spezifisch oder passen nicht sauber zu Python/Slint. Die zugrunde liegenden Daten werden aber so weit wie möglich erhalten.
+
+## v11: TreeView-Zwischenablage, relative Baumoperationen und Legacy-Exporte
+
+Der nächste Portierungsschritt zieht weitere WinForms-TreeView-Aktionen nach. Ganze Teilbäume können jetzt in eine portable JSON-Zwischenablage geschrieben, als Text angezeigt, optional in die System-Zwischenablage gelegt und relativ zu einem Zielknoten wieder eingefügt werden. Das bildet die alten `Ctrl+C`/`Ctrl+X`/`Ctrl+V`- und `Shift+Insert`/`Shift+Delete`-Arbeitsweisen ohne native TreeView-Abhängigkeit ab.
+
+Zusätzlich gibt es `move-relative` und `copy-relative` für die alten Kontext-/Drag-Zielpositionen Kind, davor und danach. Ungültige Strukturen werden verhindert: die Wurzel wird nicht verschoben, ein Knoten kann nicht in seinen eigenen Unterbaum verschoben werden und Geschwisterpositionen um die Wurzel herum sind nicht erlaubt.
+
+Der alte Exportpfad aus `Notizen.vb` wurde weiter angenähert: `export-legacy-txt` normalisiert auf CRLF und schreibt mit wählbarem Encoding, standardmäßig `cp1252`; `export-unity-rtf` erzeugt einen RTF-Outline-Export im Geist der alten Einheit/Zusammenfassen-Funktion. Für Desktop-Notizen ist außerdem die alte Transparenzauswahl `90 %` bis `0 %` als `sticky-opacity` beziehungsweise `--opacity-choice` portiert.
+
+Ergänzt wurde außerdem die alte Suchergebnisform aus `suche.vb`/`suchergebnisse.vb`: `find_occurrences` und `search --occurrences` liefern jetzt genaue sichtbare Textpositionen für Titel und Inhalt, also den funktionalen Ersatz für `SelectionStart`. Die WinForms-Kontextmenüs aus `kontext_inhalt.vb`, `Baum_Kontext_.vb`, `desknote_kontext.vb` und `desknote_kontext_opacy.vb` liegen als `context_menus.py` vor und sind per `notizen-alx context-menus` sowie im Slint-Infofeld abrufbar.
+

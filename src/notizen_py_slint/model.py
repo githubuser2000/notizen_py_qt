@@ -232,16 +232,28 @@ class SearchDetail:
 
 @dataclass(slots=True)
 class SearchOccurrence:
+    """Exact search hit with the old RichTextBox SelectionStart semantics."""
+
     note: Note
     field: str
     start: int
     end: int
-    occurrence_index: int
     snippet: str = ""
 
     @property
     def length(self) -> int:
         return max(0, self.end - self.start)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "path": self.note.path_titles(),
+            "title": self.note.title,
+            "field": self.field,
+            "start": self.start,
+            "end": self.end,
+            "length": self.length,
+            "snippet": self.snippet,
+        }
 
 
 @dataclass(slots=True)
@@ -508,6 +520,54 @@ class NoteDocument:
         self.modified = True
         return True
 
+    def move_selected_relative_to(self, target: Note, *, where: str = "child") -> bool:
+        """Move the selected note as child/before/after a target note.
+
+        This mirrors the old TreeView cut/paste behavior while keeping invalid
+        structures out: the root cannot be moved, a node cannot be moved into
+        itself or one of its descendants, and there is no sibling position around
+        the root node.
+        """
+        note = self.selected_note
+        if where not in {"child", "before", "after"}:
+            raise ValueError("where muss child, before oder after sein")
+        if note is self.root or target is note or note.is_ancestor_of(target):
+            return False
+        if where in {"before", "after"} and target.parent is None:
+            return False
+        old_parent, _ = note.remove_from_parent()
+        if old_parent is None:
+            return False
+        if where == "child":
+            target.add_child(note)
+            target.expanded = True
+        elif where == "before":
+            target.insert_before(note)
+        else:
+            target.insert_after(note)
+        self.selected_id = note.note_id
+        self.modified = True
+        return True
+
+    def copy_selected_relative_to(self, target: Note, *, where: str = "child") -> Note | None:
+        """Clone the selected note as child/before/after a target note."""
+        source = self.selected_note
+        if where not in {"child", "before", "after"}:
+            raise ValueError("where muss child, before oder after sein")
+        if where in {"before", "after"} and target.parent is None:
+            return None
+        clone = source.clone_deep()
+        if where == "child":
+            target.add_child(clone)
+            target.expanded = True
+        elif where == "before":
+            target.insert_before(clone)
+        else:
+            target.insert_after(clone)
+        self.selected_id = clone.note_id
+        self.modified = True
+        return clone
+
     def toggle_selected_expanded(self) -> None:
         note = self.selected_note
         if note.children:
@@ -599,37 +659,36 @@ class NoteDocument:
         whole_words: bool = False,
         context: int = 40,
         start: Note | None = None,
-        max_hits: int | None = None,
+        fields: Iterable[str] = ("title", "text"),
+        limit: int | None = None,
     ) -> list[SearchOccurrence]:
-        """Return every individual search result with field and character range.
+        """Return every title/text hit with a visible plain-text position.
 
-        The old WinForms search dialog stored a ``suchergebnisse`` object for
-        each match: selected tree node plus ``SelectionStart`` in the text box.
-        This method keeps that information in a pure data form so CLI and Slint
-        code can count, export or jump through exact hits instead of only
-        reporting matching notes. Title hits are included as ``field="title"``;
-        body hits keep the old text-selection idea as ``field="text"``.
+        The old ``suche.vb`` stored search results as ``suchergebnisse`` with a
+        ``TreeNode`` and a RichTextBox ``SelectionStart``.  Slint does not expose
+        the same RichTextBox object, so the port keeps the important part: exact
+        positions in the visible title/body text for jumping, range styling and
+        JSON result exports.
         """
         pattern = _make_pattern(needle, case_sensitive=case_sensitive, whole_words=whole_words)
         if pattern is None:
             return []
+        wanted = {field.strip().lower() for field in fields if field}
+        if not wanted:
+            wanted = {"title", "text"}
+        max_hits = None if limit is None or limit < 1 else int(limit)
         hits: list[SearchOccurrence] = []
-        per_note_counter: dict[int, int] = {}
         for note in self.iter_subtree(start):
-            for field_name, value in (("title", note.title or ""), ("text", note.text or "")):
-                for match in pattern.finditer(value):
-                    index = per_note_counter.get(note.note_id, 0) + 1
-                    per_note_counter[note.note_id] = index
-                    hits.append(
-                        SearchOccurrence(
-                            note=note,
-                            field=field_name,
-                            start=match.start(),
-                            end=match.end(),
-                            occurrence_index=index,
-                            snippet=_make_snippet(value, match.start(), match.end(), context=context),
-                        )
-                    )
+            if "title" in wanted:
+                title = note.title or ""
+                for match in pattern.finditer(title):
+                    hits.append(SearchOccurrence(note, "title", match.start(), match.end(), _make_snippet(title, match.start(), match.end(), context=context)))
+                    if max_hits is not None and len(hits) >= max_hits:
+                        return hits
+            if "text" in wanted or "body" in wanted or "inhalt" in wanted:
+                text = note.text or ""
+                for match in pattern.finditer(text):
+                    hits.append(SearchOccurrence(note, "text", match.start(), match.end(), _make_snippet(text, match.start(), match.end(), context=context)))
                     if max_hits is not None and len(hits) >= max_hits:
                         return hits
         return hits

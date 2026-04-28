@@ -8,9 +8,9 @@ from typing import Any
 from .autostart import sync_autostart
 from .alarm import AlarmRule, add_or_replace_alarm, load_alarms, next_alarm, parse_weekdays
 from .config import AppConfig, load_config, save_config
+from .context_menus import format_context_actions
 from .legacy_config import import_legacy_config
 from .legacy_colors import legacy_light_color
-from .fonts import list_system_fonts
 from .dialogs import ask_directory, ask_open_file, ask_password, ask_save_file, ask_text
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import RemoteFileError, is_remote_uri, load_uri, save_uri
@@ -27,7 +27,6 @@ from .storage import (
     export_document_images,
     export_html,
     export_json,
-    export_opml,
     export_markdown,
     export_note_rtf,
     export_sticky_html,
@@ -38,7 +37,6 @@ from .storage import (
     import_text_into_note,
     insert_image_into_note,
     list_backups,
-    subtree_document,
     save_document as write_document,
 )
 from .rtf import detect_rtf_style, restyle_rtf_as_plain
@@ -154,8 +152,6 @@ class NotizenSlintApp:
         self.window.export_html = self.export_html_file
         self.window.export_markdown = self.export_markdown_file
         self.window.export_json = self.export_json_file
-        self.window.export_opml = self.export_opml_file
-        self.window.export_subtree_alx = self.export_subtree_alx_file
         self.window.export_subtree_text = self.export_subtree_text_file
         self.window.export_subtree_rtf = self.export_subtree_rtf_file
         self.window.export_note_rtf = self.export_note_rtf_file
@@ -211,7 +207,7 @@ class NotizenSlintApp:
         self.window.show_backups = self.show_backups
         self.window.show_about = self.show_about
         self.window.show_shortcuts = self.show_shortcuts
-        self.window.show_fonts = self.show_fonts
+        self.window.show_context_menus = self.show_context_menus
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:
@@ -401,29 +397,6 @@ class NotizenSlintApp:
             self._set_status(f"JSON exportiert: {path}")
         except Exception as exc:  # noqa: BLE001
             self._set_status(f"JSON-Export fehlgeschlagen: {exc}")
-
-    def export_opml_file(self) -> None:
-        note = self.document.selected_note
-        path = ask_save_file("Ausgewählten Teilbaum als OPML exportieren", suggested=f"{_safe_filename(note.title)}.opml", suffix=".opml")
-        if path is None:
-            return
-        try:
-            export_opml(self.document, path, start=note)
-            self._set_status(f"OPML exportiert: {path}")
-        except Exception as exc:  # noqa: BLE001
-            self._set_status(f"OPML-Export fehlgeschlagen: {exc}")
-
-    def export_subtree_alx_file(self) -> None:
-        note = self.document.selected_note
-        path = ask_save_file("Ausgewählten Teilbaum als eigene ALX/XML-Datei exportieren", suggested=f"{_safe_filename(note.title)}.alx", suffix=".alx")
-        if path is None:
-            return
-        try:
-            exported = subtree_document(self.document, start=note, keep_password=False)
-            save_uri(exported, str(path), password=None, backup_count=0)
-            self._set_status(f"Teilbaum als Datei exportiert: {path}")
-        except Exception as exc:  # noqa: BLE001
-            self._set_status(f"Teilbaum-Datei-Export fehlgeschlagen: {exc}")
 
     def export_subtree_text_file(self) -> None:
         note = self.document.selected_note
@@ -692,17 +665,16 @@ class NotizenSlintApp:
 
     def search_all(self, needle: str) -> None:
         case_sensitive, whole_words, start = self._search_options()
-        hits = self.document.find_occurrences(str(needle), case_sensitive=case_sensitive, whole_words=whole_words, start=start, max_hits=250)
+        hits = self.document.find_all(str(needle), case_sensitive=case_sensitive, whole_words=whole_words, start=start)
         if not hits:
             self._set_status("Keine Treffer.")
             return
         self.document.select(hits[0].note)
         self._refresh_all()
-        sample = "; ".join(f"{hit.note.path_string()}:{hit.field}@{hit.start}" for hit in hits[:3])
+        sample = "; ".join(hit.note.path_string() for hit in hits[:3])
         more = " …" if len(hits) > 3 else ""
         scope = " im Teilbaum" if start is not None else ""
-        capped = " (auf 250 begrenzt)" if len(hits) >= 250 else ""
-        self._set_status(f"{len(hits)} Einzel-Treffer{scope}{capped}: {sample}{more}")
+        self._set_status(f"{len(hits)} Treffer{scope}: {sample}{more}")
 
     def replace_text(self, needle: str) -> None:
         needle_text = str(needle or "")
@@ -975,17 +947,15 @@ class NotizenSlintApp:
         self.window.meta_text = compact
         self._set_status(f"{len(lines)} alte Tastenkürzel manifestiert; vollständige Liste: notizen-alx shortcuts")
 
-    def show_fonts(self) -> None:
-        fonts = list_system_fonts(limit=12)
-        if not fonts:
-            self.window.meta_text = "Keine Systemschriften gefunden."
-            self._set_status("Schriftliste konnte keine installierten Fonts ermitteln.")
-            return
-        names = ", ".join(font.name for font in fonts[:8])
-        if len(names) > 260:
-            names = names[:257].rstrip() + "…"
-        self.window.meta_text = names
-        self._set_status(f"{len(fonts)} Schrift(en) angezeigt; vollständige Liste: notizen-alx font-list")
+
+    def show_context_menus(self) -> None:
+        text = format_context_actions(language=self.config.language or "de", include_opacity=True)
+        lines = text.splitlines()
+        compact = " | ".join(line.strip() for line in lines[:10])
+        if len(compact) > 280:
+            compact = compact[:277].rstrip() + "…"
+        self.window.meta_text = compact
+        self._set_status(f"{len(lines)} alte Kontextmenüzeilen manifestiert; vollständig: notizen-alx context-menus")
 
 
     # Alarm actions --------------------------------------------------------
