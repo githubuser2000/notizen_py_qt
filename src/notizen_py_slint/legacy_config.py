@@ -6,6 +6,7 @@ from pathlib import Path, PureWindowsPath
 import xml.etree.ElementTree as ET
 
 from .config import AppConfig, config_dir
+from .translations import normalize_language
 
 
 @dataclass(slots=True)
@@ -239,17 +240,6 @@ def _item(values: list[str], index: int) -> str:
 
 def _normalize_language(value: str) -> str:
     text = (value or "auto").strip().lower()
-    aliases = {
-        "deutsch": "de",
-        "german": "de",
-        "english": "en",
-        "englisch": "en",
-        "français": "fr",
-        "french": "fr",
-        "spanish": "es",
-        "español": "es",
-        "russian": "ru",
-        "chinese": "zh",
-        "auto": "auto",
-    }
-    return aliases.get(text, text[:2] if text else "auto")
+    if text == "auto":
+        return "auto"
+    return normalize_language(text)

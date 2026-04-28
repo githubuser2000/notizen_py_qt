@@ -30,6 +30,10 @@ Funktioniert im Port:
 - FTP/FTPS laden und speichern über `ftp://`/`ftps://`-URLs, inklusive `.netrc`-Fallback und migrierbarem Standardziel
 - Wecker-/Erinnerungsregeln mit einmaliger, täglicher, wöchentlicher, monatlicher und jährlicher Wiederholung
 - fällige Wecker prüfen beziehungsweise als dauernde CLI-Schleife beobachten, optional mit nativer Best-Effort-Desktop-Benachrichtigung über Plattformwerkzeuge
+- alte Sprachtexte aus `languages.vb` als Python-Tabelle mit CLI-Abfrage, About-Text und UI-Info-Hook
+- alte Tastenkürzel aus `Notizen.tastendruck` als dokumentiertes Manifest mit CLI-Ausgabe und UI-Kurzhinweis
+- allgemeine Konfigurationsschalter per `config-set`/`config-path`, damit Teile des alten Einstellungsdialogs auch ohne GUI skriptbar sind
+- Feedback-Dialog als lokaler GZip-/UTF-16-Draft kompatibel zum alten Payloadformat, aber ohne automatischen Upload zu alten Servern
 - erweiterte Kommandozeile ohne GUI als Fallback
 
 Bewusst vereinfacht oder nicht vollständig portiert:
@@ -37,7 +41,7 @@ Bewusst vereinfacht oder nicht vollständig portiert:
 - Slints `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der Raw-RTF-Modus erlaubt aber direkten Zugriff auf das gespeicherte RTF.
 - Sticky/Desktop-Notizen bleiben in der Slint-Hauptoberfläche Metadaten. Zusätzlich gibt es `sticky-run` als optionalen Python/Tk-Ersatz für kleine separate Fenster. In headless Umgebungen oder ohne Tk fällt das sauber mit einer lesbaren Meldung zurück.
 - Wecker-Benachrichtigungen sind bewusst best-effort: Linux nutzt `notify-send`, macOS `osascript`, Windows PowerShell/MessageBox. Wenn das jeweilige Werkzeug fehlt oder die Umgebung headless ist, läuft die CLI trotzdem weiter und gibt den Grund aus.
-- Trayicon, native Drag-and-drop-Mauslogik, Druckdialog und die alte mehrsprachige WinForms-Menülogik sind nicht 1:1 in der neuen UI enthalten. Autostart, HTML-Export und RTF-Bildzugriff sind portabel nachgebaut, aber nicht identisch mit WinForms.
+- Trayicon, native Drag-and-drop-Mauslogik und Druckdialog sind nicht 1:1 in der neuen UI enthalten. Die alten Sprachtexte sind als Daten/CLI-Hooks portiert, aber nicht als vollständige dynamische Menüumschaltung jeder Slint-Beschriftung. Autostart, HTML-Export und RTF-Bildzugriff sind portabel nachgebaut, aber nicht identisch mit WinForms.
 - Die alte Verschlüsselung ist absichtlich nur kompatibel, nicht sicher. Für echte Sicherheit die `.alx` zusätzlich mit einem modernen Werkzeug verschlüsseln.
 
 ## Installation
@@ -116,6 +120,15 @@ notizen-alx alarm-next
 notizen-alx alarm-due --now "2026-04-27 09:00" --grace-seconds 60 --notify --dry-run
 notizen-alx alarm-watch --poll-seconds 30
 notizen-alx alarm-remove --name "Review"
+notizen-alx config-path
+notizen-alx config-set --backup-count 9 --autosave-seconds 60 --language en --autorun --autorun-minimized
+notizen-alx config-set --recent /tmp/a.alx --recent /tmp/b.alx --window 50 60 1000 700
+notizen-alx lang-list
+notizen-alx lang-get Strip1_1 --language en
+notizen-alx lang-dump --language de
+notizen-alx shortcuts
+notizen-alx about --language de
+notizen-alx feedback-draft /tmp/feedback.txt.gz --text "Das ist ein lokaler Feedback-Entwurf"
 ```
 
 FTP/FTPS in der CLI:
@@ -137,7 +150,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 51 tests
+Ran 57 tests
 OK
 ```
 
@@ -157,6 +170,7 @@ Getestet wurden:
 - alte Konfigurationsmigration inklusive FTP-Feldern
 - Wecker-Wiederholungen, Wecker-Store, fällige Wecker, Benachrichtigungs-Dry-Run und CLI-Weckerpfade
 - CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
+- Sprach-/Übersetzungstabelle aus `languages.vb`, Tastenkürzelmanifest, `config-set`/`config-path`, About-Ausgabe und lokaler Feedback-Draft
 
 ## Projektstruktur
 
@@ -173,6 +187,9 @@ src/notizen_py_slint/
   notify.py           native Best-Effort-Benachrichtigungen ohne externe Pakete
   legacy_colors.py    alte Notizen.NET-Farbpalette und signed-ARGB-Kompatibilität
   sticky_runtime.py   optionale Tk-Sticky-Fenster und normalisierte Sticky-Spezifikationen
+  translations.py     alte languages.vb-Texte und Sprachschlüssel
+  shortcuts.py        alte Tastenkürzel aus Notizen.tastendruck
+  feedback.py         lokales GZip-/UTF-16-Feedback-Draftformat
   des_compat.py       pure-Python DES/CBC-Kompatibilität
   rtf.py              RTF<->Text-Konvertierung, einfache Formatierung, Bildzugriff
   cli.py              CLI-Fallback ohne Slint

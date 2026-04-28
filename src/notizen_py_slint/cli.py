@@ -9,13 +9,17 @@ import time
 
 from .autostart import autostart_status, sync_autostart
 from .alarm import AlarmRule, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_alarm_datetime, parse_weekdays, remove_alarm
-from .config import AppConfig
+from . import __version__
+from .config import AppConfig, config_dir
 from .legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table, readable_color_lines
+from .feedback import FeedbackError, write_feedback_gzip
 from .legacy_config import import_legacy_config, load_legacy_config, write_legacy_like_config
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import load_uri, save_uri
 from .notify import notify
+from .shortcuts import format_shortcuts, shortcut_manifest
 from .sticky_runtime import run_tk_sticky_windows, sticky_window_specs
+from .translations import LANGUAGE_NAMES, LEGACY_KEYS, iter_translations, normalize_language, translate, translation_table
 from .rtf import detect_rtf_style, restyle_rtf_as_plain, restyle_rtf_with_defaults, text_to_rtf
 from .storage import (
     NotizenFileError,
@@ -726,6 +730,163 @@ def _config_show() -> None:
     print(json.dumps(config.__dict__ if hasattr(config, "__dict__") else _slots_dict(config), indent=2, ensure_ascii=False))
 
 
+def _config_path() -> None:
+    print(config_dir() / "config.json")
+
+
+def _config_set(
+    *,
+    backup_count: int | None,
+    autosave_seconds: int | None,
+    language: str | None,
+    autorun: bool | None,
+    autorun_minimized: bool | None,
+    show_in_taskbar: bool | None,
+    show_desknote_borders: bool | None,
+    scrollbars_choice: int | None,
+    last_file: str | None,
+    add_recent: list[str] | None,
+    clear_recent: bool,
+    window: str | None,
+    window_state: str | None,
+    as_json: bool,
+) -> None:
+    config = AppConfig.load()
+    if backup_count is not None:
+        config.backup_count = max(0, int(backup_count))
+    if autosave_seconds is not None:
+        config.autosave_seconds = max(0, int(autosave_seconds))
+    if language is not None:
+        config.language = normalize_language(language)
+    if autorun is not None:
+        config.autorun = autorun
+    if autorun_minimized is not None:
+        config.autorun_minimized = autorun_minimized
+    if show_in_taskbar is not None:
+        config.show_in_taskbar = show_in_taskbar
+    if show_desknote_borders is not None:
+        config.show_desknote_borders = show_desknote_borders
+    if scrollbars_choice is not None:
+        config.scrollbars_choice = max(0, min(3, int(scrollbars_choice)))
+    if clear_recent:
+        config.recent_files = []
+        config.last_file = None
+    if last_file:
+        config.add_recent(last_file)
+    for recent in add_recent or []:
+        config.add_recent(recent)
+    if window:
+        parts = [part.strip() for part in window.replace("x", ",").replace("+", ",").split(",") if part.strip()]
+        if len(parts) != 4:
+            raise ValueError("--window erwartet vier Werte: x,y,width,height")
+        x, y, width, height = (int(part) for part in parts)
+        config.window_x = x
+        config.window_y = y
+        config.window_width = max(1, width)
+        config.window_height = max(1, height)
+    if window_state is not None:
+        state = window_state.strip().lower()
+        aliases = {"normal": "normal", "max": "maximized", "maximized": "maximized", "min": "minimized", "minimized": "minimized"}
+        if state not in aliases:
+            raise ValueError("--window-state muss normal, maximized oder minimized sein")
+        config.window_state = aliases[state]
+    config.save()
+    if as_json:
+        print(json.dumps(_slots_dict(config), indent=2, ensure_ascii=False))
+    else:
+        print(config_dir() / "config.json")
+
+
+def _lang_list(as_json: bool) -> None:
+    payload = {code: {"name": name, "keys": len(LEGACY_KEYS)} for code, name in LANGUAGE_NAMES.items()}
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+    for code, info in payload.items():
+        print(f"{code:>2}  {info['name']}  ({info['keys']} Texte)")
+
+
+def _lang_get(key: str, language: str, all_languages: bool, as_json: bool) -> None:
+    if all_languages:
+        rows = translation_table(languages=list(LANGUAGE_NAMES))
+        # Reuse translate's validation/key matching by filtering through key_index indirectly.
+        wanted = translate(key, language)
+        matches = [row for row in rows if row["key"].casefold() == key.casefold() or str(row["index"]) == key]
+        if not matches:
+            raise ValueError(f"Unbekannter Sprachschlüssel: {key}")
+        payload = matches[0]
+        if as_json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"{payload['index']} {payload['key']}")
+            for code in LANGUAGE_NAMES:
+                print(f"{code}: {payload[code]}")
+        return
+    code = normalize_language(language)
+    text = translate(key, code)
+    if as_json:
+        entry = next(item for item in iter_translations(code) if item.key.casefold() == key.casefold() or str(item.index) == key)
+        print(json.dumps(entry.as_dict(), indent=2, ensure_ascii=False))
+    else:
+        print(text)
+
+
+def _lang_dump(language: str, all_languages: bool, as_json: bool) -> None:
+    if all_languages:
+        payload = translation_table(languages=list(LANGUAGE_NAMES))
+        if as_json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+            return
+        for row in payload:
+            texts = " | ".join(f"{code}: {row[code]}" for code in LANGUAGE_NAMES)
+            print(f"{row['index']:03d} {row['key']}: {texts}")
+        return
+    code = normalize_language(language)
+    entries = iter_translations(code)
+    if as_json:
+        print(json.dumps([entry.as_dict() for entry in entries], indent=2, ensure_ascii=False))
+        return
+    for entry in entries:
+        print(f"{entry.index:03d} {entry.key}: {entry.text}")
+
+
+def _shortcuts(as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(shortcut_manifest(), indent=2, ensure_ascii=False))
+    else:
+        print(format_shortcuts())
+
+
+def _about(language: str, as_json: bool) -> None:
+    code = normalize_language(language)
+    payload = {
+        "product": "Notizen Py Slint",
+        "version": __version__,
+        "legacy_product": "Notizen.NET",
+        "legacy_website": "http://www.notiza.de",
+        "language": code,
+        "help_text": translate("aboutinfotext", code),
+        "feedback_label": translate("feedback", code),
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+    print(f"{payload['product']} {payload['version']}")
+    print(f"Port von {payload['legacy_product']}")
+    print()
+    print(payload["help_text"])
+
+
+def _feedback_draft(output: str, text_value: str | None, input_file: str | None) -> None:
+    if text_value is None and input_file is None:
+        raise FeedbackError("Bitte --text oder --input angeben.")
+    if text_value is not None and input_file is not None:
+        raise FeedbackError("Bitte nur --text oder nur --input angeben.")
+    body = text_value if text_value is not None else Path(input_file or "").read_text(encoding="utf-8")
+    target = write_feedback_gzip(body, output)
+    print(target)
+
+
 def _config_import_legacy(path: str | None) -> None:
     config = import_legacy_config(path)
     print(json.dumps(_slots_dict(config), indent=2, ensure_ascii=False))
@@ -1205,6 +1366,59 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg_show = sub.add_parser("config-show", help="Port-Konfiguration anzeigen")
 
+    sub.add_parser("config-path", help="Pfad zur neuen JSON-Konfiguration ausgeben")
+
+    cfg_set = sub.add_parser("config-set", help="allgemeine Einstellungen aus dem alten Einstellungen-Dialog setzen")
+    cfg_set.add_argument("--backup-count", type=int)
+    cfg_set.add_argument("--autosave-seconds", type=int)
+    cfg_set.add_argument("--language", help="de/en/zh/fr/es/ru oder alter Name wie Deutsch/English")
+    autorun_group = cfg_set.add_mutually_exclusive_group()
+    autorun_group.add_argument("--autorun", action="store_true")
+    autorun_group.add_argument("--no-autorun", action="store_true")
+    autorun_min_group = cfg_set.add_mutually_exclusive_group()
+    autorun_min_group.add_argument("--autorun-minimized", action="store_true")
+    autorun_min_group.add_argument("--no-autorun-minimized", action="store_true")
+    taskbar_group = cfg_set.add_mutually_exclusive_group()
+    taskbar_group.add_argument("--show-in-taskbar", action="store_true")
+    taskbar_group.add_argument("--hide-in-taskbar", action="store_true")
+    border_group = cfg_set.add_mutually_exclusive_group()
+    border_group.add_argument("--show-desknote-borders", action="store_true")
+    border_group.add_argument("--hide-desknote-borders", action="store_true")
+    cfg_set.add_argument("--scrollbars-choice", type=int, choices=[0, 1, 2, 3])
+    cfg_set.add_argument("--last-file")
+    cfg_set.add_argument("--add-recent", action="append")
+    cfg_set.add_argument("--clear-recent", action="store_true")
+    cfg_set.add_argument("--window", help="Fenstergeometrie x,y,width,height")
+    cfg_set.add_argument("--window-state", choices=["normal", "max", "maximized", "min", "minimized"])
+    cfg_set.add_argument("--json", action="store_true")
+
+    lang_list = sub.add_parser("lang-list", help="portierte alte UI-Sprachen anzeigen")
+    lang_list.add_argument("--json", action="store_true")
+
+    lang_get = sub.add_parser("lang-get", help="alten lang_keys-Text übersetzen")
+    lang_get.add_argument("key", help="Name wie Strip1_1 oder numerischer Index")
+    lang_get.add_argument("--language", default="de")
+    lang_get.add_argument("--all", action="store_true", help="alle Sprachen für diesen Schlüssel anzeigen")
+    lang_get.add_argument("--json", action="store_true")
+
+    lang_dump = sub.add_parser("lang-dump", help="portierte alte Sprachtexte ausgeben")
+    lang_dump.add_argument("--language", default="de")
+    lang_dump.add_argument("--all", action="store_true", help="alle Sprachen tabellarisch ausgeben")
+    lang_dump.add_argument("--json", action="store_true")
+
+    shortcuts = sub.add_parser("shortcuts", help="alte Notizen.NET-Tastenkürzel anzeigen")
+    shortcuts.add_argument("--json", action="store_true")
+
+    about = sub.add_parser("about", help="portierten alten Hilfe-/Info-Text anzeigen")
+    about.add_argument("--language", default="de")
+    about.add_argument("--json", action="store_true")
+
+    feedback = sub.add_parser("feedback-draft", help="Feedback wie im alten Dialog als gzip/UTF-16-Datei vorbereiten, ohne es hochzuladen")
+    feedback.add_argument("output")
+    source_group = feedback.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--text")
+    source_group.add_argument("--input")
+
     cfg_read_legacy = sub.add_parser("config-read-legacy", help="alte notizen.config.xml lesen und ausgeben")
     cfg_read_legacy.add_argument("path")
 
@@ -1354,6 +1568,37 @@ def main(argv: list[str] | None = None) -> int:
             _backup_restore(args.backup, args.target, args.no_backup_current)
         elif args.cmd == "config-show":
             _config_show()
+        elif args.cmd == "config-path":
+            _config_path()
+        elif args.cmd == "config-set":
+            _config_set(
+                backup_count=args.backup_count,
+                autosave_seconds=args.autosave_seconds,
+                language=args.language,
+                autorun=True if args.autorun else False if args.no_autorun else None,
+                autorun_minimized=True if args.autorun_minimized else False if args.no_autorun_minimized else None,
+                show_in_taskbar=True if args.show_in_taskbar else False if args.hide_in_taskbar else None,
+                show_desknote_borders=True if args.show_desknote_borders else False if args.hide_desknote_borders else None,
+                scrollbars_choice=args.scrollbars_choice,
+                last_file=args.last_file,
+                add_recent=args.add_recent,
+                clear_recent=args.clear_recent,
+                window=args.window,
+                window_state=args.window_state,
+                as_json=args.json,
+            )
+        elif args.cmd == "lang-list":
+            _lang_list(args.json)
+        elif args.cmd == "lang-get":
+            _lang_get(args.key, args.language, args.all, args.json)
+        elif args.cmd == "lang-dump":
+            _lang_dump(args.language, args.all, args.json)
+        elif args.cmd == "shortcuts":
+            _shortcuts(args.json)
+        elif args.cmd == "about":
+            _about(args.language, args.json)
+        elif args.cmd == "feedback-draft":
+            _feedback_draft(args.output, args.text, args.input)
         elif args.cmd == "config-read-legacy":
             _config_read_legacy(args.path)
         elif args.cmd == "config-import-legacy":
@@ -1378,7 +1623,7 @@ def main(argv: list[str] | None = None) -> int:
             _alarm_remove(args.name)
         else:  # pragma: no cover
             parser.error(f"unbekannter Befehl: {args.cmd}")
-    except (NotizenFileError, ValueError, RuntimeError) as exc:
+    except (NotizenFileError, ValueError, RuntimeError, KeyError, FeedbackError) as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 1
     return 0

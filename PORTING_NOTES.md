@@ -42,6 +42,10 @@ Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in 
 - Wecker-Regeln mit einmaliger, täglicher, wöchentlicher, monatlicher und jährlicher Wiederholung als speicherbare Python-Logik plus CLI/UI-Hooks
 - fällige Wecker (`alarm-due`) und eine einfache dauernde Wecker-Schleife (`alarm-watch`) als portabler Ersatz für die alte Popup-Auslösung
 - native Best-Effort-Benachrichtigung ohne externe Pakete: `notify-send` unter Linux/BSD, `osascript` unter macOS, PowerShell-MessageBox unter Windows
+- alte `languages.vb`-Tabelle plus `lang_keys`-Enum als `translations.py` portiert; die CLI kann einzelne Schlüssel, ganze Sprachlisten und den alten About-Text ausgeben
+- alte Tastaturbelegung aus `Notizen.tastendruck` als Manifest in `shortcuts.py` portiert, inklusive Ctrl+S/O/N/Q, Ctrl+F, Ctrl+Plus/Minus und TreeView-Tasten
+- weitere Felder des alten Einstellungsdialogs sind per `config-set` skriptbar: Sprache, Backup/Autosave, Autostart, Fensterposition, Taskbar-/Sticky-Rahmen-Optionen und zuletzt geöffnete Dateien
+- Feedback aus `info_help_and_feedback.vb` wird als lokales GZip-/UTF-16LE-Draftformat erzeugt; der alte harte FTP-Upload wurde bewusst nicht automatisiert
 
 ## Dateiformat
 
@@ -94,6 +98,14 @@ Backups werden nur lokal erzeugt. Bei Remote-Speichern wird direkt hochgeladen.
 
 Der alte Windows-spezifische Autostart wurde nicht per Registry/COM 1:1 übernommen. Stattdessen erzeugt der Port plattformübliche Starterdateien und akzeptiert `--minimized` sowie die alten Kürzel `/min`, `-min`, `min`, `/h` und `/?` als kompatible Startargumente. `--minimized` ist momentan ein akzeptierter, aber nicht fensterzustandswirksamer Startmodus.
 
+## Sprache, Tastenkürzel und Feedback
+
+`languages.vb` enthält eine aktive sechsspaltige Übersetzungstabelle für Deutsch, Englisch, Chinesisch, Französisch, Spanisch und Russisch. Der Port hat diese Tabelle mit den `lang_keys` aus `Notizen.vb` in `translations.py` übernommen. Damit sind alte Menü-/Dialogtexte nicht mehr verloren, auch wenn die Slint-Oberfläche noch keine vollständige Live-Umschaltung aller sichtbaren Labels macht. Über `lang-list`, `lang-get`, `lang-dump` und `about` lassen sich die Daten prüfen und weiterverwenden.
+
+Die alte globale Tastaturbehandlung aus `Notizen.tastendruck` wurde als Manifest portiert. Slint/Python bildet nicht jede WinForms-Accelerator-Route identisch nach, aber die Zuordnung ist dokumentiert, testbar und kann von CLI/UI-Teilen genutzt werden.
+
+Der alte Feedback-Dialog packte Text als GZip über .NET `Encoding.Unicode` und lud ihn zu einem fest verdrahteten FTP-Ziel hoch. Der Port erzeugt denselben Payload lokal (`feedback-draft`), sendet aber nichts automatisch. Das ist die richtige Grenze: Dateikompatibilität ja, ungefragter Upload an historische Server nein.
+
 ## Wecker
 
 `wecker.vb` war stark WinForms-Dialoglogik: Auswahl von Wiederholungsart, Intervall und Wochentagen. Der Port übersetzt diesen Teil als Datenmodell in `alarm.py`. Regeln werden als JSON gespeichert und können per CLI/UI angelegt, entfernt und abgefragt werden.
@@ -114,8 +126,9 @@ Nicht sinnvoll 1:1 übernommen wurden:
 - separate borderlose WinForms-Desktop-Sticky-Fenster; `sticky-run` bietet einen optionalen Tk-Nachbau, ist aber bewusst kein 1:1-WinForms-Fenster mit identischem Verhalten
 - native TreeView-Drag-and-drop-Gesten
 - Druckdialog; HTML-Export dient als portabler Ersatz
-- vollständige mehrsprachige Menülogik aus den `.resx`-/`languages.vb`-Dateien
+- vollständige Live-Umschaltung jeder Slint-Menübeschriftung; die alten Sprachdaten selbst sind aber portiert und per CLI/UI-Hook verfügbar
 - echte RichTextBox-Auswahlformatierung mit gemischten Fonts/Farben pro Zeichenbereich
 - permanenter OS-Hintergrunddienst für Wecker/Tray
+- automatischer Feedback-Upload zum alten FTP-Ziel
 
 Diese Punkte sind entweder stark Windows-/WinForms-spezifisch oder passen nicht sauber zu Python/Slint. Die zugrunde liegenden Daten werden aber so weit wie möglich erhalten.

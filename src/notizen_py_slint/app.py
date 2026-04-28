@@ -39,6 +39,8 @@ from .storage import (
     save_document as write_document,
 )
 from .rtf import detect_rtf_style, restyle_rtf_as_plain
+from .shortcuts import format_shortcuts
+from .translations import normalize_language, translate
 
 
 def _format_slint_compile_error(exc: Exception, ui_path: Path) -> str:
@@ -202,6 +204,8 @@ class NotizenSlintApp:
         self.window.show_next_alarm = self.show_next_alarm
         self.window.show_stats = self.show_stats
         self.window.show_backups = self.show_backups
+        self.window.show_about = self.show_about
+        self.window.show_shortcuts = self.show_shortcuts
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:
@@ -920,6 +924,26 @@ class NotizenSlintApp:
             return
         newest = backups[0]
         self._set_status(f"{len(backups)} Backup(s), neueste: {newest.path.name} ({newest.size} Bytes)")
+
+    def show_about(self) -> None:
+        try:
+            lang = normalize_language(getattr(self.config, "language", "de"))
+        except Exception:
+            lang = "de"
+        about = translate("aboutinfotext", lang)
+        compact = " ".join(line.strip() for line in about.splitlines() if line.strip())
+        if len(compact) > 220:
+            compact = compact[:217].rstrip() + "…"
+        self.window.meta_text = compact
+        self._set_status(f"Info/Hilfe aus alter Sprachdatei geladen ({lang}).")
+
+    def show_shortcuts(self) -> None:
+        lines = format_shortcuts().splitlines()[1:]
+        compact = " | ".join(line.strip() for line in lines[:8])
+        if len(compact) > 260:
+            compact = compact[:257].rstrip() + "…"
+        self.window.meta_text = compact
+        self._set_status(f"{len(lines)} alte Tastenkürzel manifestiert; vollständige Liste: notizen-alx shortcuts")
 
 
     # Alarm actions --------------------------------------------------------

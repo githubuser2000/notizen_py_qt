@@ -11,15 +11,18 @@ import unittest
 
 from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
-from notizen_py_slint.app import _normalize_legacy_argv
+from notizen_py_slint.feedback import feedback_gzip_payload, read_feedback_gzip
+from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
 from notizen_py_slint.legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table
 from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config
 from notizen_py_slint.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from notizen_py_slint.notify import notify
+from notizen_py_slint.shortcuts import shortcut_manifest
 from notizen_py_slint.sticky_runtime import sticky_window_specs
 from notizen_py_slint.remote import parse_ftp_url
+from notizen_py_slint.translations import LEGACY_KEYS, normalize_language, translate, translation_table
 from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
 from notizen_py_slint.storage import (
     autosize_sticky,
@@ -504,7 +507,88 @@ class ConfigMigrationTests(unittest.TestCase):
         config = AppConfig(ftp_host="example.org", ftp_username="u ser", ftp_password="p@ss", ftp_path="dir/file.alx", ftp_use_tls=True)
         self.assertEqual(config.default_remote_url(), "ftps://u%20ser:p%40ss@example.org/dir/file.alx")
 
+    def test_cli_config_set_updates_general_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            old_home = os.environ.get("XDG_CONFIG_HOME")
+            os.environ["XDG_CONFIG_HOME"] = tmp
+            try:
+                with redirect_stdout(io.StringIO()) as out:
+                    self.assertEqual(
+                        cli_main([
+                            "config-set",
+                            "--backup-count",
+                            "9",
+                            "--autosave-seconds",
+                            "45",
+                            "--language",
+                            "English",
+                            "--autorun",
+                            "--autorun-minimized",
+                            "--hide-desknote-borders",
+                            "--window",
+                            "1,2,300,400",
+                            "--last-file",
+                            "/tmp/notizen.alx",
+                            "--json",
+                        ]),
+                        0,
+                    )
+                payload = json.loads(out.getvalue())
+                self.assertEqual(payload["backup_count"], 9)
+                self.assertEqual(payload["autosave_seconds"], 45)
+                self.assertEqual(payload["language"], "en")
+                self.assertFalse(payload["show_desknote_borders"])
+                self.assertEqual(payload["window_width"], 300)
+                self.assertIn("/tmp/notizen.alx", payload["recent_files"])
+                with redirect_stdout(io.StringIO()) as out:
+                    self.assertEqual(cli_main(["config-path"]), 0)
+                self.assertTrue(out.getvalue().strip().endswith("config.json"))
+            finally:
+                if old_home is None:
+                    os.environ.pop("XDG_CONFIG_HOME", None)
+                else:
+                    os.environ["XDG_CONFIG_HOME"] = old_home
 
+
+
+
+class TranslationAndShortcutTests(unittest.TestCase):
+    def test_legacy_translation_table_is_available(self) -> None:
+        self.assertEqual(len(LEGACY_KEYS), 118)
+        self.assertEqual(translate("Strip1_1", "de"), "&Menü")
+        self.assertEqual(translate("Strip1_3", "english"), "&Open        CTRL+O")
+        self.assertEqual(normalize_language("Russian"), "ru")
+        table = translation_table(languages=["de", "en"])
+        self.assertEqual(table[0]["key"], "Strip1_1")
+        self.assertEqual(table[0]["de"], "&Menü")
+
+    def test_shortcut_manifest_contains_old_global_keys(self) -> None:
+        keys = {item["keys"]: item["action"] for item in shortcut_manifest()}
+        self.assertEqual(keys["Ctrl+S"], "Datei speichern")
+        self.assertEqual(keys["Insert"], "Neuen Unterknoten anlegen")
+
+    def test_cli_language_and_shortcut_commands(self) -> None:
+        with redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cli_main(["lang-get", "Strip1_1", "--language", "en"]), 0)
+        self.assertIn("&Menu", out.getvalue())
+        with redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cli_main(["lang-list", "--json"]), 0)
+        self.assertIn('"ru"', out.getvalue())
+        with redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cli_main(["shortcuts", "--json"]), 0)
+        self.assertIn("Ctrl+S", out.getvalue())
+
+    def test_about_and_feedback_draft(self) -> None:
+        payload = feedback_gzip_payload("Das ist ein längerer Testtext")
+        self.assertTrue(payload.startswith(b"\x1f\x8b"))
+        with tempfile.TemporaryDirectory() as tmp:
+            out_file = Path(tmp) / "feedback.txt.gz"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(cli_main(["feedback-draft", str(out_file), "--text", "Das ist ein längerer Testtext"]), 0)
+            self.assertEqual(read_feedback_gzip(out_file), "Das ist ein längerer Testtext")
+        with redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cli_main(["about", "--language", "de"]), 0)
+        self.assertIn("Desktop", out.getvalue())
 
 
 class CliIntegrationTests(unittest.TestCase):
@@ -687,6 +771,21 @@ class CliIntegrationTests(unittest.TestCase):
 
 
 class AppCompatTests(unittest.TestCase):
+    def test_about_and_shortcut_ui_hooks(self) -> None:
+        class DummyWindow:
+            meta_text = ""
+            status_text = ""
+
+        app = object.__new__(NotizenSlintApp)
+        app.config = AppConfig(language="en")
+        app.window = DummyWindow()
+        NotizenSlintApp.show_about(app)
+        self.assertIn("Info", app.window.status_text)
+        self.assertIn("desknote", app.window.meta_text)
+        NotizenSlintApp.show_shortcuts(app)
+        self.assertIn("Tastenkürzel", app.window.status_text)
+        self.assertIn("Ctrl+S", app.window.meta_text)
+
     def test_legacy_argv_normalization(self) -> None:
         self.assertEqual(_normalize_legacy_argv(["/min", "datei.alx"]), ["--minimized", "datei.alx"])
         self.assertEqual(_normalize_legacy_argv(["-min"]), ["--minimized"])

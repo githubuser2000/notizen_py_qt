@@ -90,6 +90,8 @@ export component AppWindow inherits Window {
     callback show-next-alarm();
     callback show-stats();
     callback show-backups();
+    callback show-about();
+    callback show-shortcuts();
 
     VerticalLayout {
         padding: 8px;
@@ -163,13 +165,15 @@ export component AppWindow inherits Window {
                     spacing: 6px;
                     Button { text: "Stats"; clicked => { root.show-stats(); } }
                     Button { text: "Backups"; clicked => { root.show-backups(); } }
+                    Button { text: "Info"; clicked => { root.show-about(); } }
+                    Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
                     Button { text: "Einstellungen"; clicked => { root.open-settings(); } }
                     Button { text: "Wecker"; clicked => { root.open-alarm(); } }
                     Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
                     Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Button { text: "Alt-Config importieren"; clicked => { root.import-legacy-config(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Autosave/Suche/Stile/Farben erweitert"; vertical-alignment: center; color: #666666; }
+                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Suche/Stile/Farben/Sprache erweitert"; vertical-alignment: center; color: #666666; }
                 }
             }
         }
