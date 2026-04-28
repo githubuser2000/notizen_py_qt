@@ -22,8 +22,8 @@ Funktioniert im Port:
 - Textgröße per A+/A- beziehungsweise CLI wie im alten Ctrl+Plus/Ctrl+Minus-Workflow ändern
 - Raw-RTF-Modus in der UI, damit alte RichTextBox-Inhalte notfalls direkt bearbeitet werden können
 - alte Intellibit-`notes_doc`-Dateien importieren
-- Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten, Geometrie/Farbe bearbeiten, automatisch grob dimensionieren und als HTML-Board exportieren
-- Knotenfarben (`bgcolor`, `fgcolor`) lesen, speichern und in der UI setzen/löschen
+- Sticky/Desktop-Notiz-Metadaten lesen, speichern, sichtbar/unsichtbar schalten, Geometrie/Farbe bearbeiten, automatisch grob dimensionieren, als HTML-Board exportieren und optional als kleine Tk-Fenster öffnen
+- Knotenfarben (`bgcolor`, `fgcolor`) lesen, speichern, löschen, per alter heller Notizen.NET-Palette setzen und wieder als WinForms-kompatible signed ARGB-Werte schreiben
 - Sicherheitskopien beim lokalen Speichern und Autosave-Timer aus der Konfiguration
 - alte `notizen.config.xml` lesen/importieren/exportieren, inklusive Backup-Anzahl, Autosave, Autostart, Fensterdaten, Sticky-Rahmen und FTP-Feldern
 - portabler Autostart-Stub für Linux, Windows und macOS aus der neuen Konfiguration
@@ -35,7 +35,7 @@ Funktioniert im Port:
 Bewusst vereinfacht oder nicht vollständig portiert:
 
 - Slints `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der Raw-RTF-Modus erlaubt aber direkten Zugriff auf das gespeicherte RTF.
-- Sticky/Desktop-Notizen werden nicht als separate, frei schwebende Desktop-Fenster nachgebaut. Ihre Metadaten bleiben aber im Dateiformat erhalten, können bearbeitet/automatisch dimensioniert und als HTML-Board exportiert werden.
+- Sticky/Desktop-Notizen bleiben in der Slint-Hauptoberfläche Metadaten. Zusätzlich gibt es `sticky-run` als optionalen Python/Tk-Ersatz für kleine separate Fenster. In headless Umgebungen oder ohne Tk fällt das sauber mit einer lesbaren Meldung zurück.
 - Wecker-Benachrichtigungen sind bewusst best-effort: Linux nutzt `notify-send`, macOS `osascript`, Windows PowerShell/MessageBox. Wenn das jeweilige Werkzeug fehlt oder die Umgebung headless ist, läuft die CLI trotzdem weiter und gibt den Grund aus.
 - Trayicon, native Drag-and-drop-Mauslogik, Druckdialog und die alte mehrsprachige WinForms-Menülogik sind nicht 1:1 in der neuen UI enthalten. Autostart, HTML-Export und RTF-Bildzugriff sind portabel nachgebaut, aber nicht identisch mit WinForms.
 - Die alte Verschlüsselung ist absichtlich nur kompatibel, nicht sicher. Für echte Sicherheit die `.alx` zusätzlich mit einem modernen Werkzeug verschlüsseln.
@@ -67,6 +67,7 @@ python3 -m notizen_py_slint
 python3 -m notizen_py_slint pfad/zur/datei.alx
 python3 -m notizen_py_slint pfad/zur/datei.alx --password geheim
 python3 -m notizen_py_slint 'ftp://user:pass@example.org/notizen.alx'
+python3 -m notizen_py_slint /min        # alter Autostart-Alias für --minimized
 ```
 
 Kompatibilität: `python3 -m notizen_pypy_slint` funktioniert weiterhin als alter Alias, damit vorhandene lokale Aufrufe nicht sofort brechen. Neu bevorzugt ist `python3 -m notizen_py_slint`.
@@ -91,10 +92,15 @@ notizen-alx append-bullet input.alx output.alx --title "todo"
 notizen-alx change-password input.alx output.alx --old-password alt --new-password neu
 notizen-alx set-note input.alx output.alx --title "todo" --input /tmp/neuer-text.txt
 notizen-alx format-note input.alx output.alx --title "todo" --bold --fg-color '#112233'
+notizen-alx color-palette
+notizen-alx color-note input.alx output.alx --title "todo" --bg-name LightYellow --show
+notizen-alx color-note input.alx output.alx --title "todo" --random-bg --random-index 4
 notizen-alx style-note input.alx output.alx --title "todo" --style bold
 notizen-alx style-note input.alx output.alx --title "todo" --font-family "Arial" --font-size 22 --show
 notizen-alx font-size input.alx output.alx --title "todo" --bigger
 notizen-alx sticky input.alx output.alx --title "todo" --show --autosize --x 100 --y 100
+notizen-alx sticky-list input.alx --all --json
+notizen-alx sticky-run input.alx --readonly
 notizen-alx rename input.alx output.alx --title "todo" --new-title "erledigen"
 notizen-alx add-note input.alx output.alx --title "todo" --new-title "Unterpunkt" --where child
 notizen-alx move input.alx output.alx --title "todo" --action down
@@ -131,7 +137,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 45 tests
+Ran 51 tests
 OK
 ```
 
@@ -143,10 +149,10 @@ Getestet wurden:
 - Laden der originalen `test.alx`-Fixture mit 65 Knoten
 - Speichern/Laden unverschlüsselt
 - Speichern/Laden verschlüsselt
-- Speichern/Laden aus Bytes inklusive Sticky-/Farbmetadaten
+- Speichern/Laden aus Bytes inklusive Sticky-/Farbmetadaten und WinForms-kompatibler signed-ARGB-Ausgabe
 - direktes Laden/Speichern von lesbarem XML und Raw-XML-Dump/Pack-Roundtrip
 - Kopieren/verschieben/einrücken/ausrücken/duplizieren im Baum
-- Suche, Statistik und Farb-Hilfsfunktionen
+- Suche, Statistik, alte helle Notizen.NET-Farbpalette, `color-note`, `sticky-list` und Legacy-Argumentnormalisierung
 - HTML-Export, Sticky-HTML-Export, Bildexport, Bildimport und Notiz-Anhänge
 - alte Konfigurationsmigration inklusive FTP-Feldern
 - Wecker-Wiederholungen, Wecker-Store, fällige Wecker, Benachrichtigungs-Dry-Run und CLI-Weckerpfade
@@ -165,6 +171,8 @@ src/notizen_py_slint/
   autostart.py        portable Autostart-Einträge
   alarm.py            Wecker-/Erinnerungsregeln
   notify.py           native Best-Effort-Benachrichtigungen ohne externe Pakete
+  legacy_colors.py    alte Notizen.NET-Farbpalette und signed-ARGB-Kompatibilität
+  sticky_runtime.py   optionale Tk-Sticky-Fenster und normalisierte Sticky-Spezifikationen
   des_compat.py       pure-Python DES/CBC-Kompatibilität
   rtf.py              RTF<->Text-Konvertierung, einfache Formatierung, Bildzugriff
   cli.py              CLI-Fallback ohne Slint

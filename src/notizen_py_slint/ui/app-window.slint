@@ -26,6 +26,7 @@ export component AppWindow inherits Window {
 
     callback new-document();
     callback open-document();
+    callback open-recent-document();
     callback open-remote-document();
     callback save-document();
     callback save-document-as();
@@ -67,11 +68,13 @@ export component AppWindow inherits Window {
     callback editor-changed(string);
     callback search-next(string);
     callback search-all(string);
+    callback replace-text(string);
     callback toggle-raw-rtf();
     callback toggle-sticky();
     callback set-sticky-geometry();
     callback autosize-sticky();
     callback set-colors();
+    callback apply-light-color();
     callback clear-colors();
     callback format-note();
     callback apply-bold();
@@ -104,6 +107,7 @@ export component AppWindow inherits Window {
                     spacing: 6px;
                     Button { text: "Neu"; clicked => { root.new-document(); } }
                     Button { text: "Öffnen"; clicked => { root.open-document(); } }
+                    Button { text: "Zuletzt"; clicked => { root.open-recent-document(); } }
                     Button { text: "FTP öffnen"; clicked => { root.open-remote-document(); } }
                     Button { text: "Speichern"; clicked => { root.save-document(); } }
                     Button { text: "Speichern unter"; clicked => { root.save-document-as(); } }
@@ -143,6 +147,7 @@ export component AppWindow inherits Window {
                     Button { text: "Geom."; clicked => { root.set-sticky-geometry(); } }
                     Button { text: "Auto-Größe"; clicked => { root.autosize-sticky(); } }
                     Button { text: "Farben"; clicked => { root.set-colors(); } }
+                    Button { text: "Hell"; clicked => { root.apply-light-color(); } }
                     Button { text: "Farbe weg"; clicked => { root.clear-colors(); } }
                     Button { text: "Format"; clicked => { root.format-note(); } }
                     Button { text: "B"; clicked => { root.apply-bold(); } }
@@ -164,7 +169,7 @@ export component AppWindow inherits Window {
                     Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Button { text: "Alt-Config importieren"; clicked => { root.import-legacy-config(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Autosave/Suche/Stile erweitert"; vertical-alignment: center; color: #666666; }
+                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Autosave/Suche/Stile/Farben erweitert"; vertical-alignment: center; color: #666666; }
                 }
             }
         }
@@ -188,6 +193,7 @@ export component AppWindow inherits Window {
                         }
                         Button { text: "Weiter"; clicked => { root.search-next(root.search-text); } }
                         Button { text: "Alle"; clicked => { root.search-all(root.search-text); } }
+                        Button { text: "Ersetzen"; clicked => { root.replace-text(root.search-text); } }
                     }
                     HorizontalLayout {
                         spacing: 4px;

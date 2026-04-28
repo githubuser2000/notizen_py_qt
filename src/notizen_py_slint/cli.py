@@ -10,10 +10,12 @@ import time
 from .autostart import autostart_status, sync_autostart
 from .alarm import AlarmRule, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_alarm_datetime, parse_weekdays, remove_alarm
 from .config import AppConfig
+from .legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table, readable_color_lines
 from .legacy_config import import_legacy_config, load_legacy_config, write_legacy_like_config
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import load_uri, save_uri
 from .notify import notify
+from .sticky_runtime import run_tk_sticky_windows, sticky_window_specs
 from .rtf import detect_rtf_style, restyle_rtf_as_plain, restyle_rtf_with_defaults, text_to_rtf
 from .storage import (
     NotizenFileError,
@@ -403,6 +405,101 @@ def _recent(as_json: bool) -> None:
     for index, path in enumerate(config.recent_files, start=1):
         marker = "*" if path == config.last_file else " "
         print(f"{index}. {marker} {path}")
+
+
+def _color_palette(as_json: bool) -> None:
+    payload = legacy_palette_table()
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(readable_color_lines())
+
+
+def _resolve_color(value: str | None, name: str | None, randomize: bool, random_index: int | None) -> int | None:
+    if value:
+        return argb_to_signed(parse_int_or_hex(value))
+    if name:
+        return legacy_color_by_name(name).signed_argb
+    if randomize:
+        return legacy_light_color(random_index).signed_argb
+    return None
+
+
+def _color_note(
+    file: str,
+    output: str,
+    title: str,
+    password: str | None,
+    new_password: str | None,
+    bg_color: str | None,
+    fg_color: str | None,
+    bg_name: str | None,
+    fg_name: str | None,
+    random_bg: bool,
+    random_fg: bool,
+    random_index: int | None,
+    clear: bool,
+    clear_bg: bool,
+    clear_fg: bool,
+    show: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    note = _note_by_title(doc, title)
+    changed = False
+    if clear or clear_bg:
+        note.bg_color = None
+        changed = True
+    if clear or clear_fg:
+        note.fg_color = None
+        changed = True
+    bg = _resolve_color(bg_color, bg_name, random_bg, random_index)
+    fg = _resolve_color(fg_color, fg_name, random_fg, random_index)
+    if bg is not None:
+        note.bg_color = bg
+        if note.sticky is not None and note.sticky.argb is None:
+            note.sticky.argb = bg
+        changed = True
+    if fg is not None:
+        note.fg_color = fg
+        changed = True
+    if show:
+        print(json.dumps({
+            "path": note.path_titles(),
+            "title": note.title,
+            "bg_color": argb_to_hex(note.bg_color) if note.bg_color is not None else None,
+            "fg_color": argb_to_hex(note.fg_color) if note.fg_color is not None else None,
+            "bg_int": note.bg_color,
+            "fg_int": note.fg_color,
+        }, indent=2, ensure_ascii=False))
+    if not changed:
+        if show:
+            return
+        raise NotizenFileError("Bitte Farbe, Namen, --random-bg/--random-fg oder --clear angeben.")
+    doc.select(note)
+    doc.modified = True
+    _save_after_edit(doc, output, password, new_password)
+
+
+def _sticky_list(file: str, password: str | None, include_hidden: bool, as_json: bool) -> None:
+    doc = load_uri(file, password=password)
+    specs = sticky_window_specs(doc, include_hidden=include_hidden)
+    if as_json:
+        print(json.dumps([spec.as_dict() for spec in specs], indent=2, ensure_ascii=False))
+        return
+    if not specs:
+        print("keine Sticky-Notizen")
+        return
+    for spec in specs:
+        print(f"{spec.index:02d} {spec.title} [{spec.path}] {spec.width}x{spec.height}+{spec.x}+{spec.y} opacity={spec.opacity:g} bg={spec.bg_css}")
+
+
+def _sticky_run(file: str, password: str | None, output: str | None, new_password: str | None, include_hidden: bool, readonly: bool) -> None:
+    doc = load_uri(file, password=password)
+    run_tk_sticky_windows(doc, include_hidden=include_hidden, readonly=readonly)
+    if doc.modified and not readonly:
+        target = output or file
+        saved = save_uri(doc, target, password=new_password if new_password is not None else password)
+        print(saved)
 
 
 def _format_note(
@@ -893,6 +990,41 @@ def main(argv: list[str] | None = None) -> int:
     sub_recent = sub.add_parser("recent", help="zuletzt geöffnete Dateien aus der Port-Konfiguration anzeigen")
     sub_recent.add_argument("--json", action="store_true")
 
+    palette = sub.add_parser("color-palette", help="alte helle Notizen.NET-Farbpalette anzeigen")
+    palette.add_argument("--json", action="store_true")
+
+    color_note = sub.add_parser("color-note", help="Knotenfarben bgcolor/fgcolor setzen, löschen oder anzeigen")
+    color_note.add_argument("file")
+    color_note.add_argument("output")
+    color_note.add_argument("--title", required=True)
+    color_note.add_argument("--bg-color")
+    color_note.add_argument("--fg-color")
+    color_note.add_argument("--bg-name", help="Name aus color-palette, z.B. LightYellow")
+    color_note.add_argument("--fg-name", help="Name aus color-palette")
+    color_note.add_argument("--random-bg", action="store_true", help="alte zufällige helle Hintergrundfarbe setzen")
+    color_note.add_argument("--random-fg", action="store_true", help="alte zufällige helle Vordergrundfarbe setzen")
+    color_note.add_argument("--random-index", type=int, help="deterministischer Palette-Index für --random-bg/--random-fg")
+    color_note.add_argument("--clear", action="store_true", help="bgcolor und fgcolor löschen")
+    color_note.add_argument("--clear-bg", action="store_true")
+    color_note.add_argument("--clear-fg", action="store_true")
+    color_note.add_argument("--show", action="store_true", help="Farben nach der Änderung als JSON ausgeben")
+    _add_new_password_arg(color_note)
+    _add_password_arg(color_note)
+
+    sticky_list = sub.add_parser("sticky-list", help="Sticky-Fenster-Metadaten normalisiert anzeigen")
+    sticky_list.add_argument("file")
+    sticky_list.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten anzeigen")
+    sticky_list.add_argument("--json", action="store_true")
+    _add_password_arg(sticky_list)
+
+    sticky_run = sub.add_parser("sticky-run", help="sichtbare Sticky-Notizen als kleine Python/Tk-Fenster öffnen")
+    sticky_run.add_argument("file")
+    sticky_run.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten öffnen")
+    sticky_run.add_argument("--readonly", action="store_true", help="Sticky-Fenster nicht editierbar machen")
+    sticky_run.add_argument("--output", help="Zieldatei für Änderungen; ohne Angabe wird die Eingabedatei überschrieben")
+    _add_new_password_arg(sticky_run)
+    _add_password_arg(sticky_run)
+
     set_note = sub.add_parser("set-note", help="Text/RTF einer Notiz ersetzen und speichern")
     set_note.add_argument("file")
     set_note.add_argument("output")
@@ -1160,6 +1292,14 @@ def main(argv: list[str] | None = None) -> int:
             _validate(args.file, args.password, args.json)
         elif args.cmd == "recent":
             _recent(args.json)
+        elif args.cmd == "color-palette":
+            _color_palette(args.json)
+        elif args.cmd == "color-note":
+            _color_note(args.file, args.output, args.title, args.password, args.new_password, args.bg_color, args.fg_color, args.bg_name, args.fg_name, args.random_bg, args.random_fg, args.random_index, args.clear, args.clear_bg, args.clear_fg, args.show)
+        elif args.cmd == "sticky-list":
+            _sticky_list(args.file, args.password, args.all, args.json)
+        elif args.cmd == "sticky-run":
+            _sticky_run(args.file, args.password, args.output, args.new_password, args.all, args.readonly)
         elif args.cmd == "set-note":
             _set_note(args.file, args.output, args.title, args.input, args.password, args.new_password, args.rtf)
         elif args.cmd == "import-json":

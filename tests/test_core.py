@@ -11,11 +11,14 @@ import unittest
 
 from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
 from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
+from notizen_py_slint.app import _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
+from notizen_py_slint.legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table
 from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config
 from notizen_py_slint.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from notizen_py_slint.notify import notify
+from notizen_py_slint.sticky_runtime import sticky_window_specs
 from notizen_py_slint.remote import parse_ftp_url
 from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf
 from notizen_py_slint.storage import (
@@ -23,6 +26,7 @@ from notizen_py_slint.storage import (
     change_note_font_size,
     combine_subtree_to_new_note,
     export_document_images,
+    document_to_xml_bytes,
     export_html,
     export_json,
     export_markdown,
@@ -190,9 +194,30 @@ class StorageTests(unittest.TestCase):
         doc = NoteDocument(root=root, selected_id=child.note_id)
         payload = save_document_to_bytes(doc)
         loaded = load_document_from_bytes(payload, source="memory")
-        self.assertEqual(loaded.root.bg_color, 0xFFEEDDCC)
+        self.assertEqual(argb_to_hex(loaded.root.bg_color), "#FFEEDDCC")
         self.assertEqual(loaded.root.children[0].sticky.width, 300)  # type: ignore[union-attr]
         self.assertTrue(loaded.root.children[0].sticky.visible)  # type: ignore[union-attr]
+
+    def test_xml_writes_signed_argb_for_legacy_winforms(self) -> None:
+        root = Note("Root", text_to_rtf("Text"), bg_color=0xFFEEDDCC, fg_color=0xFF112233)
+        root.sticky = StickyWindow(True, 1, 2, 300, 120, 0.75, 0xFFFF00FF)
+        doc = NoteDocument(root=root, selected_id=root.note_id)
+        xml = document_to_xml_bytes(doc).decode("utf-16")
+        self.assertIn(f'bgcolor="{argb_to_signed(0xFFEEDDCC)}"', xml)
+        self.assertIn(f'fgcolor="{argb_to_signed(0xFF112233)}"', xml)
+        self.assertIn(f'argb="{argb_to_signed(0xFFFF00FF)}"', xml)
+        loaded = load_document_from_bytes(save_document_to_bytes(doc), source="memory")
+        self.assertEqual(argb_to_hex(loaded.root.bg_color), "#FFEEDDCC")
+
+    def test_sticky_runtime_specs_normalize_windows(self) -> None:
+        root = Note("Root", text_to_rtf("Text"), bg_color=legacy_light_color(4).signed_argb, fg_color=-16777216)
+        sticky_note = root.add_child(Note("Pin", text_to_rtf("Pin Text"), sticky=StickyWindow(True, 12, 34, 200, 100, 0.5, None)))
+        doc = NoteDocument(root=root, selected_id=sticky_note.note_id)
+        specs = sticky_window_specs(doc)
+        self.assertEqual(len(specs), 1)
+        self.assertEqual(specs[0].title, "Pin")
+        self.assertEqual(specs[0].x, 12)
+        self.assertIn("Pin Text", specs[0].text)
 
     def test_toolbar_style_helper_formats_whole_note(self) -> None:
         note = Note("Root", text_to_rtf("Toolbar", font_family="Arial", font_size_half_points=20))
@@ -372,6 +397,13 @@ class ModelOperationTests(unittest.TestCase):
         self.assertEqual(parse_int_or_hex("0x01020304"), 0x01020304)
 
 
+    def test_legacy_light_palette(self) -> None:
+        self.assertEqual(legacy_light_color(0).name, "LightCoral")
+        self.assertEqual(legacy_color_by_name("light-yellow").hex, "#FFFFFFE0")
+        self.assertEqual(argb_to_signed(0xFFFFFFFF), -1)
+        self.assertEqual(len(legacy_palette_table()), 15)
+
+
 class AlarmTests(unittest.TestCase):
 
     def test_due_alarms_and_message(self) -> None:
@@ -449,6 +481,24 @@ class ConfigMigrationTests(unittest.TestCase):
         config = AppConfig()
         config.add_recent("ftp://user:pass@example.org/dir/notizen.alx")
         self.assertEqual(config.last_file, "ftp://user:pass@example.org/dir/notizen.alx")
+
+    def test_cli_recent_reads_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            old_home = os.environ.get("XDG_CONFIG_HOME")
+            os.environ["XDG_CONFIG_HOME"] = tmp
+            try:
+                config = AppConfig()
+                config.add_recent("/tmp/a.alx")
+                config.add_recent("ftp://example.org/notizen.alx")
+                config.save()
+                with redirect_stdout(io.StringIO()) as out:
+                    self.assertEqual(cli_main(["recent"]), 0)
+                self.assertIn("ftp://example.org/notizen.alx", out.getvalue())
+            finally:
+                if old_home is None:
+                    os.environ.pop("XDG_CONFIG_HOME", None)
+                else:
+                    os.environ["XDG_CONFIG_HOME"] = old_home
 
     def test_default_remote_url_quotes_credentials(self) -> None:
         config = AppConfig(ftp_host="example.org", ftp_username="u ser", ftp_password="p@ss", ftp_path="dir/file.alx", ftp_use_tls=True)
@@ -576,6 +626,28 @@ class CliIntegrationTests(unittest.TestCase):
                 self.assertEqual(cli_main(["backup-list", str(source)]), 0)
             self.assertIn("source-", out.getvalue())
 
+    def test_cli_color_note_sticky_list_and_palette(self) -> None:
+        doc = NoteDocument(root=Note("Root", text_to_rtf("Text")))
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.alx"
+            colored = Path(tmp) / "colored.alx"
+            sticky_file = Path(tmp) / "sticky.alx"
+            save_document(doc, path=source, backup_count=0)
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["color-palette", "--json"]), 0)
+            self.assertIn("LightCoral", out.getvalue())
+            with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["color-note", str(source), str(colored), "--title", "Root", "--random-bg", "--random-index", "4", "--show"]), 0)
+            self.assertIn("#FFFFFFE0", out.getvalue())
+            self.assertEqual(load_document(colored).root.bg_color, legacy_light_color(4).signed_argb)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(cli_main(["sticky", str(colored), str(sticky_file), "--title", "Root", "--show", "--autosize"]), 0)
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(cli_main(["sticky-list", str(sticky_file), "--json"]), 0)
+            payload = json.loads(out.getvalue())
+            self.assertEqual(payload[0]["title"], "Root")
+            self.assertIn("bg_css", payload[0])
+
     def test_cli_alarm_add_next_remove(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             old_home = os.environ.get("XDG_CONFIG_HOME")
@@ -611,6 +683,15 @@ class CliIntegrationTests(unittest.TestCase):
                 else:
                     os.environ["XDG_CONFIG_HOME"] = old_home
 
+
+
+
+class AppCompatTests(unittest.TestCase):
+    def test_legacy_argv_normalization(self) -> None:
+        self.assertEqual(_normalize_legacy_argv(["/min", "datei.alx"]), ["--minimized", "datei.alx"])
+        self.assertEqual(_normalize_legacy_argv(["-min"]), ["--minimized"])
+        self.assertEqual(_normalize_legacy_argv(["/h"]), ["--help"])
+        self.assertEqual(_normalize_legacy_argv(["/?"]), ["--help"])
 
 class NotificationTests(unittest.TestCase):
     def test_notify_dry_run_is_dependency_free(self) -> None:

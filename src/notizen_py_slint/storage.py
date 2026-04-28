@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 
 from .des_compat import NotizenCryptoError, decrypt_notizen_payload, encrypt_notizen_payload, is_blank_password
 from .model import Note, NoteDocument, StickyWindow
+from .legacy_colors import argb_to_signed
 from .rtf import append_picture_to_rtf, append_text_to_rtf, change_rtf_font_size, extract_pictures, is_rtf, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, text_to_rtf, write_extracted_pictures
 
 
@@ -807,8 +808,8 @@ def _note_to_element(note: Note) -> ET.Element:
     attrs: dict[str, str] = {
         "name": note.title or "...",
         "isexpanded": "True" if note.expanded else "False",
-        "bgcolor": str(note.bg_color or 0),
-        "fgcolor": str(note.fg_color or 0),
+        "bgcolor": str(argb_to_signed(note.bg_color) or 0),
+        "fgcolor": str(argb_to_signed(note.fg_color) or 0),
     }
     if note.sticky is not None:
         attrs.update(note.sticky.to_attrs())

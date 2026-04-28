@@ -6,6 +6,7 @@ import re
 from typing import Callable, Iterable
 
 from .rtf import rtf_to_text, text_to_rtf
+from .legacy_colors import argb_to_signed
 
 _id_counter = itertools.count(1)
 
@@ -80,7 +81,7 @@ class StickyWindow:
         if self.opacity is not None:
             attrs["opacity"] = str(self.opacity)
         if self.argb is not None:
-            attrs["argb"] = str(self.argb)
+            attrs["argb"] = str(argb_to_signed(self.argb))
         return attrs
 
     def summary(self) -> str:

@@ -25,8 +25,8 @@ Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in 
 - RichTextBox-Kontextfunktionen als portable Aktionen: Datum anhängen, Aufzählungszeichen anhängen, Bild anhängen
 - PNG/JPEG/BMP als RTF-`\pict`-Gruppen an Notizen anhängen
 - RTF-Bilder aus alten `\pict`-Gruppen extrahieren
-- Sticky-Metadaten-Editor für `visible`, `x`, `y`, `width`, `height`, `opacity`, `argb`
-- Knotenfarben `bgcolor` und `fgcolor` werden wie im Original geschrieben und können bearbeitet werden
+- Sticky-Metadaten-Editor für `visible`, `x`, `y`, `width`, `height`, `opacity`, `argb` plus normalisierte Sticky-Fenster-Spezifikationen für CLI, HTML und den optionalen Tk-Laufzeitmodus
+- Knotenfarben `bgcolor` und `fgcolor` werden wie im Original als signed `Color.ToArgb()`-Werte geschrieben, können bearbeitet werden und nutzen auf Wunsch die alte helle Zufallspalette aus `get_lightcolor()`
 - FTP/FTPS-Transport mit `ftp://`/`ftps://`-URLs, `.netrc`-Fallback und migrierbarer Standardverbindung
 - CLI erweitert um Statistik, Suche, XML-Dump/Pack, Einzelnotiz-RTF-Export, Notizinhalt ersetzen, Bewegung, Duplizieren, strukturelles Einfügen/Löschen/Umbenennen, Bild einfügen, Datum/Bullet anhängen und FTP-Konfiguration
 - HTML-Export als portabler Ersatz für Drucken/Vorschau-Zusammenfassungen
@@ -34,8 +34,8 @@ Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in 
 - RichTextBox-Toolbar-Buttons `B`, `I`, `U`, `S` und `Normal` aus der alten UI als Ganznotiz-Aktionen in Slint und als CLI-Befehl `style-note`
 - globale RTF-Stilerkennung, damit vorhandene einfache RichTextBox-RTF-Dokumente beim Umformatieren Schriftfamilie/Schriftgröße/Stil sinnvoll weitertragen
 - Ctrl+Plus/Ctrl+Minus aus `Notizen.vb` als RTF-weite Textgrößenänderung (`font-size`, A+/A-) portiert
-- Suchoptionen aus der alten Dialog-/Suchlogik als UI-Checkboxen: Groß-/Kleinschreibung, Ganzwortsuche, nur aktueller Teilbaum
-- Sticky-Autogröße und Sticky-HTML-Board als portabler Ersatz für Teile von `desknote.vb`
+- Suchoptionen aus der alten Dialog-/Suchlogik als UI-Checkboxen: Groß-/Kleinschreibung, Ganzwortsuche, nur aktueller Teilbaum; zusätzlich gibt es eine globale Ersetzen-Aktion für den gefundenen Textbereich
+- Sticky-Autogröße, Sticky-HTML-Board und optionales `sticky-run` mit kleinen Tk-Fenstern als portabler Ersatz für Teile von `desknote.vb`
 - alte `notizen.config.xml` aus `xml_kram.vb` lesen, in die neue JSON-Konfiguration übernehmen und diagnostisch wieder als alte XML-Struktur schreiben
 - Autostart portabel nachgebaut: `.desktop` unter Linux, `.cmd` im Windows-Startup-Ordner, LaunchAgent unter macOS
 - Autosave-Timer aus der Konfiguration für lokale Dateien
@@ -59,7 +59,7 @@ Desktop-/Sticky-Notizen hängen als Attribute am selben `Notiz`-Element:
 visible="True" x="100" y="100" width="260" height="180" opacity="0.85" argb="-1"
 ```
 
-Der Port schreibt weiterhin UTF-16-XML, komprimiert mit GZip. Bei gesetztem Passwort wird anschließend die historische dreifache DES-CBC-Kaskade verwendet. Zusätzlich kann der Python-Kern lesbares Roh-XML direkt laden/speichern und per CLI mit `dump-xml`/`pack-xml` zwischen XML und `.alx` wechseln.
+Der Port schreibt weiterhin UTF-16-XML, komprimiert mit GZip. Farbwerte werden beim Schreiben auf signed 32-Bit-ARGB normalisiert, weil WinForms `Color.ToArgb()` im alten Code ebenfalls signed Integer in XML serialisierte. Bei gesetztem Passwort wird anschließend die historische dreifache DES-CBC-Kaskade verwendet. Zusätzlich kann der Python-Kern lesbares Roh-XML direkt laden/speichern und per CLI mit `dump-xml`/`pack-xml` zwischen XML und `.alx` wechseln.
 
 ## Verschlüsselung
 
@@ -92,7 +92,7 @@ Die alte FTP-Konfiguration aus `ftpkram.vb` (`name`, `pass`, `host`, `path`) wir
 
 Backups werden nur lokal erzeugt. Bei Remote-Speichern wird direkt hochgeladen.
 
-Der alte Windows-spezifische Autostart wurde nicht per Registry/COM 1:1 übernommen. Stattdessen erzeugt der Port plattformübliche Starterdateien und akzeptiert `--minimized` als kompatibles, aber momentan nicht fensterzustandswirksames Startargument.
+Der alte Windows-spezifische Autostart wurde nicht per Registry/COM 1:1 übernommen. Stattdessen erzeugt der Port plattformübliche Starterdateien und akzeptiert `--minimized` sowie die alten Kürzel `/min`, `-min`, `min`, `/h` und `/?` als kompatible Startargumente. `--minimized` ist momentan ein akzeptierter, aber nicht fensterzustandswirksamer Startmodus.
 
 ## Wecker
 
@@ -111,7 +111,7 @@ Das ist kein vollständiger Dienst/Daemon und kein WinForms-Popup mit eigener Di
 Nicht sinnvoll 1:1 übernommen wurden:
 
 - WinForms-Trayicon als natives System-Tray-Objekt
-- separate borderlose Desktop-Sticky-Fenster (der Port hat stattdessen Sticky-Metadaten, Autogröße und HTML-Board)
+- separate borderlose WinForms-Desktop-Sticky-Fenster; `sticky-run` bietet einen optionalen Tk-Nachbau, ist aber bewusst kein 1:1-WinForms-Fenster mit identischem Verhalten
 - native TreeView-Drag-and-drop-Gesten
 - Druckdialog; HTML-Export dient als portabler Ersatz
 - vollständige mehrsprachige Menülogik aus den `.resx`-/`languages.vb`-Dateien

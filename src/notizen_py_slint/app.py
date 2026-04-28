@@ -9,6 +9,7 @@ from .autostart import sync_autostart
 from .alarm import AlarmRule, add_or_replace_alarm, load_alarms, next_alarm, parse_weekdays
 from .config import AppConfig, load_config, save_config
 from .legacy_config import import_legacy_config
+from .legacy_colors import legacy_light_color
 from .dialogs import ask_directory, ask_open_file, ask_password, ask_save_file, ask_text
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import RemoteFileError, is_remote_uri, load_uri, save_uri
@@ -137,6 +138,7 @@ class NotizenSlintApp:
     def _wire_callbacks(self) -> None:
         self.window.new_document = self.new_document
         self.window.open_document = self.open_document
+        self.window.open_recent_document = self.open_recent_document
         self.window.open_remote_document = self.open_remote_document
         self.window.save_document = self.save_document
         self.window.save_document_as = self.save_document_as
@@ -178,11 +180,13 @@ class NotizenSlintApp:
         self.window.editor_changed = self.editor_changed
         self.window.search_next = self.search_next
         self.window.search_all = self.search_all
+        self.window.replace_text = self.replace_text
         self.window.toggle_raw_rtf = self.toggle_raw_rtf
         self.window.toggle_sticky = self.toggle_sticky
         self.window.set_sticky_geometry = self.set_sticky_geometry
         self.window.autosize_sticky = self.autosize_sticky
         self.window.set_colors = self.set_colors
+        self.window.apply_light_color = self.apply_light_color
         self.window.clear_colors = self.clear_colors
         self.window.format_note = self.format_note
         self.window.apply_bold = lambda: self.apply_toolbar_style("bold")
@@ -216,6 +220,30 @@ class NotizenSlintApp:
             self._open_location(str(path))
         except NotizenFileError as exc:
             self._set_status(f"Öffnen fehlgeschlagen: {exc}")
+            return
+        self._refresh_all()
+
+    def open_recent_document(self) -> None:
+        recent = list(self.config.recent_files)
+        if not recent:
+            self._set_status("Keine zuletzt geöffneten Dateien gespeichert.")
+            return
+        options = "\n".join(f"{index + 1}: {path}" for index, path in enumerate(recent))
+        choice = ask_text("Zuletzt geöffnet: Nummer oder Pfad\n" + options, default="1", empty_is_none=True)
+        if choice is None:
+            return
+        choice = choice.strip()
+        location = choice
+        if choice.isdigit():
+            index = int(choice) - 1
+            if not 0 <= index < len(recent):
+                self._set_status("Ungültiger Zuletzt-geöffnet-Index.")
+                return
+            location = recent[index]
+        try:
+            self._open_location(location)
+        except NotizenFileError as exc:
+            self._set_status(f"Zuletzt geöffnete Datei konnte nicht geladen werden: {exc}")
             return
         self._refresh_all()
 
@@ -642,6 +670,35 @@ class NotizenSlintApp:
         scope = " im Teilbaum" if start is not None else ""
         self._set_status(f"{len(hits)} Treffer{scope}: {sample}{more}")
 
+    def replace_text(self, needle: str) -> None:
+        needle_text = str(needle or "")
+        if not needle_text.strip():
+            value = ask_text("Suchen nach", default="", empty_is_none=True)
+            if value is None:
+                return
+            needle_text = value
+        replacement = ask_text("Ersetzen durch", default="", empty_is_none=False)
+        if replacement is None:
+            return
+        case_sensitive, whole_words, start = self._search_options()
+        report = self.document.replace_all(
+            needle_text,
+            replacement,
+            case_sensitive=case_sensitive,
+            whole_words=whole_words,
+            start=start,
+            include_titles=True,
+            include_text=True,
+        )
+        self._refresh_all()
+        if report.total_replacements:
+            self._set_status(
+                f"{report.total_replacements} Ersetzung(en) in {report.notes_changed} Notiz(en); "
+                f"Titel {report.title_replacements}, Text {report.text_replacements}."
+            )
+        else:
+            self._set_status("Keine Ersetzung.")
+
     # Metadata / raw RTF ---------------------------------------------------
     def toggle_raw_rtf(self) -> None:
         self._raw_rtf = not self._raw_rtf
@@ -708,6 +765,16 @@ class NotizenSlintApp:
         self.document.modified = True
         self._refresh_all(keep_editor=True)
         self._set_status("Knotenfarben gesetzt.")
+
+    def apply_light_color(self) -> None:
+        note = self.document.selected_note
+        color = legacy_light_color()
+        note.bg_color = color.signed_argb
+        if note.sticky is not None and note.sticky.argb is None:
+            note.sticky.argb = color.signed_argb
+        self.document.modified = True
+        self._refresh_all(keep_editor=True)
+        self._set_status(f"Helle Notizen.NET-Farbe gesetzt: {color.name} {color.hex}.")
 
     def clear_colors(self) -> None:
         note = self.document.selected_note
@@ -976,6 +1043,30 @@ def _safe_filename(value: str) -> str:
     return cleaned or "notiz"
 
 
+def _normalize_legacy_argv(argv: list[str] | None = None) -> list[str]:
+    """Accept the old VB/WinForms command-line shorthands.
+
+    The original application treated `/min`, `-min` and `min` as minimized
+    autostart, and `/h`/`/?` as help.  Keeping these aliases makes migrated
+    desktop/autostart entries less brittle while the preferred Python flags stay
+    explicit.
+    """
+
+    import sys
+
+    values = list(sys.argv[1:] if argv is None else argv)
+    normalized: list[str] = []
+    for item in values:
+        lower = item.strip().lower()
+        if lower in {"/min", "-min", "min"}:
+            normalized.append("--minimized")
+        elif lower in {"/h", "-h", "/?", "-?", "h", "?"}:
+            normalized.append("--help")
+        else:
+            normalized.append(item)
+    return normalized
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -983,7 +1074,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("file", nargs="?", help=".alx-Datei oder ftp://-/ftps://-URL öffnen")
     parser.add_argument("--password", help="Passwort für verschlüsselte .alx-Dateien")
     parser.add_argument("--minimized", action="store_true", help="aus alter Autostart-Konfiguration akzeptiert; UI startet normal")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_legacy_argv(argv))
 
     try:
         app = NotizenSlintApp(initial_path=args.file, password=args.password)
