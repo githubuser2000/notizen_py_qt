@@ -192,7 +192,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 81 tests
+Ran 83 tests
 OK
 ```
 
@@ -271,3 +271,14 @@ Dieser Schritt zieht weitere alte Dialog- und Migrationsdetails nach:
 - Die alten `xml_kram.vb`-ToolStrip-Positionen werden aus `notizen.config.xml` migriert und mit `toolstrips` beziehungsweise `config-set --toolstrip NAME X Y` bearbeitbar.
 - Die Slint-Oberfläche hat dafür neue Hooks `PwInfo`, `Reparieren` und `ToolStrips`.
 - Der große CLI-Parser wird nun pro Prozess gecacht; dadurch bleiben wiederholte In-Process-Aufrufe wie in Tests, Skripten oder eingebetteten Workflows stabil und schneller. Der Sticky-Befehl hat zusätzlich einen kleinen Direktparser für den alten Desktop-Notiz-Hotpath.
+
+
+## Neu in v15 / 0.15.0
+
+Dieser Schritt setzt zwei sichtbare GUI-Lücken aus dem alten WinForms-Programm um:
+
+- Der Baum hat jetzt ein echtes Slint-Kontextmenü pro Zeile. Rechtsklick auf eine Notiz bietet die alten Kernaktionen direkt an: neues Kind, neuer Nachbar, umbenennen, kopieren, ausschneiden, einfügen, duplizieren, löschen, auf-/zuklappen, verschieben/einrücken/ausrücken, aktuelle Notiz als RTF speichern, Sticky aktivieren und Farben setzen.
+- Das Text-/RTF-Fenster hat jetzt ebenfalls ein Slint-Kontextmenü. Rechtsklick im Editor bietet Kopieren, Ausschneiden, Einfügen, Alles markieren, Bild einfügen, Datum, Aufzählungszeichen, Löschen, Suchen, Alle Treffer, Ersetzen und RTF/Text-Umschaltung. Die Standard-Clipboard-Aktionen nutzen Slints `TextEdit.copy()`, `cut()`, `paste()` und `select-all()`.
+- Die obere Leiste wurde von drei übervollen Reihen auf sechs thematische Reihen umgebaut und von 122 px auf 232 px erhöht. Dadurch passen die Buttons bei normaler Fensterbreite sichtbar in die Oberfläche, statt rechts abgeschnitten zu werden.
+- Die Editor-Kopfleiste wurde entrümpelt; Import-/Export-/Baumaktionen liegen jetzt in der größeren Hauptleiste, während der Editor oben nur noch Titel, Modus und die wichtigsten Schnellaktionen zeigt.
+- Für das Baum-Kontextmenü wurde der neue Slint-Callback `rename-row(int)` ergänzt, damit Umbenennen direkt auf der rechtsgeklickten Zeile arbeitet.

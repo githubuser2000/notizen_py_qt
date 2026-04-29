@@ -174,3 +174,12 @@ Die alte Verschlüsselung hatte eine leicht ungewöhnliche Passwortaufbereitung:
 `repair.py` ergänzt eine vorsichtige Normalisierungsschicht für reale Altdateien: Plain-Text-Knoten werden in RTF gewandelt, leere Titel markiert, vollständig transparente Farben entfernt, Sticky-Fenster auf sinnvolle Mindestgrößen gebracht und ARGB-Werte in das alte signed-WinForms-Format gebracht. Der Reparaturlauf ist als Bericht testbar und kann per CLI als Dry-Run ausgeführt werden.
 
 Weil die CLI inzwischen sehr viele alte Menü- und Dialogpfade abbildet, wird der große Argumentparser pro Prozess gecacht. Das ändert die Kommandozeilenoberfläche nicht, macht aber wiederholte Aufrufe aus Tests, Skripten und der Slint-Schicht deutlich robuster.
+
+
+## v15: echte Slint-Kontextmenüs und höhere Toolbar
+
+Die alten WinForms-Kontextmenüs lagen seit v11 als Manifest vor, waren in der GUI aber noch nicht an die eigentlichen Klickflächen gebunden. In v15 sind sie an Slints `ContextMenuArea` angeschlossen: Jede sichtbare Baumzeile besitzt jetzt ein eigenes Kontextmenü, dessen Aktionen vor der Ausführung die passende Zeile auswählen. Damit verhält sich Rechtsklick im Baum deutlich näher an der alten `Baum_Kontext_.vb`-Oberfläche.
+
+Auch der Editorbereich ist jetzt von einer `ContextMenuArea` umgeben. Die Zwischenablagefunktionen werden direkt über Slints `TextEdit`-Methoden ausgeführt; Datei-/Notizaktionen wie Bild, Datum, Suche, Ersetzen und Raw-RTF-Umschaltung rufen weiterhin die Python-Callbacks auf. Eine Einschränkung bleibt: Slints `TextEdit` ersetzt keine vollständige WinForms-RichTextBox. Die sichtbaren Kontextaktionen sind vorhanden, aber gemischte RichTextBox-Formatierungen pro Auswahl bleiben weiterhin über die bereits portierten Range-/RTF-Helfer und CLI-Pfade stabiler als über eine native Slint-Auswahl.
+
+Die obere Werkzeugleiste wurde bewusst höher gemacht: Statt drei übervoller HorizontalLayouts gibt es jetzt sechs thematisch getrennte Zeilen für Datei, Export, Import/Baum, Ordnen/RTF, Sticky/Farbe und Info/Extras. Das entspricht nicht pixelgenau dem alten frei verschiebbaren ToolStrip-System, ist aber für Slint deutlich robuster und verhindert, dass Buttons bei normaler Fensterbreite verschwinden. Die alten ToolStrip-Koordinaten bleiben weiterhin als Migrationsdaten erhalten.

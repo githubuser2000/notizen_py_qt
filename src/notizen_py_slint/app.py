@@ -192,6 +192,7 @@ class NotizenSlintApp:
         self.window.expand_all = self.expand_all
         self.window.collapse_all = self.collapse_all
         self.window.select_row = self.select_row
+        self.window.rename_row = self.rename_row
         self.window.rename_current = self.rename_current
         self.window.editor_changed = self.editor_changed
         self.window.search_next = self.search_next
@@ -687,6 +688,22 @@ class NotizenSlintApp:
         note = self.document.select_by_flat_index(int(index))
         if note is not None:
             self._refresh_all()
+
+    def rename_row(self, index: int) -> None:
+        note = self.document.select_by_flat_index(int(index))
+        if note is None:
+            self._set_status("Notizzeile nicht gefunden.")
+            return
+        new_title = ask_text("Notiz umbenennen", default=note.title, empty_is_none=True)
+        if new_title is None:
+            self._refresh_all()
+            return
+        new_title = str(new_title).strip() or "..."
+        if note.title != new_title:
+            note.title = new_title
+            self.document.modified = True
+        self._refresh_all()
+        self._set_status(f"Notiz umbenannt: {note.title}")
 
     def rename_current(self, title: str) -> None:
         if self._syncing:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from importlib import resources
 import json
 import os
 import tempfile
@@ -18,6 +19,7 @@ from notizen_py_slint.opml import document_to_opml, opml_to_note
 from notizen_py_slint.paths import default_file_path, default_paths
 from notizen_py_slint.passwords import legacy_password_info, normalize_legacy_password
 from notizen_py_slint.repair import repair_document
+import notizen_py_slint.app as app_module
 from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
@@ -1243,6 +1245,38 @@ class AppCompatTests(unittest.TestCase):
         self.assertEqual(_normalize_legacy_argv(["-min"]), ["--minimized"])
         self.assertEqual(_normalize_legacy_argv(["/h"]), ["--help"])
         self.assertEqual(_normalize_legacy_argv(["/?"]), ["--help"])
+
+    def test_slint_ui_has_native_context_menus_and_taller_toolbar(self) -> None:
+        ui_text = resources.files("notizen_py_slint.ui").joinpath("app-window.slint").read_text(encoding="utf-8")
+        self.assertIn("height: 900px;", ui_text)
+        self.assertIn("height: 232px;", ui_text)
+        self.assertGreaterEqual(ui_text.count("ContextMenuArea"), 2)
+        self.assertIn('MenuItem { title: "Neu darunter"', ui_text)
+        self.assertIn('MenuItem { title: "Kopieren"; activated => { editor.copy(); } }', ui_text)
+        self.assertIn("Rechtsklick im Textfeld", ui_text)
+
+    def test_rename_row_callback_selects_and_renames_visible_tree_row(self) -> None:
+        class DummyWindow:
+            status_text = ""
+
+        root = Note("Root", text_to_rtf(""))
+        child = root.add_child(Note("Alt", text_to_rtf("Text")))
+        doc = NoteDocument(root=root, selected_id=root.note_id)
+        app = object.__new__(NotizenSlintApp)
+        app.document = doc
+        app.window = DummyWindow()
+        app._refresh_all = lambda *args, **kwargs: None
+        app._set_status = lambda message: setattr(app.window, "status_text", message)
+        old_ask = app_module.ask_text
+        app_module.ask_text = lambda *args, **kwargs: "Neu"
+        try:
+            NotizenSlintApp.rename_row(app, 1)
+        finally:
+            app_module.ask_text = old_ask
+        self.assertEqual(child.title, "Neu")
+        self.assertEqual(doc.selected_note, child)
+        self.assertTrue(doc.modified)
+        self.assertIn("umbenannt", app.window.status_text)
 
     def test_compat_and_default_path_ui_hooks(self) -> None:
         class DummyWindow:

@@ -7,7 +7,7 @@ export struct NoteRow {
 
 export component AppWindow inherits Window {
     width: 1240px;
-    height: 820px;
+    height: 900px;
     title: root.window-title;
 
     in-out property <string> window-title: "Notizen Py Slint";
@@ -68,6 +68,7 @@ export component AppWindow inherits Window {
     callback expand-all();
     callback collapse-all();
     callback select-row(int);
+    callback rename-row(int);
     callback rename-current(string);
     callback editor-changed(string);
     callback search-next(string);
@@ -109,7 +110,7 @@ export component AppWindow inherits Window {
         spacing: 8px;
 
         Rectangle {
-            height: 122px;
+            height: 232px;
             background: #f6f6f6;
             border-color: #dadada;
             border-width: 1px;
@@ -118,6 +119,7 @@ export component AppWindow inherits Window {
                 spacing: 5px;
                 HorizontalLayout {
                     spacing: 6px;
+                    Text { text: "Datei"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Neu"; clicked => { root.new-document(); } }
                     Button { text: "Öffnen"; clicked => { root.open-document(); } }
                     Button { text: "Zuletzt"; clicked => { root.open-recent-document(); } }
@@ -126,7 +128,12 @@ export component AppWindow inherits Window {
                     Button { text: "Speichern unter"; clicked => { root.save-document-as(); } }
                     Button { text: "FTP speichern"; clicked => { root.save-remote-document(); } }
                     Button { text: "Passwort"; clicked => { root.set-password(); } }
-                    Rectangle { width: 1px; background: #cccccc; }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text { text: root.dirty ? "● geändert" : "gespeichert"; vertical-alignment: center; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Export"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "TXT"; clicked => { root.export-text(); } }
                     Button { text: "RTF"; clicked => { root.export-rtf(); } }
                     Button { text: "HTML"; clicked => { root.export-html(); } }
@@ -137,11 +144,19 @@ export component AppWindow inherits Window {
                     Button { text: "NotesDoc"; clicked => { root.export-notes-doc(); } }
                     Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
                     Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
+                    Button { text: "Notiz-RTF"; clicked => { root.export-note-rtf(); } }
+                    Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: root.dirty ? "● geändert" : "gespeichert"; vertical-alignment: center; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
+                    Text { text: "Import/Baum"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "Import TXT"; clicked => { root.import-text(); } }
+                    Button { text: "Import RTF"; clicked => { root.import-rtf(); } }
+                    Button { text: "Import JSON"; clicked => { root.import-json(); } }
+                    Button { text: "Import OPML"; clicked => { root.import-opml(); } }
+                    Button { text: "Bild+"; clicked => { root.insert-image(); } }
+                    Rectangle { width: 1px; background: #cccccc; }
                     Button { text: "+ Kind"; clicked => { root.add-child(); } }
                     Button { text: "+ Daneben"; clicked => { root.add-sibling(); } }
                     Button { text: "Dupl."; clicked => { root.duplicate-note(); } }
@@ -150,7 +165,11 @@ export component AppWindow inherits Window {
                     Button { text: "Kopieren"; clicked => { root.copy-node(); } }
                     Button { text: "Ausschneiden"; clicked => { root.cut-node(); } }
                     Button { text: "Einfügen"; clicked => { root.paste-node(); } }
-                    Rectangle { width: 1px; background: #cccccc; }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Ordnen/RTF"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "↑"; clicked => { root.move-up(); } }
                     Button { text: "↓"; clicked => { root.move-down(); } }
                     Button { text: "Einr."; clicked => { root.indent-note(); } }
@@ -159,12 +178,6 @@ export component AppWindow inherits Window {
                     Button { text: "Alle auf"; clicked => { root.expand-all(); } }
                     Button { text: "Alle zu"; clicked => { root.collapse-all(); } }
                     Rectangle { width: 1px; background: #cccccc; }
-                    Button { text: "Sticky"; clicked => { root.toggle-sticky(); } }
-                    Button { text: "Geom."; clicked => { root.set-sticky-geometry(); } }
-                    Button { text: "Auto-Größe"; clicked => { root.autosize-sticky(); } }
-                    Button { text: "Farben"; clicked => { root.set-colors(); } }
-                    Button { text: "Hell"; clicked => { root.apply-light-color(); } }
-                    Button { text: "Farbe weg"; clicked => { root.clear-colors(); } }
                     Button { text: "Format"; clicked => { root.format-note(); } }
                     Button { text: "B"; clicked => { root.apply-bold(); } }
                     Button { text: "I"; clicked => { root.apply-italic(); } }
@@ -173,12 +186,29 @@ export component AppWindow inherits Window {
                     Button { text: "Normal"; clicked => { root.apply-regular(); } }
                     Button { text: "A+"; clicked => { root.increase-font-size(); } }
                     Button { text: "A-"; clicked => { root.decrease-font-size(); } }
+                    Button { text: "Datum+"; clicked => { root.append-date(); } }
+                    Button { text: "•+"; clicked => { root.append-bullet(); } }
                     Button { text: "Bilder"; clicked => { root.extract-images(); } }
+                    Rectangle { horizontal-stretch: 1; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
+                    Text { text: "Sticky/Farbe"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "Sticky"; clicked => { root.toggle-sticky(); } }
+                    Button { text: "Geom."; clicked => { root.set-sticky-geometry(); } }
+                    Button { text: "Auto-Größe"; clicked => { root.autosize-sticky(); } }
+                    Button { text: "Farben"; clicked => { root.set-colors(); } }
+                    Button { text: "Hell"; clicked => { root.apply-light-color(); } }
+                    Button { text: "Farbe weg"; clicked => { root.clear-colors(); } }
+                    Rectangle { width: 1px; background: #cccccc; }
                     Button { text: "Stats"; clicked => { root.show-stats(); } }
                     Button { text: "Backups"; clicked => { root.show-backups(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    Text { text: "Kontextmenüs: Rechtsklick im Baum oder Editor"; vertical-alignment: center; color: #666666; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Info/Extras"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Info"; clicked => { root.show-about(); } }
                     Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
                     Button { text: "Kontext"; clicked => { root.show-context-menus(); } }
@@ -191,10 +221,8 @@ export component AppWindow inherits Window {
                     Button { text: "Einstellungen"; clicked => { root.open-settings(); } }
                     Button { text: "Wecker"; clicked => { root.open-alarm(); } }
                     Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
-                    Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
-                    Button { text: "Alt-Config importieren"; clicked => { root.import-legacy-config(); } }
+                    Button { text: "Alt-Config"; clicked => { root.import-legacy-config(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "HTML/Bilder/FTP/Wecker/Sticky/Suche/Stile/Farben/Sprache/Kontext/OPML/notes_doc/Reparatur erweitert"; vertical-alignment: center; color: #666666; }
                 }
             }
         }
@@ -227,24 +255,50 @@ export component AppWindow inherits Window {
                         CheckBox { text: "Teilbaum"; checked <=> root.search-current-subtree; }
                     }
                     ListView {
-                        for row[i] in root.rows: Rectangle {
+                        for row[i] in root.rows: ContextMenuArea {
+                            width: parent.width;
                             height: 30px;
-                            background: row.selected ? #dbeafe : #ffffff;
-                            border-color: row.selected ? #93c5fd : #ffffff;
-                            border-width: 1px;
-                            Text {
-                                x: 6px;
-                                y: 0px;
-                                width: parent.width - 12px;
-                                height: parent.height;
-                                text: row.label;
-                                vertical-alignment: center;
-                                overflow: elide;
-                            }
-                            TouchArea {
+                            Rectangle {
                                 width: parent.width;
                                 height: parent.height;
-                                clicked => { root.select-row(i); }
+                                background: row.selected ? #dbeafe : #ffffff;
+                                border-color: row.selected ? #93c5fd : #ffffff;
+                                border-width: 1px;
+                                Text {
+                                    x: 6px;
+                                    y: 0px;
+                                    width: parent.width - 12px;
+                                    height: parent.height;
+                                    text: row.label;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                TouchArea {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    clicked => { root.select-row(i); }
+                                }
+                            }
+                            Menu {
+                                MenuItem { title: "Neu darunter"; activated => { root.select-row(i); root.add-child(); } }
+                                MenuItem { title: "Neu daneben"; activated => { root.select-row(i); root.add-sibling(); } }
+                                MenuItem { title: "Umbenennen"; activated => { root.rename-row(i); } }
+                                MenuSeparator { }
+                                MenuItem { title: "Kopieren"; activated => { root.select-row(i); root.copy-node(); } }
+                                MenuItem { title: "Ausschneiden"; activated => { root.select-row(i); root.cut-node(); } }
+                                MenuItem { title: "Einfügen danach"; activated => { root.select-row(i); root.paste-node(); } }
+                                MenuItem { title: "Duplizieren"; activated => { root.select-row(i); root.duplicate-note(); } }
+                                MenuSeparator { }
+                                MenuItem { title: "Löschen"; activated => { root.select-row(i); root.delete-note(); } }
+                                MenuItem { title: "Auf/Zuklappen"; activated => { root.select-row(i); root.toggle-expand(); } }
+                                MenuItem { title: "Nach oben"; activated => { root.select-row(i); root.move-up(); } }
+                                MenuItem { title: "Nach unten"; activated => { root.select-row(i); root.move-down(); } }
+                                MenuItem { title: "Einrücken"; activated => { root.select-row(i); root.indent-note(); } }
+                                MenuItem { title: "Ausrücken"; activated => { root.select-row(i); root.outdent-note(); } }
+                                MenuSeparator { }
+                                MenuItem { title: "Notiz als RTF speichern"; activated => { root.select-row(i); root.export-note-rtf(); } }
+                                MenuItem { title: "Desktop-Notiz / Sticky"; activated => { root.select-row(i); root.toggle-sticky(); } }
+                                MenuItem { title: "Hintergrund-/Schriftfarbe"; activated => { root.select-row(i); root.set-colors(); } }
                             }
                         }
                     }
@@ -266,20 +320,37 @@ export component AppWindow inherits Window {
                         Rectangle { width: 1px; background: #cccccc; }
                         Text { text: root.mode-label; vertical-alignment: center; }
                         Button { text: "RTF/Text"; clicked => { root.toggle-raw-rtf(); } }
-                        Button { text: "Import TXT"; clicked => { root.import-text(); } }
-                        Button { text: "Import RTF"; clicked => { root.import-rtf(); } }
-                        Button { text: "Import JSON"; clicked => { root.import-json(); } }
-                        Button { text: "Import OPML"; clicked => { root.import-opml(); } }
                         Button { text: "Bild+"; clicked => { root.insert-image(); } }
                         Button { text: "Datum+"; clicked => { root.append-date(); } }
                         Button { text: "•+"; clicked => { root.append-bullet(); } }
-                        Button { text: "Notiz-RTF"; clicked => { root.export-note-rtf(); } }
-                        Button { text: "Bilder"; clicked => { root.extract-images(); } }
+                        Rectangle { horizontal-stretch: 1; }
+                        Text { text: "Rechtsklick im Textfeld öffnet das RTF-Kontextmenü"; vertical-alignment: center; color: #666666; }
                     }
-                    TextEdit {
-                        text <=> root.editor-text;
-                        wrap: word-wrap;
-                        edited(text) => { root.editor-changed(text); }
+                    ContextMenuArea {
+                        vertical-stretch: 1;
+                        editor := TextEdit {
+                            width: parent.width;
+                            height: parent.height;
+                            text <=> root.editor-text;
+                            wrap: word-wrap;
+                            edited(text) => { root.editor-changed(text); }
+                        }
+                        Menu {
+                            MenuItem { title: "Kopieren"; activated => { editor.copy(); } }
+                            MenuItem { title: "Ausschneiden"; activated => { editor.cut(); } }
+                            MenuItem { title: "Einfügen"; activated => { editor.paste(); } }
+                            MenuItem { title: "Alles markieren"; activated => { editor.select-all(); } }
+                            MenuSeparator { }
+                            MenuItem { title: "Bild einfügen"; activated => { root.insert-image(); } }
+                            MenuItem { title: "Datum einfügen"; activated => { root.append-date(); } }
+                            MenuItem { title: "Aufzählungszeichen einfügen"; activated => { root.append-bullet(); } }
+                            MenuItem { title: "Löschen"; activated => { editor.cut(); } }
+                            MenuSeparator { }
+                            MenuItem { title: "Suchen"; activated => { root.search-next(root.search-text); } }
+                            MenuItem { title: "Alle Treffer"; activated => { root.search-all(root.search-text); } }
+                            MenuItem { title: "Ersetzen"; activated => { root.replace-text(root.search-text); } }
+                            MenuItem { title: "Roh-RTF/Text umschalten"; activated => { root.toggle-raw-rtf(); } }
+                        }
                     }
                     Rectangle {
                         height: 28px;
