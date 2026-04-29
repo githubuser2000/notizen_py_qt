@@ -185,3 +185,11 @@ Der Editor ist jetzt einen Schritt näher am alten RichTextBox-Verhalten: Der ei
 Die obere Werkzeugleiste wurde erneut deutlich vergrößert: `540px` Höhe und zwölf thematische Reihen statt weniger überladener Zeilen. Damit haben die vielen portierten Datei-, Export-, Import-, Baum-, RTF-, Sticky- und Diagnoseaktionen sichtbar Platz, ohne dass der Benutzer die Fensterbreite sofort erhöhen muss.
 
 Das Fenster ist jetzt nicht mehr durch feste `width`/`height`-Angaben fixiert. `app-window.slint` nutzt `preferred-width: 1360px`, `preferred-height: 1080px`, `min-width: 980px` und `min-height: 760px`. Nach Slints Layoutmodell sind feste `width`/`height` am Root-Fenster eine harte Geometrie-Vorgabe; mit Preferred-/Minimum-Werten kann der Fenstermanager wieder normal resizen und maximieren. Zusätzlich gibt es einen Best-Effort-Button `Max` für Slint-Python-Bindings mit Maximize-API und einen portablen `Vollbild`-Fallback über die Slint-Property `full-screen`.
+
+## v18: Slint-`full-screen`-Compilefehler entfernt und Toolbar weiter entzerrt
+
+v18 entfernt die `full-screen`-Property aus `app-window.slint`, weil reale Slint-Python-Installationen diese Property je nach Compiler-/Binding-Version als unbekannt melden können. Die UI bindet deshalb keine Vollbild-Property mehr im Slint-Code. Der `Vollbild Start`-Button ruft weiterhin einen Python-Callback auf, der optionale Backend-Methoden wie `set_fullscreen`/`set_full_screen` oder entsprechende Properties best-effort ausprobiert und ansonsten eine verständliche Statusmeldung ausgibt. Für Slint-Versionen, die Vollbild nur beim Start akzeptieren, setzt `--fullscreen` beziehungsweise `/fullscreen` vor dem Lazy-Import von Slint zusätzlich `SLINT_FULLSCREEN=1`.
+
+Die resizebare Geometrie bleibt über `preferred-width: 1360px`, `preferred-height: 1360px`, `min-width: 980px` und `min-height: 900px` erhalten. Feste Root-`width`/`height`-Werte bleiben absichtlich weg, damit der Fenstermanager resizen und maximieren kann.
+
+Die obere Werkzeugleiste ist nun `760px` hoch und stärker aufgeteilt: Datei, Export, Baum-Bearbeitung, Info und Extras wurden in zusätzliche Reihen geteilt. Das ist optisch grob, aber absichtlich näher an der alten sehr funktionsreichen Oberfläche und verhindert, dass die vielen portierten Buttons oben wieder gequetscht werden.

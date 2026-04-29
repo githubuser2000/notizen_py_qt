@@ -283,3 +283,24 @@ Dieser Schritt greift die drei gemeldeten UI-Probleme gezielt an:
 - Zusätzlich gibt es oben eine kleine Fenster-Zeile mit `Max` und `Vollbild`. `Max` nutzt die Slint-Python-Maximize-API, falls die installierte Slint-Version sie anbietet; `Vollbild` nutzt die portable Slint-Property `full-screen`.
 - `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator` bleiben weiterhin entfernt, damit die UI auch mit Slint-Versionen kompiliert, die diese nativen Menüelemente noch nicht kennen.
 - Für das Baum-Kontextpanel bleibt der Callback `rename-row(int)` erhalten, damit Umbenennen direkt auf der rechtsgeklickten Zeile arbeitet.
+
+## Neu in v18 / 0.18.0
+
+Dieser Schritt repariert den von Slint gemeldeten Compilefehler `Unknown property full-screen in Window`:
+
+- Die Slint-Datei nutzt keine `full-screen`-Property mehr. Der Button `Vollbild Start` bleibt vorhanden, aber die Umschaltung läuft nur noch über optionale Python-/Backend-APIs, wenn die installierte Slint-Version sie anbietet. Ohne passende API bleibt das Fenster normal nutzbar und zeigt eine Statusmeldung; Start-Vollbild kann zusätzlich mit `--fullscreen` beziehungsweise `/fullscreen` angefragt werden.
+- Das Fenster bleibt resizable: am Root-`Window` stehen weiterhin keine festen `width`/`height`-Werte, sondern `preferred-width`, `preferred-height`, `min-width` und `min-height`.
+- Die obere Buttonzone ist erneut höher und stärker aufgeteilt: `760px` Toolbar-Höhe, `preferred-height: 1360px`, `min-height: 900px` und zusätzliche Reihen für Datei, Export, Baum, Info und Extras. Dadurch laufen die langen Button-Gruppen nicht mehr so schnell ineinander. Zusätzlich akzeptiert der alte Kompatibilitätsstarter jetzt `/fullscreen`, `/fs`, `/max` und `--maximized`.
+- Die Kontextmenüs im Baum und im Textbereich bleiben als Slint-kompatible Overlay-Panels aus normalen Elementen erhalten; es werden weiterhin keine `ContextMenuArea`-/`MenuItem`-Typen verwendet.
+
+Start:
+
+```bash
+python3 -m notizen_py_slint
+```
+
+Die alte Weiterleitung bleibt ebenfalls erhalten:
+
+```bash
+python3 -m notizen_pypy_slint
+```

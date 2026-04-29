@@ -268,14 +268,46 @@ class NotizenSlintApp:
         self._set_status("Dieses Slint-Python-Backend bietet keine Maximize-API; nutze den nativen Fensterrand.")
 
     def toggle_fullscreen(self) -> None:
-        """Toggle Slint's portable full-screen property as a fallback to maximize."""
+        """Best-effort fullscreen without relying on a Slint language property.
 
+        Some installed Slint compilers reject the Window property ``full-screen``
+        even though newer documentation lists it. Keep the .slint file portable
+        and only use optional Python/backend APIs when they exist.
+        """
+
+        native = self._native_slint_window()
+        current = bool(getattr(self.window, "fullscreen_enabled", False))
+        target = not current
         try:
-            current = bool(getattr(self.window, "fullscreen_enabled", False))
-            setattr(self.window, "fullscreen_enabled", not current)
-            self._set_status("Vollbild aktiviert." if not current else "Vollbild beendet.")
+            if native is not None:
+                for checker_name in ("is_fullscreen", "is_full_screen", "fullscreen", "full_screen"):
+                    checker = getattr(native, checker_name, None)
+                    if callable(checker):
+                        current = bool(checker())
+                        target = not current
+                        break
+                    if checker is not None and not callable(checker):
+                        current = bool(checker)
+                        target = not current
+                        break
+                for method_name in ("set_fullscreen", "set_full_screen"):
+                    setter = getattr(native, method_name, None)
+                    if callable(setter):
+                        setter(target)
+                        setattr(self.window, "fullscreen_enabled", target)
+                        self._set_status("Vollbild aktiviert." if target else "Vollbild beendet.")
+                        return
+                for property_name in ("fullscreen", "full_screen"):
+                    if hasattr(native, property_name):
+                        setattr(native, property_name, target)
+                        setattr(self.window, "fullscreen_enabled", target)
+                        self._set_status("Vollbild aktiviert." if target else "Vollbild beendet.")
+                        return
         except Exception as exc:  # noqa: BLE001
-            self._set_status(f"Vollbild konnte nicht umgeschaltet werden: {exc}")
+            self._set_status(f"Vollbild wird von diesem Slint-Backend nicht unterstützt: {exc}")
+            return
+        setattr(self.window, "fullscreen_enabled", False)
+        self._set_status("Vollbild wird von diesem Slint-Python-Backend nicht unterstützt; starte alternativ mit --fullscreen oder nutze Max/Fensterrand.")
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:
@@ -1278,6 +1310,10 @@ def _normalize_legacy_argv(argv: list[str] | None = None) -> list[str]:
         lower = item.strip().lower()
         if lower in {"/min", "-min", "min"}:
             normalized.append("--minimized")
+        elif lower in {"/fullscreen", "-fullscreen", "fullscreen", "/fs", "-fs", "fs"}:
+            normalized.append("--fullscreen")
+        elif lower in {"/max", "-max", "max", "/maximized", "-maximized", "maximized"}:
+            normalized.append("--maximized")
         elif lower in {"/h", "-h", "/?", "-?", "h", "?"}:
             normalized.append("--help")
         else:
@@ -1287,15 +1323,29 @@ def _normalize_legacy_argv(argv: list[str] | None = None) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+    import os
 
     parser = argparse.ArgumentParser(description="Notizen.NET-Port für Python mit Slint")
     parser.add_argument("file", nargs="?", help=".alx-Datei oder ftp://-/ftps://-URL öffnen")
     parser.add_argument("--password", help="Passwort für verschlüsselte .alx-Dateien")
     parser.add_argument("--minimized", action="store_true", help="aus alter Autostart-Konfiguration akzeptiert; UI startet normal")
+    parser.add_argument("--fullscreen", action="store_true", help="Vollbild beim Start über SLINT_FULLSCREEN anfordern")
+    parser.add_argument("--maximized", action="store_true", help="Fenster nach dem Start best-effort maximieren")
     args = parser.parse_args(_normalize_legacy_argv(argv))
+
+    if args.fullscreen:
+        # Supported even by some Slint releases that reject the .slint Window property.
+        os.environ.setdefault("SLINT_FULLSCREEN", "1")
 
     try:
         app = NotizenSlintApp(initial_path=args.file, password=args.password)
+        if args.fullscreen:
+            try:
+                setattr(app.window, "fullscreen_enabled", True)
+            except Exception:  # noqa: BLE001
+                pass
+        if args.maximized:
+            app.toggle_maximized()
         app.run()
     except ModuleNotFoundError as exc:
         if exc.name == "slint":

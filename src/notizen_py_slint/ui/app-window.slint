@@ -9,11 +9,10 @@ export component AppWindow inherits Window {
     // Use preferred/minimum geometry instead of fixed width/height so the
     // desktop window can be resized and maximized by the window manager.
     preferred-width: 1360px;
-    preferred-height: 1080px;
+    preferred-height: 1360px;
     min-width: 980px;
-    min-height: 760px;
+    min-height: 900px;
     title: root.window-title;
-    full-screen: root.fullscreen-enabled;
 
     in-out property <string> window-title: "Notizen Py Slint";
     in-out property <[NoteRow]> rows;
@@ -123,7 +122,7 @@ export component AppWindow inherits Window {
         spacing: 8px;
 
         Rectangle {
-            height: 540px;
+            height: 760px;
             background: #f6f6f6;
             border-color: #dadada;
             border-width: 1px;
@@ -132,33 +131,43 @@ export component AppWindow inherits Window {
                 spacing: 5px;
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Datei"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Datei 1"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Neu"; clicked => { root.new-document(); } }
                     Button { text: "Öffnen"; clicked => { root.open-document(); } }
                     Button { text: "Zuletzt"; clicked => { root.open-recent-document(); } }
                     Button { text: "FTP öffnen"; clicked => { root.open-remote-document(); } }
-                    Button { text: "Speichern"; clicked => { root.save-document(); } }
-                    Button { text: "Speichern unter"; clicked => { root.save-document-as(); } }
-                    Button { text: "FTP speichern"; clicked => { root.save-remote-document(); } }
-                    Button { text: "Passwort"; clicked => { root.set-password(); } }
                     Rectangle { horizontal-stretch: 1; }
                     Text { text: root.dirty ? "● geändert" : "gespeichert"; vertical-alignment: center; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Fenster"; font-weight: 700; vertical-alignment: center; }
-                    Button { text: "Max"; clicked => { root.toggle-maximized(); } }
-                    Button { text: root.fullscreen-enabled ? "Fenster" : "Vollbild"; clicked => { root.toggle-fullscreen(); } }
-                    Text { text: "Fenster ist jetzt resizebar/maximierbar"; vertical-alignment: center; color: #666666; }
+                    Text { text: "Datei 2"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "Speichern"; clicked => { root.save-document(); } }
+                    Button { text: "Speichern unter"; clicked => { root.save-document-as(); } }
+                    Button { text: "FTP speichern"; clicked => { root.save-remote-document(); } }
+                    Button { text: "Passwort"; clicked => { root.set-password(); } }
                     Rectangle { horizontal-stretch: 1; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Export Gesamt"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Fenster"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "Max"; clicked => { root.toggle-maximized(); } }
+                    Button { text: root.fullscreen-enabled ? "Vollbild angefragt" : "Vollbild Start"; clicked => { root.toggle-fullscreen(); } }
+                    Text { text: "Resize/Max über Fensterrand; Fullscreen beim Start per --fullscreen"; vertical-alignment: center; color: #666666; }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Export 1"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "TXT"; clicked => { root.export-text(); } }
                     Button { text: "RTF"; clicked => { root.export-rtf(); } }
                     Button { text: "HTML"; clicked => { root.export-html(); } }
                     Button { text: "MD"; clicked => { root.export-markdown(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Export 2"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "JSON"; clicked => { root.export-json(); } }
                     Button { text: "OPML"; clicked => { root.export-opml(); } }
                     Button { text: "NotesDoc"; clicked => { root.export-notes-doc(); } }
@@ -187,11 +196,16 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Baum Bearbeiten"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Baum Edit 1"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "+ Kind"; clicked => { root.add-child(); } }
                     Button { text: "+ Daneben"; clicked => { root.add-sibling(); } }
                     Button { text: "Dupl."; clicked => { root.duplicate-note(); } }
                     Button { text: "Zusammenf."; clicked => { root.combine-subtree(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Baum Edit 2"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Löschen"; clicked => { root.delete-note(); } }
                     Button { text: "Kopieren"; clicked => { root.copy-node(); } }
                     Button { text: "Ausschneiden"; clicked => { root.cut-node(); } }
@@ -249,11 +263,16 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Info"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Info 1"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Stats"; clicked => { root.show-stats(); } }
                     Button { text: "Backups"; clicked => { root.show-backups(); } }
                     Button { text: "Info"; clicked => { root.show-about(); } }
                     Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Info 2"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Kontext"; clicked => { root.show-context-menus(); } }
                     Button { text: "Fonts"; clicked => { root.show-fonts(); } }
                     Button { text: "Compat"; clicked => { root.show-compat-report(); } }
@@ -262,11 +281,16 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Extras"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Extras 1"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "PwInfo"; clicked => { root.show-password-info(); } }
                     Button { text: "Reparieren"; clicked => { root.repair-document(); } }
                     Button { text: "ToolStrips"; clicked => { root.show-toolstrips(); } }
                     Button { text: "Einstellungen"; clicked => { root.open-settings(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Extras 2"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Wecker"; clicked => { root.open-alarm(); } }
                     Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
                     Button { text: "Alt-Config"; clicked => { root.import-legacy-config(); } }

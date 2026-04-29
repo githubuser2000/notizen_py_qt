@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "notizen-py-slint"
-version = "0.17.0"
+version = "0.18.0"
 description = "Python/Slint port of the old VB.NET Notizen.NET application"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-slint = ["slint>=1.16.1b1"]
+slint = ["slint>=1.8.0a1"]
 dev = []
 
 [project.scripts]
