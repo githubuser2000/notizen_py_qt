@@ -1,0 +1,533 @@
+import { Button, CheckBox, LineEdit, TextEdit, ListView } from "std-widgets.slint";
+
+export struct NoteRow {
+    label: string,
+    selected: bool,
+}
+
+export component AppWindow inherits Window {
+    // Use preferred/minimum geometry instead of fixed width/height so the
+    // desktop window can be resized and maximized by the window manager.
+    preferred-width: 1280px;
+    preferred-height: 860px;
+    min-width: 760px;
+    min-height: 520px;
+    title: root.window-title;
+
+    in-out property <string> window-title: "Notizen Py Slint";
+    in-out property <[NoteRow]> rows;
+    in-out property <int> selected-index: -1;
+    in-out property <string> editor-text;
+    in-out property <string> note-title;
+    in-out property <string> search-text;
+    in-out property <bool> search-case-sensitive: false;
+    in-out property <bool> search-whole-words: false;
+    in-out property <bool> search-current-subtree: false;
+    in-out property <string> status-text: "Bereit";
+    in-out property <string> meta-text: "";
+    in-out property <string> mode-label: "Modus: Text";
+    in-out property <bool> dirty: false;
+    in-out property <bool> tree-context-visible: false;
+    in-out property <bool> editor-context-visible: false;
+    in-out property <int> context-row-index: -1;
+    in-out property <length> editor-context-x: 24px;
+    in-out property <length> editor-context-y: 24px;
+    in-out property <bool> fullscreen-enabled: false;
+
+    callback new-document();
+    callback open-document();
+    callback open-recent-document();
+    callback open-remote-document();
+    callback save-document();
+    callback save-document-as();
+    callback save-remote-document();
+    callback set-password();
+    callback export-text();
+    callback export-rtf();
+    callback export-html();
+    callback export-markdown();
+    callback export-json();
+    callback export-alx();
+    callback export-opml();
+    callback export-notes-doc();
+    callback export-subtree-text();
+    callback export-subtree-rtf();
+    callback export-note-rtf();
+    callback export-sticky-html();
+    callback extract-images();
+    callback import-text();
+    callback import-rtf();
+    callback import-json();
+    callback import-opml();
+    callback insert-image();
+    callback append-date();
+    callback append-bullet();
+    callback add-child();
+    callback add-sibling();
+    callback delete-note();
+    callback duplicate-note();
+    callback combine-subtree();
+    callback copy-node();
+    callback cut-node();
+    callback paste-node();
+    callback move-up();
+    callback move-down();
+    callback indent-note();
+    callback outdent-note();
+    callback toggle-expand();
+    callback expand-all();
+    callback collapse-all();
+    callback select-row(int);
+    callback rename-row(int);
+    callback rename-current(string);
+    callback editor-changed(string);
+    callback search-next(string);
+    callback search-all(string);
+    callback replace-text(string);
+    callback toggle-raw-rtf();
+    callback toggle-sticky();
+    callback set-sticky-geometry();
+    callback autosize-sticky();
+    callback set-colors();
+    callback apply-light-color();
+    callback clear-colors();
+    callback format-note();
+    callback apply-bold();
+    callback apply-italic();
+    callback apply-underline();
+    callback apply-strike();
+    callback apply-regular();
+    callback increase-font-size();
+    callback decrease-font-size();
+    callback open-settings();
+    callback import-legacy-config();
+    callback open-alarm();
+    callback show-next-alarm();
+    callback show-stats();
+    callback show-backups();
+    callback show-about();
+    callback show-shortcuts();
+    callback show-context-menus();
+    callback show-fonts();
+    callback show-compat-report();
+    callback show-default-paths();
+    callback show-password-info();
+    callback repair-document();
+    callback show-toolstrips();
+    callback toggle-maximized();
+    callback toggle-fullscreen();
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        Rectangle {
+            // Compact global toolbar. Node/editor actions live in their own
+            // context menus, so the tree and text editor stay visible.
+            height: 184px;
+            background: #f6f6f6;
+            border-color: #dadada;
+            border-width: 1px;
+            VerticalLayout {
+                padding: 6px;
+                spacing: 5px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Datei"; font-weight: 700; vertical-alignment: center; }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Neu"; clicked => { root.new-document(); } }
+                                Button { text: "Öffnen"; clicked => { root.open-document(); } }
+                                Button { text: "Zuletzt"; clicked => { root.open-recent-document(); } }
+                                Button { text: "FTP auf"; clicked => { root.open-remote-document(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Speichern"; clicked => { root.save-document(); } }
+                                Button { text: "Unter"; clicked => { root.save-document-as(); } }
+                                Button { text: "FTP speich."; clicked => { root.save-remote-document(); } }
+                                Button { text: "PW"; clicked => { root.set-password(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Max"; clicked => { root.toggle-maximized(); } }
+                                Button { text: "Vollbild"; clicked => { root.toggle-fullscreen(); } }
+                                Text { text: root.dirty ? "● geändert" : "gespeichert"; vertical-alignment: center; color: #666666; }
+                            }
+                        }
+                    }
+                    Rectangle { width: 1px; background: #dddddd; }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Export"; font-weight: 700; vertical-alignment: center; }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "TXT"; clicked => { root.export-text(); } }
+                                Button { text: "RTF"; clicked => { root.export-rtf(); } }
+                                Button { text: "HTML"; clicked => { root.export-html(); } }
+                                Button { text: "MD"; clicked => { root.export-markdown(); } }
+                                Button { text: "JSON"; clicked => { root.export-json(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "OPML"; clicked => { root.export-opml(); } }
+                                Button { text: "NotesDoc"; clicked => { root.export-notes-doc(); } }
+                                Button { text: "Teil ALX"; clicked => { root.export-alx(); } }
+                                Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
+                                Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
+                                Button { text: "Bilder raus"; clicked => { root.extract-images(); } }
+                            }
+                        }
+                    }
+                    Rectangle { width: 1px; background: #dddddd; }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Import / Einstellungen"; font-weight: 700; vertical-alignment: center; }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "TXT rein"; clicked => { root.import-text(); } }
+                                Button { text: "RTF rein"; clicked => { root.import-rtf(); } }
+                                Button { text: "JSON rein"; clicked => { root.import-json(); } }
+                                Button { text: "OPML rein"; clicked => { root.import-opml(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Einst."; clicked => { root.open-settings(); } }
+                                Button { text: "Wecker"; clicked => { root.open-alarm(); } }
+                                Button { text: "Nächster"; clicked => { root.show-next-alarm(); } }
+                                Button { text: "AltCfg"; clicked => { root.import-legacy-config(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Text { text: "Baum: Rechtsklick"; color: #666666; vertical-alignment: center; }
+                                Text { text: "Text: Rechtsklick"; color: #666666; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                    Rectangle { width: 1px; background: #dddddd; }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Info / Werkzeuge"; font-weight: 700; vertical-alignment: center; }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Stats"; clicked => { root.show-stats(); } }
+                                Button { text: "Backups"; clicked => { root.show-backups(); } }
+                                Button { text: "Info"; clicked => { root.show-about(); } }
+                                Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Kontext"; clicked => { root.show-context-menus(); } }
+                                Button { text: "Fonts"; clicked => { root.show-fonts(); } }
+                                Button { text: "Compat"; clicked => { root.show-compat-report(); } }
+                                Button { text: "Pfade"; clicked => { root.show-default-paths(); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "PwInfo"; clicked => { root.show-password-info(); } }
+                                Button { text: "Repar."; clicked => { root.repair-document(); } }
+                                Button { text: "Strips"; clicked => { root.show-toolstrips(); } }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                width: 320px;
+                background: #ffffff;
+                border-color: #d0d0d0;
+                border-width: 1px;
+                VerticalLayout {
+                    padding: 6px;
+                    spacing: 6px;
+                    Text { text: "Baum"; font-weight: 700; }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        LineEdit {
+                            text <=> root.search-text;
+                            placeholder-text: "Suchen";
+                        }
+                        Button { text: "Weiter"; clicked => { root.search-next(root.search-text); } }
+                        Button { text: "Alle"; clicked => { root.search-all(root.search-text); } }
+                        Button { text: "Ersetzen"; clicked => { root.replace-text(root.search-text); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        CheckBox { text: "Aa"; checked <=> root.search-case-sensitive; }
+                        CheckBox { text: "Wort"; checked <=> root.search-whole-words; }
+                        CheckBox { text: "Teilbaum"; checked <=> root.search-current-subtree; }
+                    }
+                    ListView {
+                        for row[i] in root.rows: Rectangle {
+                            width: parent.width;
+                            height: 30px;
+                            background: row.selected ? #dbeafe : #ffffff;
+                            border-color: row.selected ? #93c5fd : #ffffff;
+                            border-width: 1px;
+                            Text {
+                                x: 6px;
+                                y: 0px;
+                                width: parent.width - 12px;
+                                height: parent.height;
+                                text: row.label;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            TouchArea {
+                                width: parent.width;
+                                height: parent.height;
+                                clicked => {
+                                    root.select-row(i);
+                                    root.tree-context-visible = false;
+                                    root.editor-context-visible = false;
+                                }
+                                pointer-event(event) => {
+                                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                        root.select-row(i);
+                                        root.context-row-index = i;
+                                        root.tree-context-visible = true;
+                                        root.editor-context-visible = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.tree-context-visible;
+                    x: 6px;
+                    y: 88px;
+                    width: 308px;
+                    height: 428px;
+                    background: #ffffff;
+                    border-color: #8a8a8a;
+                    border-width: 1px;
+                    z: 20;
+                    VerticalLayout {
+                        padding: 5px;
+                        spacing: 4px;
+                        Text { text: "Baum-Kontext"; font-weight: 700; height: 22px; vertical-alignment: center; }
+                        HorizontalLayout {
+                            spacing: 5px;
+                            VerticalLayout {
+                                spacing: 3px;
+                                Text { text: "Bearbeiten"; font-weight: 700; height: 20px; vertical-alignment: center; }
+                                Button { text: "Neu Kind"; clicked => { root.add-child(); root.tree-context-visible = false; } }
+                                Button { text: "Neu daneben"; clicked => { root.add-sibling(); root.tree-context-visible = false; } }
+                                Button { text: "Umbenennen"; clicked => { root.rename-row(root.context-row-index); root.tree-context-visible = false; } }
+                                Button { text: "Kopieren"; clicked => { root.copy-node(); root.tree-context-visible = false; } }
+                                Button { text: "Ausschneiden"; clicked => { root.cut-node(); root.tree-context-visible = false; } }
+                                Button { text: "Einfügen"; clicked => { root.paste-node(); root.tree-context-visible = false; } }
+                                Button { text: "Duplizieren"; clicked => { root.duplicate-note(); root.tree-context-visible = false; } }
+                                Button { text: "Löschen"; clicked => { root.delete-note(); root.tree-context-visible = false; } }
+                                Button { text: "Zusammenf."; clicked => { root.combine-subtree(); root.tree-context-visible = false; } }
+                            }
+                            Rectangle { width: 1px; background: #dddddd; }
+                            VerticalLayout {
+                                spacing: 3px;
+                                Text { text: "Ansicht / Extras"; font-weight: 700; height: 20px; vertical-alignment: center; }
+                                Button { text: "Auf/Zukl."; clicked => { root.toggle-expand(); root.tree-context-visible = false; } }
+                                Button { text: "Alle auf"; clicked => { root.expand-all(); root.tree-context-visible = false; } }
+                                Button { text: "Alle zu"; clicked => { root.collapse-all(); root.tree-context-visible = false; } }
+                                Button { text: "Hoch"; clicked => { root.move-up(); root.tree-context-visible = false; } }
+                                Button { text: "Runter"; clicked => { root.move-down(); root.tree-context-visible = false; } }
+                                Button { text: "Einrücken"; clicked => { root.indent-note(); root.tree-context-visible = false; } }
+                                Button { text: "Ausrücken"; clicked => { root.outdent-note(); root.tree-context-visible = false; } }
+                                Button { text: "Notiz-RTF"; clicked => { root.export-note-rtf(); root.tree-context-visible = false; } }
+                                Button { text: "Sticky"; clicked => { root.toggle-sticky(); root.tree-context-visible = false; } }
+                                Button { text: "Farben"; clicked => { root.set-colors(); root.tree-context-visible = false; } }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Button { text: "Auto-Größe"; clicked => { root.autosize-sticky(); root.tree-context-visible = false; } }
+                            Button { text: "Hell"; clicked => { root.apply-light-color(); root.tree-context-visible = false; } }
+                            Button { text: "Farbe weg"; clicked => { root.clear-colors(); root.tree-context-visible = false; } }
+                            Button { text: "Schließen"; clicked => { root.tree-context-visible = false; } }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                background: #ffffff;
+                border-color: #d0d0d0;
+                border-width: 1px;
+                VerticalLayout {
+                    padding: 8px;
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text { text: "Titel:"; vertical-alignment: center; }
+                        LineEdit { text <=> root.note-title; }
+                        Button { text: "Umbenennen"; clicked => { root.rename-current(root.note-title); } }
+                        Rectangle { width: 1px; background: #cccccc; }
+                        Text { text: root.mode-label; vertical-alignment: center; }
+                        Rectangle { horizontal-stretch: 1; }
+                        Text { text: "RTF/Text-Aktionen per Rechtsklick im Textfeld"; vertical-alignment: center; color: #666666; }
+                    }
+                    Rectangle {
+                        vertical-stretch: 1;
+                        // The TouchArea wraps the TextEdit so right-clicks in the real
+                        // text area can open the RTF context menu. The TextEdit remains
+                        // the visible/editable child; the extra right strip is only a fallback.
+                        editor_hitbox := TouchArea {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width - 28px;
+                            height: parent.height;
+                            pointer-event(event) => {
+                                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                    root.editor-context-x = editor_hitbox.mouse-x;
+                                    root.editor-context-y = editor_hitbox.mouse-y;
+                                    root.editor-context-visible = true;
+                                    root.tree-context-visible = false;
+                                }
+                            }
+                            editor := TextEdit {
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                height: parent.height;
+                                text <=> root.editor-text;
+                                wrap: word-wrap;
+                                edited(text) => { root.editor-changed(text); }
+                            }
+                        }
+                        Rectangle {
+                            x: parent.width - 28px;
+                            y: 0px;
+                            width: 28px;
+                            height: parent.height;
+                            background: #f5f5f5;
+                            border-color: #dddddd;
+                            border-width: 1px;
+                            Text {
+                                width: parent.width;
+                                height: 36px;
+                                text: "☰";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                font-size: 20px;
+                            }
+                            TouchArea {
+                                width: parent.width;
+                                height: parent.height;
+                                clicked => {
+                                    root.editor-context-x = parent.x - 520px;
+                                    root.editor-context-y = 8px;
+                                    root.editor-context-visible = true;
+                                    root.tree-context-visible = false;
+                                }
+                                pointer-event(event) => {
+                                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                        root.editor-context-x = parent.x - 520px;
+                                        root.editor-context-y = 8px;
+                                        root.editor-context-visible = true;
+                                        root.tree-context-visible = false;
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle {
+                            visible: root.editor-context-visible;
+                            x: root.editor-context-x;
+                            y: root.editor-context-y;
+                            width: 520px;
+                            height: 344px;
+                            background: #ffffff;
+                            border-color: #8a8a8a;
+                            border-width: 1px;
+                            z: 20;
+                            VerticalLayout {
+                                padding: 5px;
+                                spacing: 4px;
+                                Text { text: "RTF-/Text-Kontext"; font-weight: 700; height: 22px; vertical-alignment: center; }
+                                HorizontalLayout {
+                                    spacing: 5px;
+                                    VerticalLayout {
+                                        spacing: 3px;
+                                        Text { text: "Bearbeiten"; font-weight: 700; height: 20px; vertical-alignment: center; }
+                                        Button { text: "Kopieren"; clicked => { editor.copy(); root.editor-context-visible = false; } }
+                                        Button { text: "Ausschneiden"; clicked => { editor.cut(); root.editor-context-visible = false; } }
+                                        Button { text: "Einfügen"; clicked => { editor.paste(); root.editor-context-visible = false; } }
+                                        Button { text: "Alles markieren"; clicked => { editor.select-all(); } }
+                                        Button { text: "Löschen"; clicked => { editor.cut(); root.editor-context-visible = false; } }
+                                        Button { text: "Bild einfügen"; clicked => { root.insert-image(); root.editor-context-visible = false; } }
+                                        Button { text: "Datum einfügen"; clicked => { root.append-date(); root.editor-context-visible = false; } }
+                                        Button { text: "Aufzählung"; clicked => { root.append-bullet(); root.editor-context-visible = false; } }
+                                        Button { text: "Suchen"; clicked => { root.search-next(root.search-text); root.editor-context-visible = false; } }
+                                        Button { text: "Alle Treffer"; clicked => { root.search-all(root.search-text); root.editor-context-visible = false; } }
+                                        Button { text: "Ersetzen"; clicked => { root.replace-text(root.search-text); root.editor-context-visible = false; } }
+                                    }
+                                    Rectangle { width: 1px; background: #dddddd; }
+                                    VerticalLayout {
+                                        spacing: 3px;
+                                        Text { text: "Format"; font-weight: 700; height: 20px; vertical-alignment: center; }
+                                        Button { text: "Ganznotiz formatieren"; clicked => { root.format-note(); root.editor-context-visible = false; } }
+                                        Button { text: "Fett"; clicked => { root.apply-bold(); root.editor-context-visible = false; } }
+                                        Button { text: "Kursiv"; clicked => { root.apply-italic(); root.editor-context-visible = false; } }
+                                        Button { text: "Unterstrichen"; clicked => { root.apply-underline(); root.editor-context-visible = false; } }
+                                        Button { text: "Durchgestrichen"; clicked => { root.apply-strike(); root.editor-context-visible = false; } }
+                                        Button { text: "Normal"; clicked => { root.apply-regular(); root.editor-context-visible = false; } }
+                                        Button { text: "Schrift größer"; clicked => { root.increase-font-size(); root.editor-context-visible = false; } }
+                                        Button { text: "Schrift kleiner"; clicked => { root.decrease-font-size(); root.editor-context-visible = false; } }
+                                        Button { text: "Roh-RTF/Text"; clicked => { root.toggle-raw-rtf(); root.editor-context-visible = false; } }
+                                        Button { text: "Schließen"; clicked => { root.editor-context-visible = false; } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        height: 28px;
+                        background: #fbfbfb;
+                        border-color: #eeeeee;
+                        border-width: 1px;
+                        Text {
+                            x: 6px;
+                            width: parent.width - 12px;
+                            height: parent.height;
+                            text: root.meta-text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 30px;
+            background: #f6f6f6;
+            border-color: #dadada;
+            border-width: 1px;
+            Text {
+                x: 8px;
+                width: parent.width - 16px;
+                height: parent.height;
+                text: root.status-text;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

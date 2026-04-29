@@ -5,43 +5,35 @@ import QtQuick.Layouts
 ApplicationWindow {
     id: root
     visible: true
-    property string titleText: "Notizen"
-    property string sourceCode: ""
-    readonly property string outputCode: ""
-    signal transpileRequested(string arg0)
-
-    width: 1100
-    height: 720
-    color: "#202124"
+    property alias titleText: titleField.text
+    property var rows
+    width: 900
+    height: 600
 
     ColumnLayout {
-        spacing: 8
-        Text {
+        TextField {
+            id: titleField
             text: root.titleText
-            color: "#ffffff"
-            font.pixelSize: 24
+            onTextChanged: { root.titleText = text }
+            placeholderText: qsTr("Titel")
         }
-        RowLayout {
-            Button {
-                text: "Transpilieren"
-                onClicked: { root.transpileRequested(root.sourceCode); }
-            }
-            TextField {
-                placeholderText: "Datei oder Code"
-                text: root.sourceCode
-            }
+        Button {
+            text: qsTr("Speichern")
+            onClicked: { AppState.saveRequested(root.titleText); }
         }
         Repeater {
             model: rows
-            delegate: Text {
+            delegate: CheckBox {
                 property var row: modelData
                 property int i: index
                 text: row.title
+                checked: row.done
             }
         }
-        Text {
-            visible: root.outputCode != ""
-            text: root.outputCode
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 250
+            }
         }
     }
 }

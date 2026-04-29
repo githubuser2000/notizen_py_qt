@@ -1,22 +1,23 @@
 {
-  "source": "/mnt/data/qt611_no_slint_migration_kit_v2/examples/main_window.slint",
+  "source": "/mnt/data/qt611_no_qt_migration_kit_v3/examples/main_window.qml",
   "outputs": [
     "Main.qml",
     "MainWindow.qml"
   ],
   "imports": [
-    "std-widgets.slint"
+    "std-widgets.qml"
   ],
+  "units": {
+    "components": 1,
+    "globals": 0,
+    "enums": 0,
+    "structs": 0
+  },
   "warnings": [
     {
-      "line": 20,
-      "message": "Slint for-loop converted to Repeater; check model roles and delegate sizing",
-      "source": "for row in rows: Text"
-    },
-    {
-      "line": 21,
-      "message": "Slint conditional object converted to always-created QML item with visible binding",
-      "source": "if root.output-code != \"\": Text { text: root.output-code; }"
+      "line": 13,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "text <=> root.title-text"
     }
   ]
 }

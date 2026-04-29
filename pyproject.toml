@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "notizen-py-slint"
+name = "notizen-py-qt"
 version = "0.19.0"
-description = "Python/Slint port of the old VB.NET Notizen.NET application"
+description = "Python/Qt port of the old VB.NET Notizen.NET application"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "GPL-3.0-or-later" }
@@ -25,15 +25,15 @@ classifiers = [
 
 dependencies = []
 
+dependencies = ["PySide6>=6.11,<6.12"]
 [project.optional-dependencies]
-slint = ["slint>=1.8.0a1"]
 dev = []
 
 [project.scripts]
-notizen-py-slint = "notizen_py_slint.app:main"
-notizen-alx = "notizen_py_slint.cli:main"
-# Compatibility entry point for old installs. Prefer notizen-py-slint.
-notizen-pypy-slint = "notizen_pypy_slint.app:main"
+notizen-py-qt = "notizen_py_qt.app:main"
+notizen-alx = "notizen_py_qt.cli:main"
+# Compatibility entry point for old installs. Prefer notizen-py-qt.
+notizen-pypy-qt = "notizen_pypy_qt.app:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -43,5 +43,5 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-notizen_py_slint = ["ui/*.slint"]
-"notizen_py_slint.ui" = ["*.slint"]
+notizen_py_qt = ["ui/*.qml", "ui/*.js"]
+"notizen_py_qt.ui" = ["*.qml", "*.js"]

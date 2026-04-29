@@ -1,0 +1,35 @@
+{
+  "source": "/home/alex/Eigene-Dateien/myRepos/Notizen_Py_Qt/Notizen_py_qt/examples/advanced_app.qml",
+  "outputs": [
+    "advanced_app_AppState.qml",
+    "advanced_app_GeneratedQmlSingletons.cmake",
+    "advanced_app_MainWindow.qml",
+    "advanced_app_Qt611Types.js"
+  ],
+  "imports": [
+    "std-widgets.qml"
+  ],
+  "units": {
+    "components": 1,
+    "globals": 1,
+    "enums": 1,
+    "structs": 1
+  },
+  "warnings": [
+    {
+      "line": 23,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "text <=> root.title-text"
+    },
+    {
+      "line": 27,
+      "message": "Qt for-loop converted to Repeater; check model roles and delegate sizing",
+      "source": "for row in rows: CheckBox"
+    },
+    {
+      "line": 28,
+      "message": "Qt animate block converted to QML Behavior/NumberAnimation; easing may need review",
+      "source": "animate opacity"
+    }
+  ]
+}

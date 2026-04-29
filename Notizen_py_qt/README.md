@@ -1,87 +1,108 @@
-# Qt 6.11 / Slint-Removal Migration Kit v2
+# Qt 6.11 / No-Qt Migration Kit v3
 
-Dieses Kit stellt ein Slint-basiertes Transpilierungsprojekt auf **Qt 6.11 + Qt Quick/QML** um. Gegenüber v1 ist jetzt ein echter Best-Effort-Transpilierer enthalten: `.slint`-Dateien werden nicht nur archiviert, sondern zuerst nach QML übersetzt.
+Dieses Kit migriert ein Rust/C++ UI-Projekt von Qt auf Qt 6.11 mit Qt Quick/QML.
+Es arbeitet bewusst konservativ: alles, was mechanisch übersetzbar ist, wird nach
+QML übertragen; alles Unsichere wird als Warnung im JSON-/Markdown-Report abgelegt
+und, falls nötig, als `TODO(qt611-port)` in generiertem QML markiert.
 
-## Was v2 jetzt macht
+## Wichtigste Neuerungen in v3
 
-- entfernt Slint-Abhängigkeiten aus `Cargo.toml`;
-- ersetzt `build.rs`-Slint-Build-Hooks durch CXX-Qt-Buildintegration;
-- benennt Cargo-Paketnamen um, wenn darin `slint` vorkommt;
-- transpiliert `.slint` nach `qml/*.qml`;
-- erzeugt pro `.slint` einen JSON-Report mit Warnungen;
-- archiviert oder löscht alte `.slint`-Dateien danach;
-- erzeugt einen Qt-6.11-CMake/Qt-Quick-Shell;
-- liefert eine Cargo/CXX-Qt-Vorlage mit `cxx-qt 0.8.1`;
-- prüft aktiv, ob Slint-Referenzen in Source-/Build-Dateien übrig sind.
+- echte Qt→QML-Transpilierung für Komponenten, Widgets, Layouts und Bindings
+- `export global ...` → QML Singleton (`pragma Singleton`, `QtObject`)
+- `enum`/`struct` → `Qt611Types.js` Hilfsbibliothek
+- `<=>`-Bindings → QML-Binding plus Rückwärts-Handler, wo mechanisch sicher
+- `animate property { ... }` → `Behavior on property { NumberAnimation { ... } }`
+- automatische Entfernung offensichtlicher Rust-Qt-Hooks, z. B. `qt::include_modules!()` und `use qt::...`
+- generierte Singleton-CMake-Datei für `QT_QML_SINGLETON_TYPE`
+- `qml_sanity_check.py` für schnelle QML/JS-Klammerprüfung
+- `analyze_transpilation.py` erzeugt `QT611_MIGRATION_STATUS.md`
+- `check_no_qt.sh` prüft aktive Source-/Build-Dateien hart auf verbliebene Qt-Referenzen
 
-## Wichtig
-
-Der Transpilierer ist bewusst konservativ. Er übersetzt häufige Slint-UI-Strukturen direkt und markiert unsichere Stellen als `TODO(slint->qml)`. Das ist besser als ein scheinbar erfolgreicher Blindflug: QML soll danach kompilierbar und reviewbar sein, aber komplexe Slint-Zustände, Animationen, globale Singletons und eigene Datenmodelle brauchen fast immer manuelle Nacharbeit.
-
-## Sofort auf ein echtes Projekt anwenden
-
-Vom Projektwurzelverzeichnis aus:
+## Empfohlene Ausführung auf dem echten Projekt
 
 ```bash
-python3 /pfad/zum/kit/scripts/migrate_remove_slint_to_qt611.py . --apply --rust-cxx-qt --overwrite-qml
-bash /pfad/zum/kit/scripts/check_no_slint.sh .
-bash /pfad/zum/kit/scripts/verify_qt611_environment.sh --rust
+python3 qt611_no_qt_migration_kit_v3/scripts/migrate_remove_qt_to_qt611.py . \
+  --apply \
+  --rust-cxx-qt \
+  --overwrite-qml
+
+bash qt611_no_qt_migration_kit_v3/scripts/check_no_qt.sh .
+python3 qt611_no_qt_migration_kit_v3/scripts/qml_sanity_check.py .
+python3 qt611_no_qt_migration_kit_v3/scripts/analyze_transpilation.py . --write
+bash qt611_no_qt_migration_kit_v3/scripts/verify_qt611_environment.sh --rust
+bash qt611_no_qt_migration_kit_v3/scripts/build_qt611.sh . build/qt611
 ```
 
-Dann bauen:
-
-```bash
-bash /pfad/zum/kit/scripts/build_qt611.sh . build/qt611
-```
-
-Wenn Qt 6.11 nicht im Standardsuchpfad liegt:
+Wenn Qt 6.11 nicht im Standardpfad liegt:
 
 ```bash
 export QMAKE="$HOME/Qt/6.11.0/gcc_64/bin/qmake6"
-cmake -S . -B build/qt611 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_PREFIX_PATH="$HOME/Qt/6.11.0/gcc_64"
-cmake --build build/qt611 --parallel
+export CMAKE_PREFIX_PATH="$HOME/Qt/6.11.0/gcc_64"
 ```
 
-Für Cargo/CXX-Qt zusätzlich:
+## Was verändert wird
 
-```bash
-export QT_VERSION_MAJOR=6
-export QMAKE="$HOME/Qt/6.11.0/gcc_64/bin/qmake6"
-cargo run
-```
-
-## Einzelne `.slint`-Datei direkt transpilieren
-
-```bash
-python3 scripts/slint_to_qml.py path/to/MainWindow.slint -o qml --overwrite
-```
-
-Das erzeugt z. B.:
-
-- `qml/MainWindow.qml`
-- `qml/Main.qml`, falls der Komponentenname nach Hauptfenster aussieht
-- `qml/main_window.slint_to_qml.report.json`
-
-## Tests ausführen
-
-```bash
-PYTHONPATH=scripts python3 -m unittest discover -s tests -v
-```
-
-In dieser Containerumgebung musste ich `python3 -S` verwenden, weil der globale Python-`site`-Import hängt. Auf normalen Entwicklungsmaschinen sollte `python3` reichen.
+- `.qml`-Dateien werden zuerst nach `qml/*.qml` transpiliert.
+- Danach werden `.qml`-Dateien nach `legacy_qt/` verschoben oder mit `--delete-qt` gelöscht.
+- `Cargo.toml` verliert Qt-Dependencies und erhält optional CXX-Qt-Dependencies.
+- `build.rs` wird auf CXX-Qt/QML-Buildintegration umgestellt, wenn `--rust-cxx-qt` gesetzt ist.
+- offensichtliche Rust-Hooks des alten UI-Frameworks werden entfernt; die Originale liegen in `.qt611_no_qt_backup/<timestamp>/`.
+- falls noch kein Qt-CMake-Einstieg existiert, wird ein Qt-6.11-Quick-Projektgerüst erzeugt.
 
 ## Dateien im Kit
 
-- `scripts/slint_to_qml.py` — Best-Effort-Transpilierer von Slint nach QML.
-- `scripts/migrate_remove_slint_to_qt611.py` — Projektmigration: Slint raus, QML rein, Qt-6.11-Shell erzeugen.
-- `scripts/check_no_slint.sh` — harter Scanner für aktive Source-/Build-Dateien.
-- `scripts/verify_qt611_environment.sh` — prüft Qt-6.11/qmake/CMake/Cargo-Umgebung.
-- `scripts/build_qt611.sh` — prüft Umgebung und baut über CMake.
-- `template_cpp_qml/` — reines C++/Qt-Quick-Projekt.
-- `template_rust_cxx_qt/` — Cargo/CXX-Qt/QML-Projekt mit Rust-Backend.
-- `examples/main_window.slint` — Beispielquelle.
-- `transpiled_examples/MainWindow.qml` — Ergebnis der Beispieltranspilierung.
-- `docs/MAPPING.md` — genaue Mapping-Regeln und Grenzen.
-- `TRANSPILE_ATTEMPT.log` — Protokoll der bisherigen Arbeit.
+```text
+scripts/qt_to_qml.py                 Qt→QML-Transpilierer
+scripts/migrate_remove_qt_to_qt611.py Projektmigration mit Backups
+scripts/check_no_qt.sh               harte Restreferenzprüfung
+scripts/qml_sanity_check.py             QML/JS-Sanity-Check
+scripts/analyze_transpilation.py        Markdown-Statusreport
+scripts/verify_qt611_environment.sh     Qt/CMake/Rust-Umgebungscheck
+scripts/build_qt611.sh                  Prüfung + CMake-Build
+cmake/Qt611QuickApp.CMakeLists.txt      Qt-6.11-CMake-Vorlage
+template_cpp_qml/                       reine C++/QML-Vorlage
+template_rust_cxx_qt/                   Rust+CXX-Qt+QML-Vorlage
+examples/                               Qt-Beispiele
+transpiled_examples/                    generierte QML/JS-Beispiele
+```
+
+## Validierung, die in dieser Umgebung lief
+
+```text
+Unit-Tests: 3/3 OK
+QML/JS-Sanity-Check auf generierten Beispielen: OK
+check_no_qt.sh auf dem Kit: OK
+Sample-Projektmigration mit Cargo.toml/build.rs/Rust/.qml: OK
+```
+
+Der echte Qt-Build wurde hier nicht ausgeführt, weil in dieser Umgebung kein Qt 6.11,
+kein qmake6 und kein nutzbarer Rust/Cargo-Projektquellbaum deines Projekts vorhanden
+sind. Das Kit ist dafür vorbereitet, den Build auf deiner Maschine oder im CI auszuführen.
+## v4: Python-Paket nach Qt for Python fertig migrieren
+
+Wenn nach der `.qml`→QML-Konvertierung noch Treffer wie `notizen_py_qt`, alte Entry-Points, Python-Kommentare oder QML-Titel mit dem alten UI-Framework übrig sind, führe zusätzlich aus:
+
+```bash
+python3 scripts/finish_python_qt_migration.py .. --apply
+bash scripts/check_no_qt.sh ..
+```
+
+Der Schritt macht bewusst mehr als eine Textkosmetik:
+
+- benennt `src/notizen_py_qt` nach `src/notizen_py_qt` um,
+- benennt `src/notizen_pypy_qt` nach `src/notizen_pypy_qt` um,
+- aktualisiert `pyproject.toml`, Entry-Points, Tests und Shell-Skripte,
+- entfernt die alte optionale UI-Abhängigkeit,
+- fügt `PySide6>=6.11,<6.12` als Qt-for-Python-Laufzeit hinzu,
+- kopiert generierte QML/JS-Dateien aus `qml/` nach `src/notizen_py_qt/ui/`,
+- ersetzt den alten Python-UI-Controller durch einen Qt/QML-Runner mit `QQmlApplicationEngine`,
+- erzeugt `src/notizen_py_qt/qt_backend.py` als QObject-Brücke für QML,
+- archiviert alte `.egg-info`-Metadaten nach `legacy_build_metadata/`.
+
+Danach kann die Python-Qt-Variante mit einem Smoke-Test geprüft werden:
+
+```bash
+bash scripts/build_python_qt.sh ..
+```
+
+Der alte Controller wird vor dem Überschreiben unter `.qt611_no_qt_backup_v4/<timestamp>/` gesichert.

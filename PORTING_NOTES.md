@@ -15,10 +15,10 @@ Der Ausgangscode ist das gelieferte VB.NET/WinForms-Projekt **Notizen.NET**. Rel
 
 ## Weiterer Transpilationsstand
 
-Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in portable Python-/Slint-Form:
+Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in portable Python-/Qt-Form:
 
 - Baumoperationen: kopieren, ausschneiden, einfügen, duplizieren, hoch/runter, einrücken, ausrücken
-- alte Drag-and-drop-Verschiebeidee als explizite Buttons/Methoden, weil Slint/Python hier portabler ist als native Maus-TreeView-Draglogik
+- alte Drag-and-drop-Verschiebeidee als explizite Buttons/Methoden, weil Qt/Python hier portabler ist als native Maus-TreeView-Draglogik
 - Teilbaum-Export ähnlich der alten „Einheit/Zusammenfassen“-Funktion, jetzt als nummerierter TXT-/RTF-Export
 - Roh-RTF-Modus, damit RichTextBox-Daten nicht nur nach Plain-Text konvertiert werden müssen
 - Text-/RTF-Import in die aktuelle Notiz
@@ -31,7 +31,7 @@ Diese Runde baut auf dem Python-Stand auf und zieht weitere alte Bedienlogik in 
 - CLI erweitert um Statistik, Suche, XML-Dump/Pack, Einzelnotiz-RTF-Export, Notizinhalt ersetzen, Bewegung, Duplizieren, strukturelles Einfügen/Löschen/Umbenennen, Bild einfügen, Datum/Bullet anhängen und FTP-Konfiguration
 - HTML-Export als portabler Ersatz für Drucken/Vorschau-Zusammenfassungen
 - einfache Ganznotiz-Formatierung (`bold`, `italic`, `underline`, `strike`, Vorder-/Hintergrundfarbe, Schriftfamilie/-größe)
-- RichTextBox-Toolbar-Buttons `B`, `I`, `U`, `S` und `Normal` aus der alten UI als Ganznotiz-Aktionen in Slint und als CLI-Befehl `style-note`
+- RichTextBox-Toolbar-Buttons `B`, `I`, `U`, `S` und `Normal` aus der alten UI als Ganznotiz-Aktionen in Qt und als CLI-Befehl `style-note`
 - globale RTF-Stilerkennung, damit vorhandene einfache RichTextBox-RTF-Dokumente beim Umformatieren Schriftfamilie/Schriftgröße/Stil sinnvoll weitertragen
 - Ctrl+Plus/Ctrl+Minus aus `Notizen.vb` als RTF-weite Textgrößenänderung (`font-size`, A+/A-) portiert
 - Suchoptionen aus der alten Dialog-/Suchlogik als UI-Checkboxen: Groß-/Kleinschreibung, Ganzwortsuche, nur aktueller Teilbaum; zusätzlich gibt es eine globale Ersetzen-Aktion für den gefundenen Textbereich
@@ -79,16 +79,16 @@ Key und IV sind jeweils identisch. Das ist kryptographisch schwach, wird aber zu
 
 ## RTF und Bilder
 
-Slints `TextEdit` ist kein RichTextBox-Ersatz. Deshalb gibt es zwei Modi:
+Qts `TextEdit` ist kein RichTextBox-Ersatz. Deshalb gibt es zwei Modi:
 
 - Textmodus: gespeichertes RTF wird best-effort zu Plain-Text konvertiert; Änderungen werden als schlichtes RTF gespeichert.
 - Raw-RTF-Modus: der gespeicherte RTF-String wird direkt editiert/exportiert/importiert.
 
-Damit bleiben alte formatierte Inhalte erreichbar, auch wenn die neue UI keine vollständige Rich-Text-Bearbeitung bietet. Zusätzlich kann der Port Bilder aus `\pict`-Gruppen extrahieren und PNG/JPEG/BMP wieder als `\pict`-Gruppen anhängen. Die alten gemischten RichTextBox-Formatierungen werden nicht vollständig wie in WinForms nachgebildet; `format-note`, `style-note` und die Slint-Buttons arbeiten bewusst stabil auf Ganznotizebene. Für gezielte Bearbeitung gibt es zusätzlich die Plain-Text-Range-Funktionen `insert-text`, `delete-range` und `style-range`.
+Damit bleiben alte formatierte Inhalte erreichbar, auch wenn die neue UI keine vollständige Rich-Text-Bearbeitung bietet. Zusätzlich kann der Port Bilder aus `\pict`-Gruppen extrahieren und PNG/JPEG/BMP wieder als `\pict`-Gruppen anhängen. Die alten gemischten RichTextBox-Formatierungen werden nicht vollständig wie in WinForms nachgebildet; `format-note`, `style-note` und die Qt-Buttons arbeiten bewusst stabil auf Ganznotizebene. Für gezielte Bearbeitung gibt es zusätzlich die Plain-Text-Range-Funktionen `insert-text`, `delete-range` und `style-range`.
 
 ## Alte Konfiguration, FTP und Autostart
 
-`xml_kram.vb` schrieb die alte `notizen.config.xml` unter anderem mit Backup-Anzahl, Autosave-Sekunden, zuletzt geöffneten Dateien, Sprache, Fensterposition, Sticky-Rahmen, Autostart-Werten und FTP-Feldern. Der Port migriert diese Felder nach `~/.config/notizen-py-slint/config.json` beziehungsweise unter Windows nach `%APPDATA%`.
+`xml_kram.vb` schrieb die alte `notizen.config.xml` unter anderem mit Backup-Anzahl, Autosave-Sekunden, zuletzt geöffneten Dateien, Sprache, Fensterposition, Sticky-Rahmen, Autostart-Werten und FTP-Feldern. Der Port migriert diese Felder nach `~/.config/notizen-py-qt/config.json` beziehungsweise unter Windows nach `%APPDATA%`.
 
 Die alte FTP-Konfiguration aus `ftpkram.vb` (`name`, `pass`, `host`, `path`) wird in die neue Konfiguration übernommen und kann als Standard-Remote-URL genutzt werden. Der eigentliche Transport nutzt nur die Standardbibliothek (`ftplib`) und unterstützt:
 
@@ -102,9 +102,9 @@ Der alte Windows-spezifische Autostart wurde nicht per Registry/COM 1:1 übernom
 
 ## Sprache, Tastenkürzel und Feedback
 
-`languages.vb` enthält eine aktive sechsspaltige Übersetzungstabelle für Deutsch, Englisch, Chinesisch, Französisch, Spanisch und Russisch. Der Port hat diese Tabelle mit den `lang_keys` aus `Notizen.vb` in `translations.py` übernommen. Damit sind alte Menü-/Dialogtexte nicht mehr verloren, auch wenn die Slint-Oberfläche noch keine vollständige Live-Umschaltung aller sichtbaren Labels macht. Über `lang-list`, `lang-get`, `lang-dump` und `about` lassen sich die Daten prüfen und weiterverwenden.
+`languages.vb` enthält eine aktive sechsspaltige Übersetzungstabelle für Deutsch, Englisch, Chinesisch, Französisch, Spanisch und Russisch. Der Port hat diese Tabelle mit den `lang_keys` aus `Notizen.vb` in `translations.py` übernommen. Damit sind alte Menü-/Dialogtexte nicht mehr verloren, auch wenn die Qt-Oberfläche noch keine vollständige Live-Umschaltung aller sichtbaren Labels macht. Über `lang-list`, `lang-get`, `lang-dump` und `about` lassen sich die Daten prüfen und weiterverwenden.
 
-Die alte globale Tastaturbehandlung aus `Notizen.tastendruck` wurde als Manifest portiert. Slint/Python bildet nicht jede WinForms-Accelerator-Route identisch nach, aber die Zuordnung ist dokumentiert, testbar und kann von CLI/UI-Teilen genutzt werden.
+Die alte globale Tastaturbehandlung aus `Notizen.tastendruck` wurde als Manifest portiert. Qt/Python bildet nicht jede WinForms-Accelerator-Route identisch nach, aber die Zuordnung ist dokumentiert, testbar und kann von CLI/UI-Teilen genutzt werden.
 
 Der alte Feedback-Dialog packte Text als GZip über .NET `Encoding.Unicode` und lud ihn zu einem fest verdrahteten FTP-Ziel hoch. Der Port erzeugt denselben Payload lokal (`feedback-draft`), sendet aber nichts automatisch. Das ist die richtige Grenze: Dateikompatibilität ja, ungefragter Upload an historische Server nein.
 
@@ -128,12 +128,12 @@ Nicht sinnvoll 1:1 übernommen wurden:
 - separate borderlose WinForms-Desktop-Sticky-Fenster; `sticky-run` bietet einen optionalen Tk-Nachbau, ist aber bewusst kein 1:1-WinForms-Fenster mit identischem Verhalten
 - native TreeView-Drag-and-drop-Gesten
 - Druckdialog; HTML-Export dient als portabler Ersatz
-- vollständige Live-Umschaltung jeder Slint-Menübeschriftung; die alten Sprachdaten selbst sind aber portiert und per CLI/UI-Hook verfügbar
+- vollständige Live-Umschaltung jeder Qt-Menübeschriftung; die alten Sprachdaten selbst sind aber portiert und per CLI/UI-Hook verfügbar
 - echte RichTextBox-Auswahlformatierung mit gemischten Fonts/Farben pro Zeichenbereich
 - permanenter OS-Hintergrunddienst für Wecker/Tray
 - automatischer Feedback-Upload zum alten FTP-Ziel
 
-Diese Punkte sind entweder stark Windows-/WinForms-spezifisch oder passen nicht sauber zu Python/Slint. Die zugrunde liegenden Daten werden aber so weit wie möglich erhalten.
+Diese Punkte sind entweder stark Windows-/WinForms-spezifisch oder passen nicht sauber zu Python/Qt. Die zugrunde liegenden Daten werden aber so weit wie möglich erhalten.
 
 ## v11: TreeView-Zwischenablage, relative Baumoperationen und Legacy-Exporte
 
@@ -143,7 +143,7 @@ Zusätzlich gibt es `move-relative` und `copy-relative` für die alten Kontext-/
 
 Der alte Exportpfad aus `Notizen.vb` wurde weiter angenähert: `export-legacy-txt` normalisiert auf CRLF und schreibt mit wählbarem Encoding, standardmäßig `cp1252`; `export-unity-rtf` erzeugt einen RTF-Outline-Export im Geist der alten Einheit/Zusammenfassen-Funktion. Für Desktop-Notizen ist außerdem die alte Transparenzauswahl `90 %` bis `0 %` als `sticky-opacity` beziehungsweise `--opacity-choice` portiert.
 
-Ergänzt wurde außerdem die alte Suchergebnisform aus `suche.vb`/`suchergebnisse.vb`: `find_occurrences` und `search --occurrences` liefern jetzt genaue sichtbare Textpositionen für Titel und Inhalt, also den funktionalen Ersatz für `SelectionStart`. Die WinForms-Kontextmenüs aus `kontext_inhalt.vb`, `Baum_Kontext_.vb`, `desknote_kontext.vb` und `desknote_kontext_opacy.vb` liegen als `context_menus.py` vor und sind per `notizen-alx context-menus` sowie im Slint-Infofeld abrufbar.
+Ergänzt wurde außerdem die alte Suchergebnisform aus `suche.vb`/`suchergebnisse.vb`: `find_occurrences` und `search --occurrences` liefern jetzt genaue sichtbare Textpositionen für Titel und Inhalt, also den funktionalen Ersatz für `SelectionStart`. Die WinForms-Kontextmenüs aus `kontext_inhalt.vb`, `Baum_Kontext_.vb`, `desknote_kontext.vb` und `desknote_kontext_opacy.vb` liegen als `context_menus.py` vor und sind per `notizen-alx context-menus` sowie im Qt-Infofeld abrufbar.
 
 
 ## v12: OPML, Teilbaum-ALX, sichtbare Treffer und Schriftliste
@@ -152,7 +152,7 @@ Dieser Schritt ergänzt Export-/Importpfade, die früher in mehreren WinForms-Me
 
 Die Suchlogik wurde um einen eigenen `search-occurrences`-Befehl erweitert. Er liefert Treffer nicht nur pro Notiz, sondern mit Feld, Start-/Endposition, Trefferindex, Pfad und Snippet. Das ist der robustere Python-Ersatz für die alten `SelectionStart`-basierten Suchergebnislisten.
 
-`expand-state` macht gespeicherte Baumzustände per CLI setzbar, inklusive einer Option, die Wurzel beim Massenlauf nicht zu schließen. `font-list` scannt installierte Systemschriften ohne externe Pakete über Font-Dateien und nutzt bei unlesbaren Dateien einen Dateinamen-Fallback. Damit sind alte Font-Dialog-/Toolbar-Arbeitsweisen besser skriptbar, auch wenn Slint weiterhin keinen WinForms-Fontdialog nachbildet.
+`expand-state` macht gespeicherte Baumzustände per CLI setzbar, inklusive einer Option, die Wurzel beim Massenlauf nicht zu schließen. `font-list` scannt installierte Systemschriften ohne externe Pakete über Font-Dateien und nutzt bei unlesbaren Dateien einen Dateinamen-Fallback. Damit sind alte Font-Dialog-/Toolbar-Arbeitsweisen besser skriptbar, auch wenn Qt weiterhin keinen WinForms-Fontdialog nachbildet.
 
 ## v13: Datei.vb-Standardpfade, notes_doc-Export und Kompatibilitätsbericht
 
@@ -162,33 +162,33 @@ Die alte Intellibit-Struktur wurde bisher gelesen, aber nicht wieder geschrieben
 
 Neu ist außerdem `compat.py`: `notizen-alx compat-report` analysiert lokale `.alx`- und `.xml`-Dateien und meldet Format, vermutete Verschlüsselung, Strukturgrößen, RTF-/Plain-Anteile, Bilder, Farben, Sticky-Metadaten, zugeklappte Knoten und konkrete Warnungen. Dadurch lassen sich Migrationen gezielter prüfen, bevor Dateien im neuen Port weiterbearbeitet werden.
 
-In der Slint-Datei wurden passende Hooks ergänzt: `NotesDoc` exportiert den aktuellen Teilbaum in das alte XML-Format, `Compat` zeigt die Diagnose im Infofeld, und `Pfade` zeigt die alten Standardpfade. Nebenbei wurde die doppelte `Import OPML`-Schaltfläche bereinigt.
+In der Qt-Datei wurden passende Hooks ergänzt: `NotesDoc` exportiert den aktuellen Teilbaum in das alte XML-Format, `Compat` zeigt die Diagnose im Infofeld, und `Pfade` zeigt die alten Standardpfade. Nebenbei wurde die doppelte `Import OPML`-Schaltfläche bereinigt.
 
 
 ## v14: Passwortdialog, ToolStrip-Positionen und Reparaturlauf
 
 Die alte Verschlüsselung hatte eine leicht ungewöhnliche Passwortaufbereitung: der Dialog arbeitete effektiv mit 24 Zeichen, füllte kürzere Eingaben mit Leerzeichen auf und schnitt längere Werte ab. Zusätzlich entstehen die drei DES-Schlüsselbereiche nicht als saubere 8/8/8-Aufteilung, sondern mit dem historischen Überlappungsversatz aus dem Originalcode. `passwords.py` macht diese Regeln explizit und prüfbar, ohne Passwörter versehentlich im Klartext auszugeben.
 
-`xml_kram.vb` speicherte neben Fenster- und FTP-Daten auch ToolStrip-Koordinaten. Diese Werte haben in Slint keine direkte Layoutwirkung, werden aber jetzt migriert, im neuen JSON erhalten und über `toolstrips` beziehungsweise `config-set --toolstrip` bearbeitbar gemacht. Damit gehen alte Layoutdaten bei Migrationen nicht verloren.
+`xml_kram.vb` speicherte neben Fenster- und FTP-Daten auch ToolStrip-Koordinaten. Diese Werte haben in Qt keine direkte Layoutwirkung, werden aber jetzt migriert, im neuen JSON erhalten und über `toolstrips` beziehungsweise `config-set --toolstrip` bearbeitbar gemacht. Damit gehen alte Layoutdaten bei Migrationen nicht verloren.
 
 `repair.py` ergänzt eine vorsichtige Normalisierungsschicht für reale Altdateien: Plain-Text-Knoten werden in RTF gewandelt, leere Titel markiert, vollständig transparente Farben entfernt, Sticky-Fenster auf sinnvolle Mindestgrößen gebracht und ARGB-Werte in das alte signed-WinForms-Format gebracht. Der Reparaturlauf ist als Bericht testbar und kann per CLI als Dry-Run ausgeführt werden.
 
-Weil die CLI inzwischen sehr viele alte Menü- und Dialogpfade abbildet, wird der große Argumentparser pro Prozess gecacht. Das ändert die Kommandozeilenoberfläche nicht, macht aber wiederholte Aufrufe aus Tests, Skripten und der Slint-Schicht deutlich robuster.
+Weil die CLI inzwischen sehr viele alte Menü- und Dialogpfade abbildet, wird der große Argumentparser pro Prozess gecacht. Das ändert die Kommandozeilenoberfläche nicht, macht aber wiederholte Aufrufe aus Tests, Skripten und der Qt-Schicht deutlich robuster.
 
 
 ## v17: Textbereich-Kontextmenü, dickere Toolbar und resizebares Fenster
 
-v17 entfernt weiterhin `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator`, damit die UI mit den Slint-Versionen kompiliert, die diese nativen Menüelemente noch nicht kennen. Das Baum-Kontextmenü bleibt als eigenes Overlay aus normalen Slint-Elementen erhalten; Rechtsklick auf eine Zeile wählt die Notiz aus und zeigt die alten Kernaktionen. Der Callback `rename-row(int)` bleibt dafür erhalten.
+v17 entfernt weiterhin `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator`, damit die UI mit den Qt-Versionen kompiliert, die diese nativen Menüelemente noch nicht kennen. Das Baum-Kontextmenü bleibt als eigenes Overlay aus normalen Qt-Elementen erhalten; Rechtsklick auf eine Zeile wählt die Notiz aus und zeigt die alten Kernaktionen. Der Callback `rename-row(int)` bleibt dafür erhalten.
 
 Der Editor ist jetzt einen Schritt näher am alten RichTextBox-Verhalten: Der eigentliche Textbereich wird von einer `TouchArea` umschlossen, die Rechtsklicks erkennt und das RTF-Kontextpanel öffnet. Die sichtbare `☰`-Leiste und der `RTF Kontext`-Button bleiben nur als alternative Auslöser. Clipboard-Aktionen laufen weiterhin über `TextEdit.copy()`, `cut()`, `paste()` und `select-all()`.
 
 Die obere Werkzeugleiste wurde erneut deutlich vergrößert: `540px` Höhe und zwölf thematische Reihen statt weniger überladener Zeilen. Damit haben die vielen portierten Datei-, Export-, Import-, Baum-, RTF-, Sticky- und Diagnoseaktionen sichtbar Platz, ohne dass der Benutzer die Fensterbreite sofort erhöhen muss.
 
-Das Fenster ist jetzt nicht mehr durch feste `width`/`height`-Angaben fixiert. `app-window.slint` nutzt `preferred-width: 1360px`, `preferred-height: 1080px`, `min-width: 980px` und `min-height: 760px`. Nach Slints Layoutmodell sind feste `width`/`height` am Root-Fenster eine harte Geometrie-Vorgabe; mit Preferred-/Minimum-Werten kann der Fenstermanager wieder normal resizen und maximieren. Zusätzlich gibt es einen Best-Effort-Button `Max` für Slint-Python-Bindings mit Maximize-API und einen portablen `Vollbild`-Fallback über die Slint-Property `full-screen`.
+Das Fenster ist jetzt nicht mehr durch feste `width`/`height`-Angaben fixiert. `app-window.qml` nutzt `preferred-width: 1360px`, `preferred-height: 1080px`, `min-width: 980px` und `min-height: 760px`. Nach Qts Layoutmodell sind feste `width`/`height` am Root-Fenster eine harte Geometrie-Vorgabe; mit Preferred-/Minimum-Werten kann der Fenstermanager wieder normal resizen und maximieren. Zusätzlich gibt es einen Best-Effort-Button `Max` für Qt-Python-Bindings mit Maximize-API und einen portablen `Vollbild`-Fallback über die Qt-Property `full-screen`.
 
-## v18: Slint-`full-screen`-Compilefehler entfernt und Toolbar weiter entzerrt
+## v18: Qt-`full-screen`-Compilefehler entfernt und Toolbar weiter entzerrt
 
-v18 entfernt die `full-screen`-Property aus `app-window.slint`, weil reale Slint-Python-Installationen diese Property je nach Compiler-/Binding-Version als unbekannt melden können. Die UI bindet deshalb keine Vollbild-Property mehr im Slint-Code. Der `Vollbild Start`-Button ruft weiterhin einen Python-Callback auf, der optionale Backend-Methoden wie `set_fullscreen`/`set_full_screen` oder entsprechende Properties best-effort ausprobiert und ansonsten eine verständliche Statusmeldung ausgibt. Für Slint-Versionen, die Vollbild nur beim Start akzeptieren, setzt `--fullscreen` beziehungsweise `/fullscreen` vor dem Lazy-Import von Slint zusätzlich `SLINT_FULLSCREEN=1`.
+v18 entfernt die `full-screen`-Property aus `app-window.qml`, weil reale Qt-Python-Installationen diese Property je nach Compiler-/Binding-Version als unbekannt melden können. Die UI bindet deshalb keine Vollbild-Property mehr im Qt-Code. Der `Vollbild Start`-Button ruft weiterhin einen Python-Callback auf, der optionale Backend-Methoden wie `set_fullscreen`/`set_full_screen` oder entsprechende Properties best-effort ausprobiert und ansonsten eine verständliche Statusmeldung ausgibt. Für Qt-Versionen, die Vollbild nur beim Start akzeptieren, setzt `--fullscreen` beziehungsweise `/fullscreen` vor dem Lazy-Import von Qt zusätzlich `QT_FULLSCREEN=1`.
 
 Die resizebare Geometrie bleibt über `preferred-width: 1360px`, `preferred-height: 1360px`, `min-width: 980px` und `min-height: 900px` erhalten. Feste Root-`width`/`height`-Werte bleiben absichtlich weg, damit der Fenstermanager resizen und maximieren kann.
 
@@ -196,6 +196,6 @@ Die obere Werkzeugleiste ist nun `760px` hoch und stärker aufgeteilt: Datei, Ex
 
 ## v19: Toolbar wieder kompakt, Kontextmenüs tragen Baum-/RTF-Aktionen
 
-v19 nimmt die zu hohe v18-Werkzeugleiste zurück. Die Slint-Startgröße ist nun `preferred-width: 1280px`, `preferred-height: 860px`, `min-width: 760px` und `min-height: 520px`. Dadurch kann das Fenster wieder deutlich kleiner gezogen werden und Baum plus Textbereich sind beim Start sichtbar.
+v19 nimmt die zu hohe v18-Werkzeugleiste zurück. Die Qt-Startgröße ist nun `preferred-width: 1280px`, `preferred-height: 860px`, `min-width: 760px` und `min-height: 520px`. Dadurch kann das Fenster wieder deutlich kleiner gezogen werden und Baum plus Textbereich sind beim Start sichtbar.
 
 Die obere Leiste enthält nur noch globale Datei-, Export-, Import-, Fenster-, Info- und Werkzeugaktionen. Baumaktionen wie Neu/Kopieren/Ausschneiden/Einfügen/Löschen/Verschieben/Sticky/Farbe sowie Textaktionen wie Bild, Datum, Aufzählung, Suche, Ersetzen, Roh-RTF und Formatierung liegen in den jeweiligen Rechtsklick-Kontextmenüs.

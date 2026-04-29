@@ -1,6 +1,6 @@
-# Notizen Py Slint
+# Notizen Py Qt
 
-Das ist ein Python-orientierter Port von **Notizen.NET** aus dem gelieferten VB.NET/WinForms-Projekt. Der alte Code wurde nicht nur zeilenweise umgeschrieben: Dateiformat, Notizbaum, RTF-Textinhalt, Sicherheitskopien, Konfiguration, FTP-Transport, Wecker-Logik und die historische DES-Kaskadenverschlüsselung wurden als pure-Python-Kern neu aufgebaut. Die Oberfläche liegt als Slint-Datei plus Python-Controller vor.
+Das ist ein Python-orientierter Port von **Notizen.NET** aus dem gelieferten VB.NET/WinForms-Projekt. Der alte Code wurde nicht nur zeilenweise umgeschrieben: Dateiformat, Notizbaum, RTF-Textinhalt, Sicherheitskopien, Konfiguration, FTP-Transport, Wecker-Logik und die historische DES-Kaskadenverschlüsselung wurden als pure-Python-Kern neu aufgebaut. Die Oberfläche liegt als Qt-Datei plus Python-Controller vor.
 
 ## Status
 
@@ -47,10 +47,10 @@ Funktioniert im Port:
 
 Bewusst vereinfacht oder nicht vollständig portiert:
 
-- Slints `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der Raw-RTF-Modus erlaubt aber direkten Zugriff auf das gespeicherte RTF.
-- Sticky/Desktop-Notizen bleiben in der Slint-Hauptoberfläche Metadaten. Zusätzlich gibt es `sticky-run` als optionalen Python/Tk-Ersatz für kleine separate Fenster. In headless Umgebungen oder ohne Tk fällt das sauber mit einer lesbaren Meldung zurück.
+- Qts `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der Raw-RTF-Modus erlaubt aber direkten Zugriff auf das gespeicherte RTF.
+- Sticky/Desktop-Notizen bleiben in der Qt-Hauptoberfläche Metadaten. Zusätzlich gibt es `sticky-run` als optionalen Python/Tk-Ersatz für kleine separate Fenster. In headless Umgebungen oder ohne Tk fällt das sauber mit einer lesbaren Meldung zurück.
 - Wecker-Benachrichtigungen sind bewusst best-effort: Linux nutzt `notify-send`, macOS `osascript`, Windows PowerShell/MessageBox. Wenn das jeweilige Werkzeug fehlt oder die Umgebung headless ist, läuft die CLI trotzdem weiter und gibt den Grund aus.
-- Trayicon, native Drag-and-drop-Mauslogik und Druckdialog sind nicht 1:1 in der neuen UI enthalten. Die alten Sprachtexte sind als Daten/CLI-Hooks portiert, aber nicht als vollständige dynamische Menüumschaltung jeder Slint-Beschriftung. Autostart, HTML-Export und RTF-Bildzugriff sind portabel nachgebaut, aber nicht identisch mit WinForms.
+- Trayicon, native Drag-and-drop-Mauslogik und Druckdialog sind nicht 1:1 in der neuen UI enthalten. Die alten Sprachtexte sind als Daten/CLI-Hooks portiert, aber nicht als vollständige dynamische Menüumschaltung jeder Qt-Beschriftung. Autostart, HTML-Export und RTF-Bildzugriff sind portabel nachgebaut, aber nicht identisch mit WinForms.
 - Die alte Verschlüsselung ist absichtlich nur kompatibel, nicht sicher. Für echte Sicherheit die `.alx` zusätzlich mit einem modernen Werkzeug verschlüsseln.
 
 ## Installation
@@ -58,34 +58,34 @@ Bewusst vereinfacht oder nicht vollständig portiert:
 Für Kern und CLI reicht die editierbare Installation ohne externe Laufzeitpakete:
 
 ```bash
-cd notizen_py_slint
+cd notizen_py_qt
 python3 -m pip install -e .
 ```
 
-Für die Slint-Oberfläche die UI-Extra-Abhängigkeit installieren:
+Für die Qt-Oberfläche die UI-Extra-Abhängigkeit installieren:
 
 ```bash
-cd notizen_py_slint
-python3 -m pip install -e ".[slint]"
+cd notizen_py_qt
+python3 -m pip install -e ".[qt]"
 ```
 
-Hinweis: Das Projekt ist ein normales Python-Projekt. Die alte Pinning-Logik für PyPy wurde entfernt. Die Slint-Extra-Abhängigkeit nutzt aktuelle Slint-Python-Versionen (`slint>=1.16.1b1`); Kern und CLI bleiben bewusst ohne Slint lauffähig.
+Hinweis: Das Projekt ist ein normales Python-Projekt. Die alte Pinning-Logik für PyPy wurde entfernt. Die Qt-Extra-Abhängigkeit nutzt aktuelle Qt-Python-Versionen (`qt>=1.16.1b1`); Kern und CLI bleiben bewusst ohne Qt lauffähig.
 
 ## Starten
 
 GUI:
 
 ```bash
-python3 -m notizen_py_slint
-python3 -m notizen_py_slint pfad/zur/datei.alx
-python3 -m notizen_py_slint pfad/zur/datei.alx --password geheim
-python3 -m notizen_py_slint 'ftp://user:pass@example.org/notizen.alx'
-python3 -m notizen_py_slint /min        # alter Autostart-Alias für --minimized
+python3 -m notizen_py_qt
+python3 -m notizen_py_qt pfad/zur/datei.alx
+python3 -m notizen_py_qt pfad/zur/datei.alx --password geheim
+python3 -m notizen_py_qt 'ftp://user:pass@example.org/notizen.alx'
+python3 -m notizen_py_qt /min        # alter Autostart-Alias für --minimized
 ```
 
-Kompatibilität: `python3 -m notizen_pypy_slint` funktioniert weiterhin als alter Alias, damit vorhandene lokale Aufrufe nicht sofort brechen. Neu bevorzugt ist `python3 -m notizen_py_slint`.
+Kompatibilität: `python3 -m notizen_pypy_qt` funktioniert weiterhin als alter Alias, damit vorhandene lokale Aufrufe nicht sofort brechen. Neu bevorzugt ist `python3 -m notizen_py_qt`.
 
-CLI-Fallback ohne Slint:
+CLI-Fallback ohne Qt:
 
 ```bash
 notizen-alx tree tests/fixtures/test.alx
@@ -173,7 +173,7 @@ Benutzername/Passwort können in der URL stehen, aus der neuen Konfiguration kom
 
 ### Auswahlnachbau / Plain-Text-Bereiche
 
-Die alte WinForms-RichTextBox arbeitete oft mit der aktuellen Markierung. Slint stellt diese RichTextBox-Markierung nicht nativ bereit; der Port bildet sie deshalb über Klartext-Zeichenbereiche nach. Die Zeichenpositionen beziehen sich immer auf den durch `rtf_to_text` sichtbaren Text der Notiz.
+Die alte WinForms-RichTextBox arbeitete oft mit der aktuellen Markierung. Qt stellt diese RichTextBox-Markierung nicht nativ bereit; der Port bildet sie deshalb über Klartext-Zeichenbereiche nach. Die Zeichenpositionen beziehen sich immer auf den durch `rtf_to_text` sichtbaren Text der Notiz.
 
 ```bash
 notizen-alx insert-text input.alx output.alx --title "Todo" --at 6 --text "neuer Text"
@@ -185,11 +185,11 @@ notizen-alx style-range input.alx output.alx --title "Todo" --start 6 --length 4
 ## Tests
 
 ```bash
-cd notizen_py_slint
+cd notizen_py_qt
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
+Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Qt selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
 Ran 83 tests
@@ -217,9 +217,9 @@ Getestet wurden:
 ## Projektstruktur
 
 ```text
-src/notizen_py_slint/
-  app.py              Slint-Controller
-  ui/app-window.slint Slint-Oberfläche
+src/notizen_py_qt/
+  app.py              Qt-Controller
+  ui/app-window.qml Qt-Oberfläche
   model.py            Notizbaum-Datenmodell und Baumoperationen
   storage.py          .alx/.xml Laden, Speichern, Export, Import
   remote.py           FTP/FTPS-Transport
@@ -241,7 +241,7 @@ src/notizen_py_slint/
   feedback.py         lokales GZip-/UTF-16-Feedback-Draftformat
   des_compat.py       pure-Python DES/CBC-Kompatibilität
   rtf.py              RTF<->Text-Konvertierung, einfache Formatierung, Bildzugriff
-  cli.py              CLI-Fallback ohne Slint
+  cli.py              CLI-Fallback ohne Qt
   config.py           JSON-Konfiguration
   dialogs.py          Tkinter-/Konsolen-Dialoge
 ```
@@ -258,7 +258,7 @@ Dieser Schritt zieht drei alte Randbereiche nach, die im Alltag wichtig sind:
 - Alte Intellibit-Kompatibilität: `export-notes-doc` schreibt wieder das historische `notes_doc`/`node`/`leaf`-XML, das der Port bereits lesen konnte.
 - Migrationsprüfung: `compat-report` zeigt Format, Verschlüsselungsstatus, Strukturgrößen und Warnungen zu Plain-Text-Inhalten, transparenten Farben, Sticky-Geometrie und leeren Titeln.
 
-In der Slint-Oberfläche sind dafür die Hooks `NotesDoc`, `Compat` und `Pfade` ergänzt.
+In der Qt-Oberfläche sind dafür die Hooks `NotesDoc`, `Compat` und `Pfade` ergänzt.
 
 
 
@@ -269,7 +269,7 @@ Dieser Schritt zieht weitere alte Dialog- und Migrationsdetails nach:
 - `password-info` und `password-normalize` bilden die alte Passwortdialog-Logik nach: Passwörter werden wie im Original auf 24 Zeichen gebracht, zu lange Werte werden abgeschnitten, zu kurze mit Leerzeichen gefüllt, und die drei alten DES-Schlüsselbereiche werden diagnostisch angezeigt. Standardmäßig werden sensible Werte maskiert; `--reveal` zeigt sie bewusst an.
 - `repair` normalisiert alte oder malformierte Dateien: leere Titel werden ersetzt, Plain-Text-Inhalte werden als RTF gespeichert, transparente Farben werden bereinigt, Sticky-Größen und Deckkraft werden geklemmt und ARGB-Werte werden wieder WinForms-kompatibel als signed Integer geschrieben.
 - Die alten `xml_kram.vb`-ToolStrip-Positionen werden aus `notizen.config.xml` migriert und mit `toolstrips` beziehungsweise `config-set --toolstrip NAME X Y` bearbeitbar.
-- Die Slint-Oberfläche hat dafür neue Hooks `PwInfo`, `Reparieren` und `ToolStrips`.
+- Die Qt-Oberfläche hat dafür neue Hooks `PwInfo`, `Reparieren` und `ToolStrips`.
 - Der große CLI-Parser wird nun pro Prozess gecacht; dadurch bleiben wiederholte In-Process-Aufrufe wie in Tests, Skripten oder eingebetteten Workflows stabil und schneller. Der Sticky-Befehl hat zusätzlich einen kleinen Direktparser für den alten Desktop-Notiz-Hotpath.
 
 
@@ -279,30 +279,30 @@ Dieser Schritt greift die drei gemeldeten UI-Probleme gezielt an:
 
 - Der Text-/RTF-Bereich hat jetzt ebenfalls eine Rechtsklick-Fläche über dem tatsächlichen Editorbereich. Rechtsklick im Text öffnet das RTF-Kontextpanel; die schmale `☰`-Leiste und der `RTF Kontext`-Button bleiben nur als Fallback erhalten.
 - Die obere Buttonzone ist deutlich höher und stärker aufgeteilt: statt einer gedrängten Leiste gibt es zwölf thematische Zeilen für Datei, Fenster, Export, Import, Baum, RTF, Suche, Sticky/Farbe, Info und Extras. Die Toolbar ist jetzt `540px` hoch.
-- Das Slint-Fenster verwendet keine feste `width`/`height` mehr. Die Startgröße läuft über `preferred-width`/`preferred-height`, die Mindestgröße über `min-width`/`min-height`. Dadurch kann der Fenstermanager das Fenster wieder normal resizen und maximieren.
-- Zusätzlich gibt es oben eine kleine Fenster-Zeile mit `Max` und `Vollbild`. `Max` nutzt die Slint-Python-Maximize-API, falls die installierte Slint-Version sie anbietet; `Vollbild` nutzt die portable Slint-Property `full-screen`.
-- `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator` bleiben weiterhin entfernt, damit die UI auch mit Slint-Versionen kompiliert, die diese nativen Menüelemente noch nicht kennen.
+- Das Qt-Fenster verwendet keine feste `width`/`height` mehr. Die Startgröße läuft über `preferred-width`/`preferred-height`, die Mindestgröße über `min-width`/`min-height`. Dadurch kann der Fenstermanager das Fenster wieder normal resizen und maximieren.
+- Zusätzlich gibt es oben eine kleine Fenster-Zeile mit `Max` und `Vollbild`. `Max` nutzt die Qt-Python-Maximize-API, falls die installierte Qt-Version sie anbietet; `Vollbild` nutzt die portable Qt-Property `full-screen`.
+- `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator` bleiben weiterhin entfernt, damit die UI auch mit Qt-Versionen kompiliert, die diese nativen Menüelemente noch nicht kennen.
 - Für das Baum-Kontextpanel bleibt der Callback `rename-row(int)` erhalten, damit Umbenennen direkt auf der rechtsgeklickten Zeile arbeitet.
 
 ## Neu in v18 / 0.18.0
 
-Dieser Schritt repariert den von Slint gemeldeten Compilefehler `Unknown property full-screen in Window`:
+Dieser Schritt repariert den von Qt gemeldeten Compilefehler `Unknown property full-screen in Window`:
 
-- Die Slint-Datei nutzt keine `full-screen`-Property mehr. Der Button `Vollbild Start` bleibt vorhanden, aber die Umschaltung läuft nur noch über optionale Python-/Backend-APIs, wenn die installierte Slint-Version sie anbietet. Ohne passende API bleibt das Fenster normal nutzbar und zeigt eine Statusmeldung; Start-Vollbild kann zusätzlich mit `--fullscreen` beziehungsweise `/fullscreen` angefragt werden.
+- Die Qt-Datei nutzt keine `full-screen`-Property mehr. Der Button `Vollbild Start` bleibt vorhanden, aber die Umschaltung läuft nur noch über optionale Python-/Backend-APIs, wenn die installierte Qt-Version sie anbietet. Ohne passende API bleibt das Fenster normal nutzbar und zeigt eine Statusmeldung; Start-Vollbild kann zusätzlich mit `--fullscreen` beziehungsweise `/fullscreen` angefragt werden.
 - Das Fenster bleibt resizable: am Root-`Window` stehen weiterhin keine festen `width`/`height`-Werte, sondern `preferred-width`, `preferred-height`, `min-width` und `min-height`.
 - Die obere Buttonzone ist erneut höher und stärker aufgeteilt: `760px` Toolbar-Höhe, `preferred-height: 1360px`, `min-height: 900px` und zusätzliche Reihen für Datei, Export, Baum, Info und Extras. Dadurch laufen die langen Button-Gruppen nicht mehr so schnell ineinander. Zusätzlich akzeptiert der alte Kompatibilitätsstarter jetzt `/fullscreen`, `/fs`, `/max` und `--maximized`.
-- Die Kontextmenüs im Baum und im Textbereich bleiben als Slint-kompatible Overlay-Panels aus normalen Elementen erhalten; es werden weiterhin keine `ContextMenuArea`-/`MenuItem`-Typen verwendet.
+- Die Kontextmenüs im Baum und im Textbereich bleiben als Qt-kompatible Overlay-Panels aus normalen Elementen erhalten; es werden weiterhin keine `ContextMenuArea`-/`MenuItem`-Typen verwendet.
 
 Start:
 
 ```bash
-python3 -m notizen_py_slint
+python3 -m notizen_py_qt
 ```
 
 Die alte Weiterleitung bleibt ebenfalls erhalten:
 
 ```bash
-python3 -m notizen_pypy_slint
+python3 -m notizen_pypy_qt
 ```
 
 ## Neu in v19 / 0.19.0

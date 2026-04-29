@@ -1,0 +1,3 @@
+"""Python/Qt port of the old Notizen.NET application."""
+
+__version__ = "0.19.0"

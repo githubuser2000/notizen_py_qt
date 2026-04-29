@@ -1,128 +1,103 @@
-# Slint → Qt Quick/QML Mapping
+# Qt→Qt Quick/QML Mapping v3
 
-Dieses Dokument beschreibt, was `scripts/slint_to_qml.py` automatisch umsetzt.
+Diese Tabelle dokumentiert die automatische Abbildung des Transpilierers. Alles,
+was semantisch riskant ist, wird zusätzlich im JSON-Report und in
+`QT611_MIGRATION_STATUS.md` sichtbar gemacht.
 
-## Komponenten
+## Komponenten und Top-Level-Konstrukte
 
-| Slint | QML |
-|---|---|
-| `export component MainWindow inherits Window { ... }` | `ApplicationWindow { id: root ... }` in `MainWindow.qml` |
-| `component Foo inherits Rectangle { ... }` | `Rectangle { id: root ... }` in `Foo.qml` |
-| kein Komponentenblock | wird als `Main.qml` gewrappt |
+| Qt | Qt/QML-Ausgabe | Hinweis |
+|---|---|---|
+| `export component MainWindow inherits Window { ... }` | `MainWindow.qml` mit `ApplicationWindow { ... }` | `visible: true` wird ergänzt, wenn keine Root-Visibility gesetzt ist. |
+| `component Foo inherits Rectangle { ... }` | `Foo.qml` mit `Rectangle { ... }` | Basistyp wird über `TYPE_MAP` übertragen. |
+| `export global AppState { ... }` | `AppState.qml` mit `pragma Singleton` und `QtObject` | `GeneratedQmlSingletons.cmake` setzt `QT_QML_SINGLETON_TYPE`. |
+| `enum Theme { Light, Dark }` | `Qt611Types.js` mit `var Theme = Object.freeze(...)` | Als JS-Hilfe, später idealerweise durch typed Backend ersetzen. |
+| `struct Todo { title: string }` | `Qt611Types.js` mit `makeTodo(values)` | Als JS-Factory für QML-Modelle. |
 
-## Typen
+## UI-Elemente
 
-| Slint | QML |
+| Qt | QML |
 |---|---|
 | `Window`, `AppWindow` | `ApplicationWindow` |
+| `Dialog` | `Dialog` |
+| `PopupWindow` | `Popup` |
 | `VerticalBox`, `VerticalLayout` | `ColumnLayout` |
 | `HorizontalBox`, `HorizontalLayout` | `RowLayout` |
 | `GridBox`, `GridLayout` | `GridLayout` |
 | `LineEdit` | `TextField` |
 | `TextEdit` | `TextArea` |
+| `Button` | `Button` |
+| `CheckBox` | `CheckBox` |
 | `TouchArea` | `MouseArea` |
-| `Button`, `CheckBox`, `Slider`, `ComboBox`, `Image`, `ListView` | gleichnamige oder naheliegende Qt-Quick/Controls-Typen |
+| `Image` | `Image` |
 
-## Eigenschaften
+## Properties
 
-| Slint | QML |
+| Qt | QML |
 |---|---|
-| `in property <string> title-text: "X";` | `property string titleText: "X"` |
-| `out property <string> output-code;` | `readonly property string outputCode` |
-| `background: #112233;` | `color: "#112233"` |
-| `font-size: 20px;` | `font.pixelSize: 20` |
+| `font-size` | `font.pixelSize` |
+| `font-weight` | `font.weight` |
+| `background`, `background-color` | `color` |
 | `border-color` | `border.color` |
 | `border-width` | `border.width` |
 | `border-radius` | `radius` |
-| `placeholder-text` | `placeholderText` |
 | `horizontal-stretch` | `Layout.fillWidth` |
 | `vertical-stretch` | `Layout.fillHeight` |
+| `preferred-width` | `Layout.preferredWidth` |
+| `preferred-height` | `Layout.preferredHeight` |
+| `placeholder-text` | `placeholderText` |
+| `current-index` | `currentIndex` |
 
-Kebab-case-Namen werden für QML nach camelCase übertragen. Aus `root.source-code` wird `root.sourceCode`.
+Qt-Längen wie `800px` werden als QML-Zahlen ausgegeben, also `800`.
+Zeitwerte wie `250ms` werden als Millisekunden-Zahl ausgegeben, also `250`.
+Prozentwerte wie `50%` werden nach `0.5` normalisiert.
 
-## Callbacks und Events
+## Signale, Callbacks und Events
 
-| Slint | QML |
+| Qt | QML |
 |---|---|
 | `callback save-requested(string);` | `signal saveRequested(string arg0)` |
-| `clicked => { root.save-requested(text); }` | `onClicked: { root.saveRequested(text); }` |
-| `pressed`, `released`, `toggled`, `accepted` | entsprechende `on...`-Handler |
+| `clicked => { ... }` | `onClicked: { ... }` |
+| `pressed => { ... }` | `onPressed: { ... }` |
+| `edited => { ... }` | `onEditingFinished: { ... }` |
+| `text-changed => { ... }` | `onTextChanged: { ... }` |
+| `key-pressed => { ... }` | `Keys.onPressed: { ... }` |
 
-Pointer-/Touch-Events werden nur grob gemappt und im Report gewarnt, weil QML-Maus-/Pointerdetails anders modelliert sind.
+Callback-Namen in kebab-case werden nach camelCase konvertiert.
 
-## Inline-Objekte
+## Bindings
 
-```slint
-Text { text: root.title-text; font-size: 20px; }
-```
+| Qt | QML-Ausgabe |
+|---|---|
+| `text: root.title-text;` | `text: root.titleText` |
+| `text <=> root.title-text;` | `text: root.titleText` plus `onTextChanged: { root.titleText = text }` |
+| `in-out property <string> title-text <=> field.text;` | `property alias titleText: field.text` |
 
-wird zu:
-
-```qml
-Text {
-    text: root.titleText
-    font.pixelSize: 20
-}
-```
+Zwei-Wege-Bindings können in QML Binding-Loops erzeugen. Der Transpilierer erzeugt
+nur die offensichtliche mechanische Variante und markiert sie im Report.
 
 ## Schleifen und Bedingungen
 
-```slint
-for row[i] in rows: Text { text: row.title; }
-```
+| Qt | QML |
+|---|---|
+| `for row[i] in rows: Text { ... }` | `Repeater { model: rows; delegate: Text { property var row: modelData; property int i: index; ... } }` |
+| `if cond: Text { ... }` | `Text { visible: cond; ... }` |
 
-wird zu:
+## Animationen
 
-```qml
-Repeater {
-    model: rows
-    delegate: Text {
-        property var row: modelData
-        property int i: index
-        text: row.title
-    }
-}
-```
+| Qt | QML |
+|---|---|
+| `animate opacity { duration: 250ms; }` | `Behavior on opacity { NumberAnimation { duration: 250 } }` |
 
-```slint
-if root.output-code != "": Text { text: root.output-code; }
-```
+Komplexe Transitions, States und Easing-Details müssen manuell geprüft werden.
 
-wird zu einem immer erzeugten QML-Objekt mit `visible`-Binding:
+## Nicht automatisch vollständig gelöst
 
-```qml
-Text {
-    visible: root.outputCode != ""
-    text: root.outputCode
-}
-```
+- komplexe `states [...]`-Blöcke
+- `@children` / Default-Property-Slots
+- Backend-Modelle mit stark typisierten Rust- oder C++-Objekten
+- Pointer-/Touch-Eventdetails
+- Callback-Rückgabewerte
+- semantisch komplexe Rust-UI-Startlogik
 
-Das ist absichtlich transparent, aber nicht in allen Fällen semantisch identisch. Prüfe insbesondere Lifecycle, Layoutplatz und Model-Rollen.
-
-## Manuelle Nacharbeit
-
-Diese Konstrukte werden als TODO oder Warnung markiert:
-
-- `states [...]`
-- `animate property { ... }`
-- `global` Singletons
-- `struct` und `enum`
-- komplexe Modelle und Rollen
-- Custom Render-Pfade
-- Touch-/Pointerdetails
-- Rückgabewerte von Slint-Callbacks
-
-## Zielarchitektur
-
-Für ein Rust-Projekt ist die Zielstruktur:
-
-```text
-Cargo.toml
-build.rs
-src/main.rs
-src/backend.rs
-qml/Main.qml
-qml/*.qml
-```
-
-Die UI lebt in Qt Quick/QML. Rust bleibt Backend über CXX-Qt. Dadurch wird Slint wirklich entfernt und nicht nur aus der Oberfläche herausgeschoben.
+Diese Fälle werden nicht verschwiegen, sondern als Warnungen im Report sichtbar.

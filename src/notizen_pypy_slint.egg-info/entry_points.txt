@@ -1,3 +1,0 @@
-[console_scripts]
-notizen-alx = notizen_pypy_slint.cli:main
-notizen-pypy-slint = notizen_pypy_slint.app:main

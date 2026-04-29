@@ -10,33 +10,33 @@ from datetime import datetime
 from pathlib import Path
 import unittest
 
-from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
-from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
-from notizen_py_slint.feedback import feedback_gzip_payload, read_feedback_gzip
-from notizen_py_slint.fonts import list_system_fonts
-from notizen_py_slint.intellibit import document_to_notes_doc_xml
-from notizen_py_slint.opml import document_to_opml, opml_to_note
-from notizen_py_slint.paths import default_file_path, default_paths
-from notizen_py_slint.passwords import legacy_password_info, normalize_legacy_password
-from notizen_py_slint.repair import repair_document
-import notizen_py_slint.app as app_module
-from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
-from notizen_py_slint.cli import main as cli_main
-from notizen_py_slint.config import AppConfig
-from notizen_py_slint.context_menus import context_actions_payload, format_context_actions, sticky_opacity_payload
-from notizen_py_slint.clipboard import clipboard_info, entry_from_clipboard_text, note_to_clipboard_text, read_clipboard_file, write_clipboard_file
-from notizen_py_slint.compat import analyze_document, analyze_file
-from notizen_py_slint.legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table
-from notizen_py_slint.legacy_sticky import legacy_opacity_choices, opacity_from_legacy_choice
-from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config
-from notizen_py_slint.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
-from notizen_py_slint.notify import notify
-from notizen_py_slint.shortcuts import shortcut_manifest
-from notizen_py_slint.sticky_runtime import sticky_window_specs
-from notizen_py_slint.remote import parse_ftp_url
-from notizen_py_slint.translations import LEGACY_KEYS, normalize_language, translate, translation_table
-from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, normalize_text_range, replace_rtf_text_range, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, style_rtf_text_range, text_to_rtf
-from notizen_py_slint.storage import (
+from notizen_py_qt.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm
+from notizen_py_qt.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload
+from notizen_py_qt.feedback import feedback_gzip_payload, read_feedback_gzip
+from notizen_py_qt.fonts import list_system_fonts
+from notizen_py_qt.intellibit import document_to_notes_doc_xml
+from notizen_py_qt.opml import document_to_opml, opml_to_note
+from notizen_py_qt.paths import default_file_path, default_paths
+from notizen_py_qt.passwords import legacy_password_info, normalize_legacy_password
+from notizen_py_qt.repair import repair_document
+import notizen_py_qt.app as app_module
+from notizen_py_qt.app import NotizenQtApp, _normalize_legacy_argv
+from notizen_py_qt.cli import main as cli_main
+from notizen_py_qt.config import AppConfig
+from notizen_py_qt.context_menus import context_actions_payload, format_context_actions, sticky_opacity_payload
+from notizen_py_qt.clipboard import clipboard_info, entry_from_clipboard_text, note_to_clipboard_text, read_clipboard_file, write_clipboard_file
+from notizen_py_qt.compat import analyze_document, analyze_file
+from notizen_py_qt.legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table
+from notizen_py_qt.legacy_sticky import legacy_opacity_choices, opacity_from_legacy_choice
+from notizen_py_qt.legacy_config import load_legacy_config, write_legacy_like_config
+from notizen_py_qt.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
+from notizen_py_qt.notify import notify
+from notizen_py_qt.shortcuts import shortcut_manifest
+from notizen_py_qt.sticky_runtime import sticky_window_specs
+from notizen_py_qt.remote import parse_ftp_url
+from notizen_py_qt.translations import LEGACY_KEYS, normalize_language, translate, translation_table
+from notizen_py_qt.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, normalize_text_range, replace_rtf_text_range, restyle_rtf_as_plain, restyle_rtf_with_defaults, rtf_to_html_fragment, rtf_to_text, set_rtf_font_size, style_rtf_text_range, text_to_rtf
+from notizen_py_qt.storage import (
     autosize_sticky,
     change_note_font_size,
     combine_subtree_to_new_note,
@@ -1226,23 +1226,23 @@ class AppCompatTests(unittest.TestCase):
             meta_text = ""
             status_text = ""
 
-        app = object.__new__(NotizenSlintApp)
+        app = object.__new__(NotizenQtApp)
         app.config = AppConfig(language="en")
         app.window = DummyWindow()
         app._current_password = "abcdefghijklmnopqrstuvwx"
         app.document = NoteDocument(root=Note("Root", text_to_rtf("Text")))
-        NotizenSlintApp.show_about(app)
+        NotizenQtApp.show_about(app)
         self.assertIn("Info", app.window.status_text)
         self.assertIn("desknote", app.window.meta_text)
-        NotizenSlintApp.show_shortcuts(app)
+        NotizenQtApp.show_shortcuts(app)
         self.assertIn("Tastenkürzel", app.window.status_text)
         self.assertIn("Ctrl+S", app.window.meta_text)
-        NotizenSlintApp.show_context_menus(app)
+        NotizenQtApp.show_context_menus(app)
         self.assertIn("Kontext", app.window.status_text)
         self.assertIn("content", app.window.meta_text)
-        NotizenSlintApp.show_password_info(app)
+        NotizenQtApp.show_password_info(app)
         self.assertIn("Passwort", app.window.status_text)
-        NotizenSlintApp.show_toolstrips(app)
+        NotizenQtApp.show_toolstrips(app)
         self.assertIn("ToolStrip", app.window.status_text)
 
     def test_legacy_argv_normalization(self) -> None:
@@ -1254,8 +1254,8 @@ class AppCompatTests(unittest.TestCase):
         self.assertEqual(_normalize_legacy_argv(["fs"]), ["--fullscreen"])
         self.assertEqual(_normalize_legacy_argv(["/max"]), ["--maximized"])
 
-    def test_slint_ui_has_compile_safe_context_panels_and_compact_resizable_toolbar(self) -> None:
-        ui_text = resources.files("notizen_py_slint.ui").joinpath("app-window.slint").read_text(encoding="utf-8")
+    def test_qt_ui_has_compile_safe_context_panels_and_compact_resizable_toolbar(self) -> None:
+        ui_text = resources.files("notizen_py_qt.ui").joinpath("app-window.qml").read_text(encoding="utf-8")
         self.assertIn("preferred-width: 1280px;", ui_text)
         self.assertIn("preferred-height: 860px;", ui_text)
         self.assertIn("min-width: 760px;", ui_text)
@@ -1315,7 +1315,7 @@ class AppCompatTests(unittest.TestCase):
         root = Note("Root", text_to_rtf(""))
         child = root.add_child(Note("Alt", text_to_rtf("Text")))
         doc = NoteDocument(root=root, selected_id=root.note_id)
-        app = object.__new__(NotizenSlintApp)
+        app = object.__new__(NotizenQtApp)
         app.document = doc
         app.window = DummyWindow()
         app._refresh_all = lambda *args, **kwargs: None
@@ -1323,7 +1323,7 @@ class AppCompatTests(unittest.TestCase):
         old_ask = app_module.ask_text
         app_module.ask_text = lambda *args, **kwargs: "Neu"
         try:
-            NotizenSlintApp.rename_row(app, 1)
+            NotizenQtApp.rename_row(app, 1)
         finally:
             app_module.ask_text = old_ask
         self.assertEqual(child.title, "Neu")
@@ -1336,14 +1336,14 @@ class AppCompatTests(unittest.TestCase):
             meta_text = ""
             status_text = ""
 
-        app = object.__new__(NotizenSlintApp)
+        app = object.__new__(NotizenQtApp)
         app.window = DummyWindow()
         app.document = NoteDocument(root=Note("Root", text_to_rtf("Text")))
         app._current_password = None
-        NotizenSlintApp.show_compat_report(app)
+        NotizenQtApp.show_compat_report(app)
         self.assertIn("Kompatibilität", app.window.status_text)
         self.assertIn("Notizen", app.window.meta_text)
-        NotizenSlintApp.show_default_paths(app)
+        NotizenQtApp.show_default_paths(app)
         self.assertIn("Standardpfade", app.window.status_text)
         self.assertIn("unbenannt.alx", app.window.meta_text)
 

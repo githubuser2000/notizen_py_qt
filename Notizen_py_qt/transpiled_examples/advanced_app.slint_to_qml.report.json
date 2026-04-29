@@ -1,0 +1,36 @@
+{
+  "source": "/mnt/data/qt611_no_qt_migration_kit_v3/examples/advanced_app.qml",
+  "outputs": [
+    "AppState.qml",
+    "GeneratedQmlSingletons.cmake",
+    "Main.qml",
+    "MainWindow.qml",
+    "Qt611Types.js"
+  ],
+  "imports": [
+    "std-widgets.qml"
+  ],
+  "units": {
+    "components": 1,
+    "globals": 1,
+    "enums": 1,
+    "structs": 1
+  },
+  "warnings": [
+    {
+      "line": 23,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "text <=> root.title-text"
+    },
+    {
+      "line": 27,
+      "message": "Qt for-loop converted to Repeater; check model roles and delegate sizing",
+      "source": "for row in rows: CheckBox"
+    },
+    {
+      "line": 28,
+      "message": "Qt animate block converted to QML Behavior/NumberAnimation; easing may need review",
+      "source": "animate opacity"
+    }
+  ]
+}

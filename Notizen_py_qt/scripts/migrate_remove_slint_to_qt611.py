@@ -124,11 +124,19 @@ file(GLOB_RECURSE NOTIZEN_QML_FILES CONFIGURE_DEPENDS
     qml/*.qml
 )
 
+file(GLOB_RECURSE NOTIZEN_QML_JS_FILES CONFIGURE_DEPENDS
+    qml/*.js
+)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/qml/GeneratedQmlSingletons.cmake OPTIONAL)
+
 qt_add_qml_module(notizen_qt611
     URI Notizen
     VERSION 1.0
     QML_FILES
         ${NOTIZEN_QML_FILES}
+    RESOURCES
+        ${NOTIZEN_QML_JS_FILES}
 )
 
 target_link_libraries(notizen_qt611
@@ -303,6 +311,53 @@ def migrate_build_rs(path: Path, backup_root: Path, root: Path, apply: bool, rus
             path.write_text(updated, encoding="utf-8")
 
 
+def migrate_rust_source(path: Path, backup_root: Path, root: Path, apply: bool, actions: list[str]) -> None:
+    """Remove obvious old UI-framework Rust hooks.
+
+    This is intentionally blunt for namespaced old-UI lines: those calls normally
+    reference generated UI objects that no longer exist after the QML migration.
+    Backups and the action report keep the original code recoverable.
+    """
+    original = path.read_text(encoding="utf-8")
+    if not SLINT_TEXT_RE.search(original):
+        return
+    kept: list[str] = []
+    removed = 0
+    replaced = 0
+    removed_sharedstring_import = False
+    for line in original.splitlines(keepends=True):
+        stripped = line.strip()
+        if (
+            "slint::include_modules!" in line
+            or stripped.startswith("use slint::")
+            or stripped.startswith("use slint {")
+            or stripped.startswith("use slint::{")
+            or stripped.startswith("extern crate slint")
+        ):
+            if "SharedString" in line:
+                removed_sharedstring_import = True
+            removed += 1
+            continue
+        updated = line.replace("slint::SharedString", "String")
+        if updated != line:
+            replaced += 1
+        if SLINT_TEXT_RE.search(updated):
+            removed += 1
+            continue
+        kept.append(updated)
+    updated_text = "".join(kept)
+    if removed_sharedstring_import:
+        new_text = re.sub(r"\bSharedString\b", "String", updated_text)
+        if new_text != updated_text:
+            replaced += len(re.findall(r"\bSharedString\b", updated_text))
+            updated_text = new_text
+    if updated_text != original:
+        actions.append(f"edit Rust source: {path.relative_to(root)} (removed {removed} old UI lines; replaced {replaced} SharedString references)")
+        if apply:
+            backup_file(path, backup_root, root)
+            path.write_text(updated_text, encoding="utf-8")
+
+
 def transpile_slint_to_qml(path: Path, root: Path, apply: bool, overwrite_qml: bool, actions: list[str]) -> None:
     out_dir = root / "qml"
     if transpile_file is None or transpile_text is None:
@@ -350,6 +405,29 @@ def scan_remaining(root: Path) -> list[str]:
     return hits
 
 
+def write_action_report(root: Path, actions: list[str], remaining: list[str], apply: bool) -> None:
+    if not apply:
+        return
+    lines = [
+        "# Qt 6.11 Migration Actions",
+        "",
+        "## Actions",
+        "",
+    ]
+    if actions:
+        lines.extend(f"- {action}" for action in actions)
+    else:
+        lines.append("- No changes required.")
+    lines.extend(["", "## Remaining active references", ""])
+    if remaining:
+        lines.extend(f"- `{hit}`" for hit in remaining[:500])
+        if len(remaining) > 500:
+            lines.append(f"- ... {len(remaining) - 500} more")
+    else:
+        lines.append("- None detected by scanner.")
+    (root / "QT611_MIGRATION_ACTIONS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("root", nargs="?", default=".")
@@ -372,6 +450,7 @@ def main() -> int:
     cargo_files: list[Path] = []
     build_rs_files: list[Path] = []
     slint_files: list[Path] = []
+    rust_files: list[Path] = []
     cmake_files: list[Path] = []
 
     for path in iter_files(root):
@@ -383,11 +462,15 @@ def main() -> int:
             cmake_files.append(path)
         elif path.suffix == ".slint":
             slint_files.append(path)
+        elif path.suffix == ".rs":
+            rust_files.append(path)
 
     for path in cargo_files:
         migrate_cargo(path, backup_root, root, args.apply, args.rust_cxx_qt, actions)
     for path in build_rs_files:
         migrate_build_rs(path, backup_root, root, args.apply, args.rust_cxx_qt, actions)
+    for path in rust_files:
+        migrate_rust_source(path, backup_root, root, args.apply, actions)
     if not args.no_transpile_slint:
         for path in slint_files:
             transpile_slint_to_qml(path, root, args.apply, args.overwrite_qml, actions)
@@ -409,7 +492,7 @@ def main() -> int:
 
     print("Mode:", "APPLY" if args.apply else "DRY-RUN")
     print("Root:", root)
-    print(f"Found: {len(cargo_files)} Cargo.toml, {len(build_rs_files)} build.rs, {len(cmake_files)} CMakeLists.txt, {len(slint_files)} .slint files")
+    print(f"Found: {len(cargo_files)} Cargo.toml, {len(build_rs_files)} build.rs, {len(cmake_files)} CMakeLists.txt, {len(slint_files)} .slint files, {len(rust_files)} Rust source files")
     print("\nActions:")
     if actions:
         for action in actions:
@@ -418,6 +501,9 @@ def main() -> int:
         print("- No changes required.")
 
     remaining = scan_remaining(root)
+    write_action_report(root, actions, remaining, args.apply)
+    if args.apply:
+        print(f"\nWrote migration action report: {root / 'QT611_MIGRATION_ACTIONS.md'}")
     if remaining:
         print("\nRemaining Slint references to handle manually:")
         for hit in remaining[:200]:

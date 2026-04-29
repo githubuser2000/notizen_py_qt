@@ -1,0 +1,21 @@
+import { Button, LineEdit, VerticalBox } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    in-out property <string> title-text: "Notizen";
+    callback transpile-requested(string);
+    width: 1100px;
+    height: 720px;
+    background: #20242a;
+
+    VerticalBox {
+        spacing: 8px;
+        titleField := LineEdit {
+            text <=> root.title-text;
+            placeholder-text: @tr("Titel");
+        }
+        Button {
+            text: @tr("Transpilieren");
+            clicked => { root.transpile-requested(root.title-text); }
+        }
+    }
+}

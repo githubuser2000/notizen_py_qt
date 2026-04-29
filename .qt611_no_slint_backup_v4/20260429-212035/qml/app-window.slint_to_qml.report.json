@@ -1,0 +1,73 @@
+{
+  "source": "/home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/src/notizen_py_slint/ui/app-window.slint",
+  "outputs": [
+    "app-window_AppWindow.qml",
+    "app-window_Qt611Types.js"
+  ],
+  "imports": [
+    "std-widgets.slint"
+  ],
+  "units": {
+    "components": 1,
+    "globals": 0,
+    "enums": 0,
+    "structs": 1
+  },
+  "warnings": [
+    {
+      "line": 264,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "text <=> root.search-text"
+    },
+    {
+      "line": 273,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "checked <=> root.search-case-sensitive"
+    },
+    {
+      "line": 274,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "checked <=> root.search-whole-words"
+    },
+    {
+      "line": 275,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "checked <=> root.search-current-subtree"
+    },
+    {
+      "line": 278,
+      "message": "Slint for-loop converted to Repeater; check model roles and delegate sizing",
+      "source": "for row in root.rows: Rectangle"
+    },
+    {
+      "line": 301,
+      "message": "Line copied as TODO comment; manual conversion required",
+      "source": "pointer-event(event) => {"
+    },
+    {
+      "line": 380,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "text <=> root.note-title"
+    },
+    {
+      "line": 397,
+      "message": "Line copied as TODO comment; manual conversion required",
+      "source": "pointer-event(event) => {"
+    },
+    {
+      "line": 410,
+      "message": "Two-way binding converted to QML binding plus reverse change handler; check for binding loops",
+      "source": "text <=> root.editor-text"
+    },
+    {
+      "line": 412,
+      "message": "Line copied as TODO comment; manual conversion required",
+      "source": "edited(text) => { root.editor-changed(text); }"
+    },
+    {
+      "line": 440,
+      "message": "Line copied as TODO comment; manual conversion required",
+      "source": "pointer-event(event) => {"
+    }
+  ]
+}

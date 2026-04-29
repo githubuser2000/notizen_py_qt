@@ -1,0 +1,402 @@
+# Qt 6.11 Migration Actions
+
+## Actions
+
+- transpile .slint -> QML: Notizen_py_qt/examples/advanced_app.slint -> qml/ (advanced_app_AppState.qml, advanced_app_GeneratedQmlSingletons.cmake, advanced_app_MainWindow.qml, advanced_app_Qt611Types.js; warnings=3)
+- transpile .slint -> QML: Notizen_py_qt/examples/main_window.slint -> qml/ (main_window_MainWindow.qml; warnings=1)
+- archive .slint: Notizen_py_qt/examples/advanced_app.slint -> legacy_slint/Notizen_py_qt/examples/advanced_app.slint
+- archive .slint: Notizen_py_qt/examples/main_window.slint -> legacy_slint/Notizen_py_qt/examples/main_window.slint
+- keep existing: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/cpp/main.cpp
+- keep existing: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/qml/Main.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/CMakeLists.qt611.generated.txt
+- keep existing: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/src/backend.rs
+
+## Remaining active references
+
+- `pyproject.toml:6: name = "notizen-py-slint"`
+- `pyproject.toml:8: description = "Python/Slint port of the old VB.NET Notizen.NET application"`
+- `pyproject.toml:29: slint = ["slint>=1.8.0a1"]`
+- `pyproject.toml:33: notizen-py-slint = "notizen_py_slint.app:main"`
+- `pyproject.toml:34: notizen-alx = "notizen_py_slint.cli:main"`
+- `pyproject.toml:35: # Compatibility entry point for old installs. Prefer notizen-py-slint.`
+- `pyproject.toml:36: notizen-pypy-slint = "notizen_pypy_slint.app:main"`
+- `pyproject.toml:46: notizen_py_slint = ["ui/*.slint"]`
+- `pyproject.toml:47: "notizen_py_slint.ui" = ["*.slint"]`
+- `tests/test_core.py:13: from notizen_py_slint.alarm import AlarmRule, add_months, add_or_replace_alarm, alarm_message, due_alarms, load_alarms, next_alarm, parse_weekdays, remove_alarm`
+- `tests/test_core.py:14: from notizen_py_slint.des_compat import DES, decrypt_notizen_payload, encrypt_notizen_payload`
+- `tests/test_core.py:15: from notizen_py_slint.feedback import feedback_gzip_payload, read_feedback_gzip`
+- `tests/test_core.py:16: from notizen_py_slint.fonts import list_system_fonts`
+- `tests/test_core.py:17: from notizen_py_slint.intellibit import document_to_notes_doc_xml`
+- `tests/test_core.py:18: from notizen_py_slint.opml import document_to_opml, opml_to_note`
+- `tests/test_core.py:19: from notizen_py_slint.paths import default_file_path, default_paths`
+- `tests/test_core.py:20: from notizen_py_slint.passwords import legacy_password_info, normalize_legacy_password`
+- `tests/test_core.py:21: from notizen_py_slint.repair import repair_document`
+- `tests/test_core.py:22: import notizen_py_slint.app as app_module`
+- `tests/test_core.py:23: from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv`
+- `tests/test_core.py:24: from notizen_py_slint.cli import main as cli_main`
+- `tests/test_core.py:25: from notizen_py_slint.config import AppConfig`
+- `tests/test_core.py:26: from notizen_py_slint.context_menus import context_actions_payload, format_context_actions, sticky_opacity_payload`
+- `tests/test_core.py:27: from notizen_py_slint.clipboard import clipboard_info, entry_from_clipboard_text, note_to_clipboard_text, read_clipboard_file, write_clipboard_file`
+- `tests/test_core.py:28: from notizen_py_slint.compat import analyze_document, analyze_file`
+- `tests/test_core.py:29: from notizen_py_slint.legacy_colors import argb_to_signed, legacy_color_by_name, legacy_light_color, legacy_palette_table`
+- `tests/test_core.py:30: from notizen_py_slint.legacy_sticky import legacy_opacity_choices, opacity_from_legacy_choice`
+- `tests/test_core.py:31: from notizen_py_slint.legacy_config import load_legacy_config, write_legacy_like_config`
+- `tests/test_core.py:32: from notizen_py_slint.model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex`
+- `tests/test_core.py:33: from notizen_py_slint.notify import notify`
+- `tests/test_core.py:34: from notizen_py_slint.shortcuts import shortcut_manifest`
+- `tests/test_core.py:35: from notizen_py_slint.sticky_runtime import sticky_window_specs`
+- `tests/test_core.py:36: from notizen_py_slint.remote import parse_ftp_url`
+- `tests/test_core.py:37: from notizen_py_slint.translations import LEGACY_KEYS, normalize_language, translate, translation_table`
+- `tests/test_core.py:38: from notizen_py_slint.rtf import append_picture_to_rtf, change_rtf_font_size, detect_rtf_style, extract_pictures, first_rtf_font_size, is_rtf, normalize_text_ra`
+- `tests/test_core.py:39: from notizen_py_slint.storage import (`
+- `tests/test_core.py:1229: app = object.__new__(NotizenSlintApp)`
+- `tests/test_core.py:1234: NotizenSlintApp.show_about(app)`
+- `tests/test_core.py:1237: NotizenSlintApp.show_shortcuts(app)`
+- `tests/test_core.py:1240: NotizenSlintApp.show_context_menus(app)`
+- `tests/test_core.py:1243: NotizenSlintApp.show_password_info(app)`
+- `tests/test_core.py:1245: NotizenSlintApp.show_toolstrips(app)`
+- `tests/test_core.py:1257: def test_slint_ui_has_compile_safe_context_panels_and_compact_resizable_toolbar(self) -> None:`
+- `tests/test_core.py:1258: ui_text = resources.files("notizen_py_slint.ui").joinpath("app-window.slint").read_text(encoding="utf-8")`
+- `tests/test_core.py:1318: app = object.__new__(NotizenSlintApp)`
+- `tests/test_core.py:1326: NotizenSlintApp.rename_row(app, 1)`
+- `tests/test_core.py:1339: app = object.__new__(NotizenSlintApp)`
+- `tests/test_core.py:1343: NotizenSlintApp.show_compat_report(app)`
+- `tests/test_core.py:1346: NotizenSlintApp.show_default_paths(app)`
+- `scripts/run-gui.sh:3: exec python3 -m notizen_py_slint "$@"`
+- `src/notizen_pypy_slint/model.py:1: """Compatibility wrapper for notizen_py_slint.model."""`
+- `src/notizen_pypy_slint/model.py:3: from notizen_py_slint.model import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/rtf.py:1: """Compatibility wrapper for notizen_py_slint.rtf."""`
+- `src/notizen_pypy_slint/rtf.py:3: from notizen_py_slint.rtf import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/des_compat.py:1: """Compatibility wrapper for notizen_py_slint.des_compat."""`
+- `src/notizen_pypy_slint/des_compat.py:3: from notizen_py_slint.des_compat import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/storage.py:1: """Compatibility wrapper for notizen_py_slint.storage."""`
+- `src/notizen_pypy_slint/storage.py:3: from notizen_py_slint.storage import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/config.py:1: """Compatibility wrapper for notizen_py_slint.config."""`
+- `src/notizen_pypy_slint/config.py:3: from notizen_py_slint.config import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/dialogs.py:1: """Compatibility wrapper for notizen_py_slint.dialogs."""`
+- `src/notizen_pypy_slint/dialogs.py:3: from notizen_py_slint.dialogs import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/app.py:1: from notizen_py_slint.app import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/__main__.py:5: from notizen_py_slint.app import main`
+- `src/notizen_pypy_slint/__init__.py:3: The project was renamed to :mod:`notizen_py_slint`. Keep this package so`
+- `src/notizen_pypy_slint/__init__.py:4: existing commands such as ``python3 -m notizen_pypy_slint`` keep working.`
+- `src/notizen_pypy_slint/__init__.py:7: from notizen_py_slint import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/cli.py:1: from notizen_py_slint.cli import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/remote.py:1: """Compatibility wrapper for notizen_py_slint.remote."""`
+- `src/notizen_pypy_slint/remote.py:3: from notizen_py_slint.remote import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/legacy_config.py:1: """Compatibility wrapper for notizen_py_slint.legacy_config."""`
+- `src/notizen_pypy_slint/legacy_config.py:3: from notizen_py_slint.legacy_config import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/autostart.py:1: """Compatibility wrapper for notizen_py_slint.autostart."""`
+- `src/notizen_pypy_slint/autostart.py:3: from notizen_py_slint.autostart import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint/alarm.py:1: """Compatibility wrapper for notizen_py_slint.alarm."""`
+- `src/notizen_pypy_slint/alarm.py:3: from notizen_py_slint.alarm import *  # noqa: F401,F403`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:2: Name: notizen-pypy-slint`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:4: Summary: PyPy3/Slint port of the old VB.NET Notizen.NET application`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:17: Provides-Extra: slint`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:18: Requires-Dist: slint==1.8.0a1; extra == "slint"`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:21: # Notizen PyPy Slint`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:23: Das ist ein PyPy3-orientierter Port von **Notizen.NET** aus dem gelieferten VB.NET/WinForms-Projekt. Der alte Code wurde nicht nur zeilenweise umgeschrieben: Da`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:54: - Slints `TextEdit` ist Plain-Text. Vorhandenes RTF wird im Textmodus als Text angezeigt und nach Bearbeitung als schlichtes RTF neu gespeichert. Der neue Raw-R`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:65: cd notizen_pypy_slint`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:69: Für die Slint-Oberfläche:`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:72: cd notizen_pypy_slint`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:73: pypy3 -m pip install -e ".[slint]"`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:76: Hinweis: Die UI-Abhängigkeit ist absichtlich auf `slint==1.8.0a1` gepinnt, weil neuere Slint-Python-Versionen Python 3.12+ verlangen, während viele PyPy-Install`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:83: pypy3 -m notizen_pypy_slint`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:84: pypy3 -m notizen_pypy_slint pfad/zur/datei.alx`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:85: pypy3 -m notizen_pypy_slint pfad/zur/datei.alx --password geheim`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:86: pypy3 -m notizen_pypy_slint 'ftp://user:pass@example.org/notizen.alx'`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:89: CLI-Fallback ohne Slint:`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:135: cd notizen_pypy_slint`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:139: Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt, weil dort weder `pypy3` noch `slint` installiert war:`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:166: src/notizen_pypy_slint/`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:167: app.py              Slint-Controller`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:168: ui/app-window.slint Slint-Oberfläche`
+- `src/notizen_pypy_slint.egg-info/PKG-INFO:177: cli.py              CLI-Fallback ohne Slint`
+- `src/notizen_py_slint/model.py:23: attributes on the note node.  Slint cannot recreate the exact WinForms`
+- `src/notizen_py_slint/model.py:632: CLI, tests and Slint status line. The optional ``start`` argument mirrors`
+- `src/notizen_py_slint/model.py:668: ``TreeNode`` and a RichTextBox ``SelectionStart``.  Slint does not expose`
+- `src/notizen_py_slint/model.py:710: This is the same compromise as the Slint text editor: it is portable and`
+- `src/notizen_py_slint/rtf.py:40: """Whole-note style used when Slint cannot address a text selection."""`
+- `src/notizen_py_slint/rtf.py:56: WinForms RichTextBox actions were usually selection based.  Slint's Python`
+- `src/notizen_py_slint/rtf.py:104: The old application stored each node as RichTextBox.Rtf. Slint's TextEdit is`
+- `src/notizen_py_slint/rtf.py:515: the Python/Slint port's whole-note formatting model and gives toolbar actions`
+- `src/notizen_py_slint/rtf.py:614: Ctrl+Minus. Slint's plain TextEdit cannot do selection-level rich text, so the`
+- `src/notizen_py_slint/rtf.py:704: RichTextBox stores pasted images as RTF picture groups. Slint cannot render or`
+- `src/notizen_py_slint/storage.py:212: the Python/Slint port a portable preview/print target without extra packages.`
+- `src/notizen_py_slint/storage.py:231: "format": "notizen-py-slint-subtree",`
+- `src/notizen_py_slint/storage.py:323: RichTextBox selection, or to the whole note when nothing was selected. Slint's`
+- `src/notizen_py_slint/storage.py:389: stored in the XML. Slint cannot recreate the WinForms floating windows without`
+- `src/notizen_py_slint/storage.py:605: Slint-friendly way. The original built a temporary RichTextBox and pasted all`
+- `src/notizen_py_slint/storage.py:684: if isinstance(data, dict) and data.get("format") == "notizen-py-slint-subtree":`
+- `src/notizen_py_slint/storage.py:815: result is intentionally rewritten as simple RTF because Slint's editor has no`
+- `src/notizen_py_slint/config.py:15: return base / "notizen-py-slint"`
+- `src/notizen_py_slint/app.py:56: def _format_slint_compile_error(exc: Exception, ui_path: Path) -> str:`
+- `src/notizen_py_slint/app.py:57: """Return readable Slint diagnostics.`
+- `src/notizen_py_slint/app.py:59: Older and current Slint Python bindings often expose diagnostics as opaque`
+- `src/notizen_py_slint/app.py:64: lines = [f"Slint konnte die UI-Datei nicht kompilieren: {ui_path}"]`
+- `src/notizen_py_slint/app.py:100: lines.append("Tipp: Die Datei liegt unter src/notizen_py_slint/ui/app-window.slint.")`
+- `src/notizen_py_slint/app.py:104: class NotizenSlintApp:`
+- `src/notizen_py_slint/app.py:105: """Thin controller that binds the pure Python document model to Slint."""`
+- `src/notizen_py_slint/app.py:108: import slint  # imported lazily so CLI/tests can run without starting the GUI`
+- `src/notizen_py_slint/app.py:110: self.slint = slint`
+- `src/notizen_py_slint/app.py:111: ui_path = resources.files("notizen_py_slint.ui").joinpath("app-window.slint")`
+- `src/notizen_py_slint/app.py:113: components = slint.load_file(str(ui_path))`
+- `src/notizen_py_slint/app.py:114: except Exception as exc:  # noqa: BLE001 - Slint uses its own CompileError type`
+- `src/notizen_py_slint/app.py:116: raise RuntimeError(_format_slint_compile_error(exc, ui_path)) from exc`
+- `src/notizen_py_slint/app.py:235: def _native_slint_window(self) -> object | None:`
+- `src/notizen_py_slint/app.py:236: """Return the underlying Slint window handle when the binding exposes it."""`
+- `src/notizen_py_slint/app.py:247: """Best-effort maximize/unmaximize for Slint Python releases/backends."""`
+- `src/notizen_py_slint/app.py:249: native = self._native_slint_window()`
+- `src/notizen_py_slint/app.py:266: self._set_status(f"Maximieren wird von diesem Slint-Backend nicht unterstützt: {exc}")`
+- `src/notizen_py_slint/app.py:268: self._set_status("Dieses Slint-Python-Backend bietet keine Maximize-API; nutze den nativen Fensterrand.")`
+- `src/notizen_py_slint/app.py:271: """Best-effort fullscreen without relying on a Slint language property.`
+- `src/notizen_py_slint/app.py:273: Some installed Slint compilers reject the Window property ``full-screen```
+- `src/notizen_py_slint/app.py:274: even though newer documentation lists it. Keep the .slint file portable`
+- `src/notizen_py_slint/app.py:278: native = self._native_slint_window()`
+- `src/notizen_py_slint/app.py:307: self._set_status(f"Vollbild wird von diesem Slint-Backend nicht unterstützt: {exc}")`
+- `src/notizen_py_slint/app.py:310: self._set_status("Vollbild wird von diesem Slint-Python-Backend nicht unterstützt; starte alternativ mit --fullscreen oder nutze Max/Fensterrand.")`
+- `src/notizen_py_slint/app.py:1262: self.window.rows = self.slint.ListModel(rows)`
+- `src/notizen_py_slint/app.py:1279: self.window.window_title = f"Notizen Py Slint - {name}{locked}{marker}"`
+- `src/notizen_py_slint/app.py:1328: parser = argparse.ArgumentParser(description="Notizen.NET-Port für Python mit Slint")`
+- `src/notizen_py_slint/app.py:1332: parser.add_argument("--fullscreen", action="store_true", help="Vollbild beim Start über SLINT_FULLSCREEN anfordern")`
+- `src/notizen_py_slint/app.py:1337: # Supported even by some Slint releases that reject the .slint Window property.`
+- `src/notizen_py_slint/app.py:1338: os.environ.setdefault("SLINT_FULLSCREEN", "1")`
+- `src/notizen_py_slint/app.py:1341: app = NotizenSlintApp(initial_path=args.file, password=args.password)`
+- `src/notizen_py_slint/app.py:1351: if exc.name == "slint":`
+- `src/notizen_py_slint/app.py:1352: print("Slint ist nicht installiert. Installiere die UI-Abhängigkeit mit:")`
+- `src/notizen_py_slint/app.py:1353: print('  python3 -m pip install -e ".[slint]"')`
+- `src/notizen_py_slint/__init__.py:1: """Python/Slint port of the old Notizen.NET application."""`
+- `src/notizen_py_slint/cli.py:1405: "product": "Notizen Py Slint",`
+- `src/notizen_py_slint/autostart.py:23: return startup / "Notizen Py Slint.cmd"`
+- `src/notizen_py_slint/autostart.py:25: return Path.home() / "Library" / "LaunchAgents" / "net.notizen-py-slint.plist"`
+- `src/notizen_py_slint/autostart.py:26: return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "autostart" / "notizen-py-slint.desktop"`
+- `src/notizen_py_slint/autostart.py:76: command = [sys.executable, "-m", "notizen_py_slint"]`
+- `src/notizen_py_slint/autostart.py:90: "Name=Notizen Py Slint",`
+- `src/notizen_py_slint/autostart.py:101: return f"@echo off\r\nstart \"Notizen Py Slint\" {quoted}\r\n"`
+- `src/notizen_py_slint/autostart.py:116: <key>Label</key><string>net.notizen-py-slint</string>`
+- `src/notizen_py_slint/sticky_runtime.py:93: This is intentionally optional and dependency-free.  Slint is still the main`
+- `src/notizen_py_slint/sticky_runtime.py:96: single Slint main window.  In headless environments this raises a readable`
+- `src/notizen_py_slint/shortcuts.py:21: # from the main form, the tree and selected editor paths.  Slint does not expose`
+- `src/notizen_py_slint/clipboard.py:13: CLIPBOARD_FORMAT = "notizen-py-slint-node-clipboard"`
+- `src/notizen_py_slint/context_menus.py:34: LegacyContextAction("content", 0, "kontext1", "Kopieren", "copy selection", "kontext_inhalt.vb", "Slint editor right-click context panel / system clipboard"),`
+- `src/notizen_py_slint/context_menus.py:35: LegacyContextAction("content", 1, "kontext2", "Ausschneiden", "cut selection", "kontext_inhalt.vb", "Slint editor right-click context panel / delete-range + cli`
+- `src/notizen_py_slint/context_menus.py:36: LegacyContextAction("content", 2, "kontext3", "Einfügen", "paste selection", "kontext_inhalt.vb", "Slint editor right-click context panel / insert-text/import-t`
+- `src/notizen_py_slint/context_menus.py:37: LegacyContextAction("content", 3, None, "Alles markieren", "select all", "Slint compatibility", "Slint editor right-click context panel / TextEdit.select-all"),`
+- `src/notizen_py_slint/context_menus.py:38: LegacyContextAction("content", 4, "kontext4", "Löschen", "delete selected range", "kontext_inhalt.vb", "Slint editor right-click context panel / delete-range"),`
+- `src/notizen_py_slint/context_menus.py:39: LegacyContextAction("content", 5, "kontext6", "Bild einfügen", "insert image", "kontext_inhalt.vb", "Slint editor right-click context panel / insert-image"),`
+- `src/notizen_py_slint/context_menus.py:40: LegacyContextAction("content", 6, "kontext7", "Datum einfügen", "insert date", "kontext_inhalt.vb", "Slint editor right-click context panel / insert-text --date`
+- `src/notizen_py_slint/context_menus.py:41: LegacyContextAction("content", 7, None, "Aufzählung", "insert bullet", "kontext_inhalt.vb", "Slint editor right-click context panel / insert bullet"),`
+- `src/notizen_py_slint/context_menus.py:42: LegacyContextAction("content", 8, "kontext5", "Suchen", "search", "kontext_inhalt.vb", "Slint editor right-click context panel / search/search-next/search-all")`
+- `src/notizen_py_slint/context_menus.py:43: LegacyContextAction("content", 9, None, "Ersetzen", "replace", "Slint compatibility", "Slint editor right-click context panel / replace"),`
+- `src/notizen_py_slint/context_menus.py:44: LegacyContextAction("content", 10, None, "Fett", "bold", "RichTextBox toolbar", "Slint editor right-click context panel / apply-bold"),`
+- `src/notizen_py_slint/context_menus.py:45: LegacyContextAction("content", 11, None, "Kursiv", "italic", "RichTextBox toolbar", "Slint editor right-click context panel / apply-italic"),`
+- `src/notizen_py_slint/context_menus.py:46: LegacyContextAction("content", 12, None, "Unterstrichen", "underline", "RichTextBox toolbar", "Slint editor right-click context panel / apply-underline"),`
+- `src/notizen_py_slint/context_menus.py:47: LegacyContextAction("content", 13, None, "Durchgestrichen", "strike", "RichTextBox toolbar", "Slint editor right-click context panel / apply-strike"),`
+- `src/notizen_py_slint/context_menus.py:48: LegacyContextAction("content", 14, None, "Normal", "regular", "RichTextBox toolbar", "Slint editor right-click context panel / apply-regular"),`
+- `src/notizen_py_slint/context_menus.py:49: LegacyContextAction("content", 15, None, "Schrift größer", "increase font", "RichTextBox toolbar", "Slint editor right-click context panel / font bigger"),`
+- `src/notizen_py_slint/context_menus.py:50: LegacyContextAction("content", 16, None, "Schrift kleiner", "decrease font", "RichTextBox toolbar", "Slint editor right-click context panel / font smaller"),`
+- `src/notizen_py_slint/context_menus.py:51: LegacyContextAction("content", 17, None, "Roh-RTF/Text", "toggle raw RTF", "Slint compatibility", "Slint editor right-click context panel / raw RTF toggle"),`
+- `src/notizen_py_slint/context_menus.py:56: LegacyContextAction("tree", 0, "kontext2_1", "Neu darunter", "new child", "Baum_Kontext_.vb", "Slint tree context panel / add-note --where child"),`
+- `src/notizen_py_slint/context_menus.py:57: LegacyContextAction("tree", 1, "kontext11", "Neu daneben", "new sibling", "Baum_Kontext_.vb", "Slint tree context panel / add-note --where after"),`
+- `src/notizen_py_slint/context_menus.py:58: LegacyContextAction("tree", 2, "kontext2_2", "Umbenennen", "rename", "Baum_Kontext_.vb", "Slint tree context panel / rename"),`
+- `src/notizen_py_slint/context_menus.py:59: LegacyContextAction("tree", 3, "kontext2_6", "Kopieren", "copy subtree", "Baum_Kontext_.vb", "Slint tree context panel / copy-node"),`
+- `src/notizen_py_slint/context_menus.py:60: LegacyContextAction("tree", 4, "kontext2_7", "Ausschneiden", "cut subtree", "Baum_Kontext_.vb", "Slint tree context panel / cut-node"),`
+- `src/notizen_py_slint/context_menus.py:61: LegacyContextAction("tree", 5, "kontext2_8", "Einfügen", "paste subtree", "Baum_Kontext_.vb", "Slint tree context panel / paste-node/import-json/import-file"),`
+- `src/notizen_py_slint/context_menus.py:62: LegacyContextAction("tree", 6, None, "Duplizieren", "duplicate subtree", "Slint compatibility", "Slint tree context panel / duplicate-note"),`
+- `src/notizen_py_slint/context_menus.py:63: LegacyContextAction("tree", 7, "kontext2_3", "Löschen", "delete node", "Baum_Kontext_.vb", "Slint tree context panel / delete-note"),`
+- `src/notizen_py_slint/context_menus.py:64: LegacyContextAction("tree", 8, None, "Zusammenfassen", "combine subtree", "Slint compatibility", "Slint tree context panel / combine-subtree"),`
+- `src/notizen_py_slint/context_menus.py:65: LegacyContextAction("tree", 9, None, "Auf/Zuklappen", "toggle expand", "TreeView toolbar", "Slint tree context panel / toggle-expand"),`
+- `src/notizen_py_slint/context_menus.py:66: LegacyContextAction("tree", 10, None, "Alle auf", "expand all", "TreeView toolbar", "Slint tree context panel / expand-all"),`
+- `src/notizen_py_slint/context_menus.py:67: LegacyContextAction("tree", 11, None, "Alle zu", "collapse all", "TreeView toolbar", "Slint tree context panel / collapse-all"),`
+- `src/notizen_py_slint/context_menus.py:68: LegacyContextAction("tree", 12, None, "Nach oben", "move up", "TreeView toolbar", "Slint tree context panel / move-up"),`
+- `src/notizen_py_slint/context_menus.py:69: LegacyContextAction("tree", 13, None, "Nach unten", "move down", "TreeView toolbar", "Slint tree context panel / move-down"),`
+- `src/notizen_py_slint/context_menus.py:70: LegacyContextAction("tree", 14, None, "Einrücken", "indent", "TreeView toolbar", "Slint tree context panel / indent-note"),`
+- `src/notizen_py_slint/context_menus.py:71: LegacyContextAction("tree", 15, None, "Ausrücken", "outdent", "TreeView toolbar", "Slint tree context panel / outdent-note"),`
+- `src/notizen_py_slint/context_menus.py:72: LegacyContextAction("tree", 16, "kontext2_4", "Speichern", "save current note as RTF", "Baum_Kontext_.vb", "Slint tree context panel / export-note-rtf"),`
+- `src/notizen_py_slint/context_menus.py:73: LegacyContextAction("tree", 17, "kontext2_5", "Desktop-Notiz", "create sticky note", "Baum_Kontext_.vb", "Slint tree context panel / sticky/sticky-run"),`
+- `src/notizen_py_slint/context_menus.py:74: LegacyContextAction("tree", 18, "kontext2_9", "Hintergrundfarbe", "node background color", "Baum_Kontext_.vb", "Slint tree context panel / color-note --bg-color`
+- `src/notizen_py_slint/context_menus.py:75: LegacyContextAction("tree", 19, "kontext2_10", "Schriftfarbe", "node foreground color", "Baum_Kontext_.vb", "Slint tree context panel / color-note --fg-color"),`
+- `src/notizen_py_slint/context_menus.py:76: LegacyContextAction("tree", 20, None, "Auto-Größe", "autosize sticky", "desknote.vb", "Slint tree context panel / autosize-sticky"),`
+- `src/notizen_py_slint/context_menus.py:77: LegacyContextAction("tree", 21, None, "Helle Farbe", "legacy light color", "Notizen.get_lightcolor", "Slint tree context panel / apply-light-color"),`
+- `src/notizen_py_slint/context_menus.py:78: LegacyContextAction("tree", 22, None, "Farbe weg", "clear node colors", "Slint compatibility", "Slint tree context panel / clear-colors"),`
+- `src/notizen_py_slint/opml.py:43: ET.SubElement(head, "generator").text = "notizen-py-slint"`
+- `Notizen_py_qt/scripts/check_no_slint.sh:4: if grep -RInE '(^|[^A-Za-z0-9_])(slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint)([^A-Za-z0-9_]|$)' \`
+- `Notizen_py_qt/scripts/check_no_slint.sh:21: --exclude='migrate_remove_slint_to_qt611.py' \`
+- `Notizen_py_qt/scripts/check_no_slint.sh:22: --exclude='slint_to_qml.py' \`
+- `Notizen_py_qt/scripts/check_no_slint.sh:24: --exclude='check_no_slint.sh' \`
+- `Notizen_py_qt/scripts/check_no_slint.sh:25: --exclude='check_no_slint_strict.sh' \`
+- `Notizen_py_qt/scripts/check_no_slint.sh:32: --exclude-dir=.qt611_no_slint_backup \`
+- `Notizen_py_qt/scripts/check_no_slint.sh:33: --exclude-dir=.qt611_no_slint_backup_v4 \`
+- `Notizen_py_qt/scripts/check_no_slint.sh:34: --exclude-dir=legacy_slint \`
+- `Notizen_py_qt/scripts/build_qt611.sh:9: "$SCRIPT_DIR/check_no_slint.sh" "$ROOT"`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:3: Qt 6.11 / Slint migration assistant.`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:6: The script is intentionally conservative: it removes obvious Slint dependency`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:7: lines and archives .slint files, but it does not pretend to semantically`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:8: translate arbitrary Slint UI logic into QML.`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:22: from slint_to_qml import transpile_file, transpile_text`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:27: IGNORE_DIRS = {".git", "target", "build", "node_modules", ".qt611_no_slint_backup", "legacy_slint", "dist", ".venv"}`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:28: SLINT_DEP_RE = re.compile(`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:29: r"^\s*(slint|slint-build|slint_build|slint-interpreter|slint_interpreter|i-slint-[A-Za-z0-9_-]+)\s*=.*$"`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:31: SLINT_TEXT_RE = re.compile(r"slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:237: def remove_slint_dependency_lines(text: str) -> tuple[str, int]:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:241: if SLINT_DEP_RE.match(line):`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:248: def rename_slint_package_metadata(text: str) -> tuple[str, int]:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:254: value = re.sub("slint", "qt611", match.group("value"), flags=re.IGNORECASE)`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:258: r'(?m)^(?P<prefix>\s*name\s*=\s*(?P<quote>["\']))(?P<value>[^"\']*slint[^"\']*)(?P=quote)',`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:279: updated, removed = remove_slint_dependency_lines(original)`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:280: updated, renamed = rename_slint_package_metadata(updated)`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:287: actions.append(f"edit Cargo.toml: {path} (removed {removed} Slint dependency lines; renamed {renamed} package metadata values; rust_cxx_qt={rust_cxx_qt})")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:299: if "slint_build" in line or ".slint" in line:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:308: actions.append(f"edit build.rs: {path} (removed/replaced Slint build hooks)")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:322: if not SLINT_TEXT_RE.search(original):`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:331: "slint::include_modules!" in line`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:332: or stripped.startswith("use slint::")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:333: or stripped.startswith("use slint {")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:334: or stripped.startswith("use slint::{")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:335: or stripped.startswith("extern crate slint")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:341: updated = line.replace("slint::SharedString", "String")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:344: if SLINT_TEXT_RE.search(updated):`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:361: def transpile_slint_to_qml(path: Path, root: Path, apply: bool, overwrite_qml: bool, actions: list[str]) -> None:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:364: actions.append(f"cannot transpile .slint because slint_to_qml.py is unavailable: {path.relative_to(root)}")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:370: actions.append(f"transpile .slint -> QML: {path.relative_to(root)} -> qml/ ({names}; warnings={len(result.warnings)})")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:374: actions.append(f"would transpile .slint -> QML: {path.relative_to(root)} -> qml/ ({names}; warnings={len(result.warnings)})")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:377: def archive_or_delete_slint(path: Path, backup_root: Path, root: Path, apply: bool, delete: bool, actions: list[str]) -> None:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:380: actions.append(f"delete .slint: {rel}")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:385: dest = root / "legacy_slint" / rel`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:386: actions.append(f"archive .slint: {rel} -> {dest.relative_to(root)}")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:403: if SLINT_TEXT_RE.search(line):`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:435: parser.add_argument("--delete-slint", action="store_true", help="delete .slint files instead of archiving them")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:436: parser.add_argument("--no-transpile-slint", action="store_true", help="archive/delete .slint files without generating QML first")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:447: backup_root = root / ".qt611_no_slint_backup" / stamp`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:452: slint_files: list[Path] = []`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:463: elif path.suffix == ".slint":`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:464: slint_files.append(path)`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:474: if not args.no_transpile_slint:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:475: for path in slint_files:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:476: transpile_slint_to_qml(path, root, args.apply, args.overwrite_qml, actions)`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:477: for path in slint_files:`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:478: archive_or_delete_slint(path, backup_root, root, args.apply, args.delete_slint, actions)`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:495: print(f"Found: {len(cargo_files)} Cargo.toml, {len(build_rs_files)} build.rs, {len(cmake_files)} CMakeLists.txt, {len(slint_files)} .slint files, {len(rust_file`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:508: print("\nRemaining Slint references to handle manually:")`
+- `Notizen_py_qt/scripts/migrate_remove_slint_to_qt611.py:515: print("\nNo remaining Slint references detected by scanner.")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:3: Best-effort Slint -> Qt 6.11 QML transpiler.`
+- `Notizen_py_qt/scripts/slint_to_qml.py:5: This is a project migration tool, not a formal Slint compiler. It converts the`
+- `Notizen_py_qt/scripts/slint_to_qml.py:6: parts of Slint UI code that can be translated mechanically into editable Qt`
+- `Notizen_py_qt/scripts/slint_to_qml.py:18: - Slint properties/callbacks/functions -> QML properties/signals/functions`
+- `Notizen_py_qt/scripts/slint_to_qml.py:173: SLINT_TYPE_TO_QML_TYPE: dict[str, str] = {`
+- `Notizen_py_qt/scripts/slint_to_qml.py:228: (re.compile(r"^\s*states\s*\["), "Slint states need manual QML State/Transition conversion"),`
+- `Notizen_py_qt/scripts/slint_to_qml.py:333: def map_slint_type(type_text: str) -> str:`
+- `Notizen_py_qt/scripts/slint_to_qml.py:339: return SLINT_TYPE_TO_QML_TYPE.get(clean, "var")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:342: def default_qml_value_for_slint_type(type_text: str) -> str:`
+- `Notizen_py_qt/scripts/slint_to_qml.py:464: # Slint length/time units -> QML numeric pixel-ish values.`
+- `Notizen_py_qt/scripts/slint_to_qml.py:502: out.append(f"{map_slint_type(typ)} {qml_member_identifier(name)}")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:507: out.append(f"{map_slint_type(typ)} {qml_member_identifier(name)}")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:509: out.append(f"{map_slint_type(part)} arg{index}")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:528: # This is intentionally rough; it is used for Slint block boundaries, not JS parsing.`
+- `Notizen_py_qt/scripts/slint_to_qml.py:552: if path.suffix == ".slint":`
+- `Notizen_py_qt/scripts/slint_to_qml.py:555: ignore = {".git", "target", "build", "legacy_slint", ".qt611_no_slint_backup", "node_modules", ".venv"}`
+- `Notizen_py_qt/scripts/slint_to_qml.py:559: if filename.endswith(".slint"):`
+- `Notizen_py_qt/scripts/slint_to_qml.py:739: warnings.append(TranspileWarning(lineno, "Top-level Slint construct not converted", raw_line.strip()))`
+- `Notizen_py_qt/scripts/slint_to_qml.py:769: # Number of QML braces that correspond to each single Slint source block.`
+- `Notizen_py_qt/scripts/slint_to_qml.py:771: # both a Repeater and a delegate in QML but has one Slint closing brace.`
+- `Notizen_py_qt/scripts/slint_to_qml.py:836: qml_type = map_slint_type(match.group("type"))`
+- `Notizen_py_qt/scripts/slint_to_qml.py:898: self.warn(lineno, "Slint for-loop converted to Repeater; check model roles and delegate sizing", f"for {var} in {model}: {typ}")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:904: self.warn(lineno, "Slint animate block converted to QML Behavior/NumberAnimation; easing may need review", f"animate {prop}")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:917: self.warn(lineno, "Slint animate block converted to QML Behavior/NumberAnimation; easing may need review", f"animate {prop}")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:968: self.warn(lineno, "Slint conditional object converted to always-created QML item with visible binding", raw_line)`
+- `Notizen_py_qt/scripts/slint_to_qml.py:1010: self.warn(lineno, "Slint conditional object converted to always-created QML item with visible binding", raw_line)`
+- `Notizen_py_qt/scripts/slint_to_qml.py:1126: default_value = default if default is not None else default_qml_value_for_slint_type(typ)`
+- `Notizen_py_qt/scripts/slint_to_qml.py:1218: report_path = out_dir / f"{path.stem}.slint_to_qml.report.json"`
+- `Notizen_py_qt/scripts/slint_to_qml.py:1231: parser = argparse.ArgumentParser(description="Best-effort Slint to Qt 6.11 QML transpiler")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:1232: parser.add_argument("input", type=Path, help=".slint file or project directory")`
+- `Notizen_py_qt/scripts/slint_to_qml.py:1245: print(f"No .slint files found under {args.input}", file=sys.stderr)`
+- `Notizen_py_qt/scripts/slint_to_qml.py:1252: print(f"Transpiled {len(results)} Slint file(s) to {args.out_dir}")`
+- `Notizen_py_qt/scripts/qml_sanity_check.py:14: IGNORE_DIRS = {".git", "target", "build", "node_modules", ".qt611_no_slint_backup", "legacy_slint", ".venv"}`
+- `Notizen_py_qt/scripts/analyze_transpilation.py:11: IGNORE_DIRS = {".git", "target", "build", "node_modules", ".qt611_no_slint_backup", "legacy_slint", ".venv"}`
+- `Notizen_py_qt/scripts/analyze_transpilation.py:13: FORBIDDEN_RE = re.compile(r"(^|[^A-Za-z0-9_])(slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint)([^A-Za-z0-9_]|$)")`
+- `Notizen_py_qt/scripts/analyze_transpilation.py:27: if path.name.endswith(".slint_to_qml.report.json"):`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:4: if grep -RInE '(^|[^A-Za-z0-9_])(slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint)([^A-Za-z0-9_]|$)' \`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:21: --exclude='migrate_remove_slint_to_qt611.py' \`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:22: --exclude='slint_to_qml.py' \`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:24: --exclude='check_no_slint.sh' \`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:25: --exclude='check_no_slint_strict.sh' \`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:32: --exclude-dir=.qt611_no_slint_backup \`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:33: --exclude-dir=.qt611_no_slint_backup_v4 \`
+- `Notizen_py_qt/scripts/check_no_slint_strict.sh:34: --exclude-dir=legacy_slint \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:3: Finish the Python side of a Slint-to-Qt 6.11 migration.`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:19: OLD_WORD_RE = re.compile(r"slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint")`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:26: ".qt611_no_slint_backup", ".qt611_no_slint_backup_v4",`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:27: "legacy_slint", "legacy_build_metadata", "dist",`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:39: "migrate_remove_slint_to_qt611.py",`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:40: "slint_to_qml.py",`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:41: "check_no_slint.sh",`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:42: "check_no_slint_strict.sh",`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:46: (".slint", ".qml"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:47: ("notizen-py-slint-subtree", "notizen-py-qt-subtree"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:48: ("notizen-py-slint-node-clipboard", "notizen-py-qt-node-clipboard"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:49: ("notizen_py_slint", "notizen_py_qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:50: ("notizen_pypy_slint", "notizen_pypy_qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:51: ("notizen-py-slint", "notizen-py-qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:52: ("notizen-pypy-slint", "notizen-pypy-qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:53: ("NotizenSlintApp", "NotizenQtApp"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:54: ("_format_slint_compile_error", "_format_qt_load_error"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:55: ("SLINT_FULLSCREEN", "QT_FULLSCREEN"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:56: ("Python/Slint", "Python/Qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:57: ("PyPy3/Slint", "PyPy3/Qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:58: ("Slint", "Qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:59: ("slint", "qt"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:60: ("SLINT", "QT"),`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:314: if grep -RInE '(^|[^A-Za-z0-9_])(slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint)([^A-Za-z0-9_]|$)' \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:331: --exclude='migrate_remove_slint_to_qt611.py' \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:332: --exclude='slint_to_qml.py' \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:334: --exclude='check_no_slint.sh' \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:335: --exclude='check_no_slint_strict.sh' \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:342: --exclude-dir=.qt611_no_slint_backup \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:343: --exclude-dir=.qt611_no_slint_backup_v4 \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:344: --exclude-dir=legacy_slint \`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:437: if re.match(r"^[\"']?slint[\"']?\s*=", stripped, re.I):`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:439: if "slint>=" in lower or "slint==" in lower or "slint~=" in lower:`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:441: if "ui/*.slint" in lower or "*.slint" in lower:`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:530: for path in list(root.rglob("*.slint")):`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:534: target = root / "legacy_slint" / rel`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:599: log.write_text(scripts / "check_no_slint.sh", STRICT_CHECK_SH, executable=True)`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:600: log.write_text(scripts / "check_no_slint_strict.sh", STRICT_CHECK_SH, executable=True)`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:647: backup_root = root / ".qt611_no_slint_backup_v4" / timestamp`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:650: merge_or_move_dir(root / "src" / "notizen_py_slint", root / "src" / "notizen_py_qt", log)`
+- `Notizen_py_qt/scripts/finish_python_qt_migration.py:651: merge_or_move_dir(root / "src" / "notizen_pypy_slint", root / "src" / "notizen_pypy_qt", log)`
+- `Notizen_py_qt/tests/test_slint_to_qml.py:9: from slint_to_qml import transpile_text, transpile_file  # noqa: E402`
+- `Notizen_py_qt/tests/test_slint_to_qml.py:13: import { Button, VerticalBox, LineEdit } from "std-widgets.slint";`
+- `Notizen_py_qt/tests/test_slint_to_qml.py:56: class SlintToQmlTests(unittest.TestCase):`
+- `Notizen_py_qt/tests/test_slint_to_qml.py:58: result = transpile_text(SAMPLE, "sample.slint")`
+- `Notizen_py_qt/tests/test_slint_to_qml.py:74: source = tmp_path / "main.slint"`
+- `Notizen_py_qt/tests/test_slint_to_qml.py:80: self.assertTrue((out_dir / "main.slint_to_qml.report.json").exists())`
+- `Notizen_py_qt/tests/test_slint_to_qml.py:84: result = transpile_text(ADVANCED, "advanced.slint")`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:10: (root / "src" / "notizen_py_slint" / "ui").mkdir(parents=True)`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:11: (root / "src" / "notizen_pypy_slint").mkdir(parents=True)`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:18: name = "notizen-py-slint"`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:19: description = "Python/Slint port"`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:21: slint = ["slint>=1.8.0a1"]`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:23: notizen-py-slint = "notizen_py_slint.app:main"`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:24: notizen-pypy-slint = "notizen_pypy_slint.app:main"`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:26: notizen_py_slint = ["ui/*.slint"]`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:27: "notizen_py_slint.ui" = ["*.slint"]`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:32: (root / "src" / "notizen_py_slint" / "__init__.py").write_text(`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:33: '"""Python/Slint port."""\n', encoding="utf-8"`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:35: (root / "src" / "notizen_py_slint" / "app.py").write_text(`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:41: class NotizenSlintApp:`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:43: import slint`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:44: self.slint = slint`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:49: (root / "src" / "notizen_pypy_slint" / "__init__.py").write_text(`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:50: "from notizen_py_slint import *\n", encoding="utf-8"`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:53: 'import QtQuick\nItem { property string titleText: "Notizen Py Slint" }\n',`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:57: 'exec python3 -m notizen_py_slint "$@"\n', encoding="utf-8"`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:73: assert not (root / "src" / "notizen_py_slint").exists()`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:78: if "legacy" in path.parts or ".qt611_no_slint_backup_v4" in path.parts:`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:80: if path.name in {"finish_python_qt_migration.py", "check_no_slint.sh", "check_no_slint_strict.sh"}:`
+- `Notizen_py_qt/tests/test_finish_python_qt_migration.py:83: assert "slint" not in path.read_text(encoding="utf-8", errors="ignore").lower()`
+- `Notizen_py_qt/tests/.pytest_cache/v/cache/nodeids:3: "test_slint_to_qml.py::SlintToQmlTests::test_transpile_common_constructs",`
+- `Notizen_py_qt/tests/.pytest_cache/v/cache/nodeids:4: "test_slint_to_qml.py::SlintToQmlTests::test_transpile_file_writes_main_alias_and_report",`
+- `Notizen_py_qt/tests/.pytest_cache/v/cache/nodeids:5: "test_slint_to_qml.py::SlintToQmlTests::test_transpile_v3_global_struct_enum_bindings_and_animation"`
+- `qml/AppWindow.qml:14: property string windowTitle: "Notizen PyPy Slint"`
+- `qml/Main.qml:14: property string windowTitle: "Notizen PyPy Slint"`
+- `qml/app-window_AppWindow.qml:15: property string windowTitle: "Notizen Py Slint"`
