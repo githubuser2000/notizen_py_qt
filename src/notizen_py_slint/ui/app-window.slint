@@ -1,5 +1,31 @@
 import { Button, CheckBox, LineEdit, TextEdit, ListView } from "std-widgets.slint";
 
+component ContextAction inherits Rectangle {
+    in property <string> label;
+    callback activated();
+    height: 26px;
+    background: pointer.has-hover ? #eaf2ff : #ffffff;
+    Text {
+        x: 8px;
+        width: parent.width - 16px;
+        height: parent.height;
+        text: root.label;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    pointer := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        clicked => { root.activated(); }
+    }
+}
+
+component ContextSeparator inherits Rectangle {
+    height: 1px;
+    background: #dddddd;
+}
+
+
 export struct NoteRow {
     label: string,
     selected: bool,
@@ -23,6 +49,9 @@ export component AppWindow inherits Window {
     in-out property <string> meta-text: "";
     in-out property <string> mode-label: "Modus: Text";
     in-out property <bool> dirty: false;
+    property <bool> tree-menu-open: false;
+    property <bool> editor-menu-open: false;
+    property <int> context-row: -1;
 
     callback new-document();
     callback open-document();
@@ -255,52 +284,72 @@ export component AppWindow inherits Window {
                         CheckBox { text: "Teilbaum"; checked <=> root.search-current-subtree; }
                     }
                     ListView {
-                        for row[i] in root.rows: ContextMenuArea {
+                        for row[i] in root.rows: Rectangle {
                             width: parent.width;
                             height: 30px;
-                            Rectangle {
+                            background: row.selected ? #dbeafe : #ffffff;
+                            border-color: row.selected ? #93c5fd : #ffffff;
+                            border-width: 1px;
+                            Text {
+                                x: 6px;
+                                y: 0px;
+                                width: parent.width - 12px;
+                                height: parent.height;
+                                text: row.label;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                            row-touch := TouchArea {
                                 width: parent.width;
                                 height: parent.height;
-                                background: row.selected ? #dbeafe : #ffffff;
-                                border-color: row.selected ? #93c5fd : #ffffff;
-                                border-width: 1px;
-                                Text {
-                                    x: 6px;
-                                    y: 0px;
-                                    width: parent.width - 12px;
-                                    height: parent.height;
-                                    text: row.label;
-                                    vertical-alignment: center;
-                                    overflow: elide;
+                                clicked => {
+                                    root.tree-menu-open = false;
+                                    root.editor-menu-open = false;
+                                    root.select-row(i);
                                 }
-                                TouchArea {
-                                    width: parent.width;
-                                    height: parent.height;
-                                    clicked => { root.select-row(i); }
+                                pointer-event(event) => {
+                                    if event.kind == PointerEventKind.up && event.button == PointerEventButton.right {
+                                        root.context-row = i;
+                                        root.select-row(i);
+                                        root.editor-menu-open = false;
+                                        root.tree-menu-open = true;
+                                    }
                                 }
-                            }
-                            Menu {
-                                MenuItem { title: "Neu darunter"; activated => { root.select-row(i); root.add-child(); } }
-                                MenuItem { title: "Neu daneben"; activated => { root.select-row(i); root.add-sibling(); } }
-                                MenuItem { title: "Umbenennen"; activated => { root.rename-row(i); } }
-                                MenuSeparator { }
-                                MenuItem { title: "Kopieren"; activated => { root.select-row(i); root.copy-node(); } }
-                                MenuItem { title: "Ausschneiden"; activated => { root.select-row(i); root.cut-node(); } }
-                                MenuItem { title: "Einfügen danach"; activated => { root.select-row(i); root.paste-node(); } }
-                                MenuItem { title: "Duplizieren"; activated => { root.select-row(i); root.duplicate-note(); } }
-                                MenuSeparator { }
-                                MenuItem { title: "Löschen"; activated => { root.select-row(i); root.delete-note(); } }
-                                MenuItem { title: "Auf/Zuklappen"; activated => { root.select-row(i); root.toggle-expand(); } }
-                                MenuItem { title: "Nach oben"; activated => { root.select-row(i); root.move-up(); } }
-                                MenuItem { title: "Nach unten"; activated => { root.select-row(i); root.move-down(); } }
-                                MenuItem { title: "Einrücken"; activated => { root.select-row(i); root.indent-note(); } }
-                                MenuItem { title: "Ausrücken"; activated => { root.select-row(i); root.outdent-note(); } }
-                                MenuSeparator { }
-                                MenuItem { title: "Notiz als RTF speichern"; activated => { root.select-row(i); root.export-note-rtf(); } }
-                                MenuItem { title: "Desktop-Notiz / Sticky"; activated => { root.select-row(i); root.toggle-sticky(); } }
-                                MenuItem { title: "Hintergrund-/Schriftfarbe"; activated => { root.select-row(i); root.set-colors(); } }
                             }
                         }
+                    }
+                }
+                if root.tree-menu-open : Rectangle {
+                    x: 70px;
+                    y: 112px;
+                    width: 272px;
+                    height: 448px;
+                    background: #ffffff;
+                    border-color: #64748b;
+                    border-width: 1px;
+                    VerticalLayout {
+                        padding: 4px;
+                        spacing: 1px;
+                        ContextAction { label: "Neu darunter"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.add-child(); } }
+                        ContextAction { label: "Neu daneben"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.add-sibling(); } }
+                        ContextAction { label: "Umbenennen"; activated => { root.tree-menu-open = false; root.rename-row(root.context-row); } }
+                        ContextSeparator { }
+                        ContextAction { label: "Kopieren"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.copy-node(); } }
+                        ContextAction { label: "Ausschneiden"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.cut-node(); } }
+                        ContextAction { label: "Einfügen danach"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.paste-node(); } }
+                        ContextAction { label: "Duplizieren"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.duplicate-note(); } }
+                        ContextSeparator { }
+                        ContextAction { label: "Löschen"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.delete-note(); } }
+                        ContextAction { label: "Auf/Zuklappen"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.toggle-expand(); } }
+                        ContextAction { label: "Nach oben"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.move-up(); } }
+                        ContextAction { label: "Nach unten"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.move-down(); } }
+                        ContextAction { label: "Einrücken"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.indent-note(); } }
+                        ContextAction { label: "Ausrücken"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.outdent-note(); } }
+                        ContextSeparator { }
+                        ContextAction { label: "Notiz als RTF speichern"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.export-note-rtf(); } }
+                        ContextAction { label: "Desktop-Notiz / Sticky"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.toggle-sticky(); } }
+                        ContextAction { label: "Hintergrund-/Schriftfarbe"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.set-colors(); } }
+                        ContextAction { label: "Schließen"; activated => { root.tree-menu-open = false; } }
                     }
                 }
             }
@@ -323,33 +372,87 @@ export component AppWindow inherits Window {
                         Button { text: "Bild+"; clicked => { root.insert-image(); } }
                         Button { text: "Datum+"; clicked => { root.append-date(); } }
                         Button { text: "•+"; clicked => { root.append-bullet(); } }
+                        Button { text: "RTF Kontext"; clicked => { root.tree-menu-open = false; root.editor-menu-open = !root.editor-menu-open; } }
                         Rectangle { horizontal-stretch: 1; }
-                        Text { text: "Rechtsklick im Textfeld öffnet das RTF-Kontextmenü"; vertical-alignment: center; color: #666666; }
+                        Text { text: "Kontext über RTF-Kontext oder den Knopf ☰ im Textfeld"; vertical-alignment: center; color: #666666; }
                     }
-                    ContextMenuArea {
+                    editor-area := Rectangle {
                         vertical-stretch: 1;
+                        background: #ffffff;
                         editor := TextEdit {
-                            width: parent.width;
+                            width: parent.width - 36px;
                             height: parent.height;
                             text <=> root.editor-text;
                             wrap: word-wrap;
                             edited(text) => { root.editor-changed(text); }
                         }
-                        Menu {
-                            MenuItem { title: "Kopieren"; activated => { editor.copy(); } }
-                            MenuItem { title: "Ausschneiden"; activated => { editor.cut(); } }
-                            MenuItem { title: "Einfügen"; activated => { editor.paste(); } }
-                            MenuItem { title: "Alles markieren"; activated => { editor.select-all(); } }
-                            MenuSeparator { }
-                            MenuItem { title: "Bild einfügen"; activated => { root.insert-image(); } }
-                            MenuItem { title: "Datum einfügen"; activated => { root.append-date(); } }
-                            MenuItem { title: "Aufzählungszeichen einfügen"; activated => { root.append-bullet(); } }
-                            MenuItem { title: "Löschen"; activated => { editor.cut(); } }
-                            MenuSeparator { }
-                            MenuItem { title: "Suchen"; activated => { root.search-next(root.search-text); } }
-                            MenuItem { title: "Alle Treffer"; activated => { root.search-all(root.search-text); } }
-                            MenuItem { title: "Ersetzen"; activated => { root.replace-text(root.search-text); } }
-                            MenuItem { title: "Roh-RTF/Text umschalten"; activated => { root.toggle-raw-rtf(); } }
+                        Rectangle {
+                            x: parent.width - 34px;
+                            y: 0px;
+                            width: 34px;
+                            height: parent.height;
+                            background: #f8fafc;
+                            border-color: #cbd5e1;
+                            border-width: 1px;
+                            Text {
+                                y: 6px;
+                                width: parent.width;
+                                height: 24px;
+                                text: "☰";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                y: 36px;
+                                width: parent.width;
+                                height: parent.height - 42px;
+                                text: "RTF\nMenü";
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                color: #64748b;
+                            }
+                            menu-handle := TouchArea {
+                                width: parent.width;
+                                height: parent.height;
+                                clicked => {
+                                    root.tree-menu-open = false;
+                                    root.editor-menu-open = !root.editor-menu-open;
+                                }
+                                pointer-event(event) => {
+                                    if event.kind == PointerEventKind.up && event.button == PointerEventButton.right {
+                                        root.tree-menu-open = false;
+                                        root.editor-menu-open = true;
+                                    }
+                                }
+                            }
+                        }
+                        if root.editor-menu-open : Rectangle {
+                            x: parent.width - 268px;
+                            y: 34px;
+                            width: 260px;
+                            height: 365px;
+                            background: #ffffff;
+                            border-color: #64748b;
+                            border-width: 1px;
+                            VerticalLayout {
+                                padding: 4px;
+                                spacing: 1px;
+                                ContextAction { label: "Kopieren"; activated => { root.editor-menu-open = false; editor.copy(); } }
+                                ContextAction { label: "Ausschneiden"; activated => { root.editor-menu-open = false; editor.cut(); } }
+                                ContextAction { label: "Einfügen"; activated => { root.editor-menu-open = false; editor.paste(); } }
+                                ContextAction { label: "Alles markieren"; activated => { root.editor-menu-open = false; editor.select-all(); } }
+                                ContextSeparator { }
+                                ContextAction { label: "Bild einfügen"; activated => { root.editor-menu-open = false; root.insert-image(); } }
+                                ContextAction { label: "Datum einfügen"; activated => { root.editor-menu-open = false; root.append-date(); } }
+                                ContextAction { label: "Aufzählungszeichen einfügen"; activated => { root.editor-menu-open = false; root.append-bullet(); } }
+                                ContextAction { label: "Löschen"; activated => { root.editor-menu-open = false; editor.cut(); } }
+                                ContextSeparator { }
+                                ContextAction { label: "Suchen"; activated => { root.editor-menu-open = false; root.search-next(root.search-text); } }
+                                ContextAction { label: "Alle Treffer"; activated => { root.editor-menu-open = false; root.search-all(root.search-text); } }
+                                ContextAction { label: "Ersetzen"; activated => { root.editor-menu-open = false; root.replace-text(root.search-text); } }
+                                ContextAction { label: "Roh-RTF/Text umschalten"; activated => { root.editor-menu-open = false; root.toggle-raw-rtf(); } }
+                                ContextAction { label: "Schließen"; activated => { root.editor-menu-open = false; } }
+                            }
                         }
                     }
                     Rectangle {

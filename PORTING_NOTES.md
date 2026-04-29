@@ -183,3 +183,11 @@ Die alten WinForms-Kontextmenüs lagen seit v11 als Manifest vor, waren in der G
 Auch der Editorbereich ist jetzt von einer `ContextMenuArea` umgeben. Die Zwischenablagefunktionen werden direkt über Slints `TextEdit`-Methoden ausgeführt; Datei-/Notizaktionen wie Bild, Datum, Suche, Ersetzen und Raw-RTF-Umschaltung rufen weiterhin die Python-Callbacks auf. Eine Einschränkung bleibt: Slints `TextEdit` ersetzt keine vollständige WinForms-RichTextBox. Die sichtbaren Kontextaktionen sind vorhanden, aber gemischte RichTextBox-Formatierungen pro Auswahl bleiben weiterhin über die bereits portierten Range-/RTF-Helfer und CLI-Pfade stabiler als über eine native Slint-Auswahl.
 
 Die obere Werkzeugleiste wurde bewusst höher gemacht: Statt drei übervoller HorizontalLayouts gibt es jetzt sechs thematisch getrennte Zeilen für Datei, Export, Import/Baum, Ordnen/RTF, Sticky/Farbe und Info/Extras. Das entspricht nicht pixelgenau dem alten frei verschiebbaren ToolStrip-System, ist aber für Slint deutlich robuster und verhindert, dass Buttons bei normaler Fensterbreite verschwinden. Die alten ToolStrip-Koordinaten bleiben weiterhin als Migrationsdaten erhalten.
+
+## v16 / 0.16.0
+
+- v15 hatte `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator` aus neueren Slint-Menü-APIs verwendet. Das bricht bei Installationen, deren Compiler diese Elemente nicht kennt.
+- v16 ersetzt diese nativen Menüs durch portable Slint-Overlays mit `Rectangle` und `TouchArea`.
+- Baumzeilen reagieren weiterhin auf Rechtsklick über `TouchArea.pointer-event` und `PointerEventButton.right`.
+- Im Editor gibt es ein kompatibles RTF-Kontextmenü über `RTF Kontext` beziehungsweise die rechte `☰`-Kontextleiste im Textfeld. Damit bleibt die Textbearbeitung intakt, weil kein vollflächiger `TouchArea` über dem `TextEdit` liegt.
+- Die UI wurde mit Slint 1.8.0a1 und 1.16.1b1 kompiliert.

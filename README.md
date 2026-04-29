@@ -2,6 +2,20 @@
 
 Das ist ein Python-orientierter Port von **Notizen.NET** aus dem gelieferten VB.NET/WinForms-Projekt. Der alte Code wurde nicht nur zeilenweise umgeschrieben: Dateiformat, Notizbaum, RTF-Textinhalt, Sicherheitskopien, Konfiguration, FTP-Transport, Wecker-Logik und die historische DES-Kaskadenverschlüsselung wurden als pure-Python-Kern neu aufgebaut. Die Oberfläche liegt als Slint-Datei plus Python-Controller vor.
 
+## Stand v16 / 0.16.0
+
+Diese Version entfernt die in v15 eingeführte harte Abhängigkeit von Slints nativen Menüelementen `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator`. Einige installierte Slint-Python-Bindings erkennen diese Elemente nicht, obwohl neuere Dokumentation sie kennt. Die Oberfläche verwendet deshalb jetzt ein kompatibles Kontextmenü aus normalen Slint-Elementen (`Rectangle`, `TouchArea`, `Button`-artige Eigenkomponenten).
+
+Neu in v16:
+
+- Baum-Kontextmenü ohne native Slint-Menüelemente
+- Rechtsklick auf Baumzeilen öffnet das kompatible Baum-Menü
+- Editor-/RTF-Kontextmenü als kompatibles Overlay über `RTF Kontext` oder die rechte `☰`-Kontextleiste im Editor
+- obere Werkzeugleiste bleibt hoch und thematisch gruppiert
+- Slint-Datei kompiliert mit Slint 1.8.0a1 und 1.16.1b1
+- statischer Schutztest gegen versehentliches Wiedereinführen der nicht kompatiblen Menüelemente
+
+
 ## Status
 
 Funktioniert im Port:

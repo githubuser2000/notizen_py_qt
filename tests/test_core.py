@@ -1246,14 +1246,18 @@ class AppCompatTests(unittest.TestCase):
         self.assertEqual(_normalize_legacy_argv(["/h"]), ["--help"])
         self.assertEqual(_normalize_legacy_argv(["/?"]), ["--help"])
 
-    def test_slint_ui_has_native_context_menus_and_taller_toolbar(self) -> None:
+    def test_slint_ui_has_compatible_context_menus_and_taller_toolbar(self) -> None:
         ui_text = resources.files("notizen_py_slint.ui").joinpath("app-window.slint").read_text(encoding="utf-8")
         self.assertIn("height: 900px;", ui_text)
         self.assertIn("height: 232px;", ui_text)
-        self.assertGreaterEqual(ui_text.count("ContextMenuArea"), 2)
-        self.assertIn('MenuItem { title: "Neu darunter"', ui_text)
-        self.assertIn('MenuItem { title: "Kopieren"; activated => { editor.copy(); } }', ui_text)
-        self.assertIn("Rechtsklick im Textfeld", ui_text)
+        self.assertNotIn("ContextMenuArea", ui_text)
+        self.assertNotIn("MenuItem", ui_text)
+        self.assertNotIn("MenuSeparator", ui_text)
+        self.assertIn("component ContextAction", ui_text)
+        self.assertIn('ContextAction { label: "Neu darunter"', ui_text)
+        self.assertIn('ContextAction { label: "Kopieren"; activated => { root.editor-menu-open = false; editor.copy(); } }', ui_text)
+        self.assertIn("RTF Kontext", ui_text)
+        self.assertIn("PointerEventButton.right", ui_text)
 
     def test_rename_row_callback_selects_and_renames_visible_tree_row(self) -> None:
         class DummyWindow:
