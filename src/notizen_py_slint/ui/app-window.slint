@@ -1,40 +1,19 @@
 import { Button, CheckBox, LineEdit, TextEdit, ListView } from "std-widgets.slint";
 
-component ContextAction inherits Rectangle {
-    in property <string> label;
-    callback activated();
-    height: 26px;
-    background: pointer.has-hover ? #eaf2ff : #ffffff;
-    Text {
-        x: 8px;
-        width: parent.width - 16px;
-        height: parent.height;
-        text: root.label;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-    pointer := TouchArea {
-        width: parent.width;
-        height: parent.height;
-        clicked => { root.activated(); }
-    }
-}
-
-component ContextSeparator inherits Rectangle {
-    height: 1px;
-    background: #dddddd;
-}
-
-
 export struct NoteRow {
     label: string,
     selected: bool,
 }
 
 export component AppWindow inherits Window {
-    width: 1240px;
-    height: 900px;
+    // Use preferred/minimum geometry instead of fixed width/height so the
+    // desktop window can be resized and maximized by the window manager.
+    preferred-width: 1360px;
+    preferred-height: 1080px;
+    min-width: 980px;
+    min-height: 760px;
     title: root.window-title;
+    full-screen: root.fullscreen-enabled;
 
     in-out property <string> window-title: "Notizen Py Slint";
     in-out property <[NoteRow]> rows;
@@ -49,9 +28,12 @@ export component AppWindow inherits Window {
     in-out property <string> meta-text: "";
     in-out property <string> mode-label: "Modus: Text";
     in-out property <bool> dirty: false;
-    property <bool> tree-menu-open: false;
-    property <bool> editor-menu-open: false;
-    property <int> context-row: -1;
+    in-out property <bool> tree-context-visible: false;
+    in-out property <bool> editor-context-visible: false;
+    in-out property <int> context-row-index: -1;
+    in-out property <length> editor-context-x: 24px;
+    in-out property <length> editor-context-y: 24px;
+    in-out property <bool> fullscreen-enabled: false;
 
     callback new-document();
     callback open-document();
@@ -133,13 +115,15 @@ export component AppWindow inherits Window {
     callback show-password-info();
     callback repair-document();
     callback show-toolstrips();
+    callback toggle-maximized();
+    callback toggle-fullscreen();
 
     VerticalLayout {
         padding: 8px;
         spacing: 8px;
 
         Rectangle {
-            height: 232px;
+            height: 540px;
             background: #f6f6f6;
             border-color: #dadada;
             border-width: 1px;
@@ -162,30 +146,48 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Export"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Fenster"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "Max"; clicked => { root.toggle-maximized(); } }
+                    Button { text: root.fullscreen-enabled ? "Fenster" : "Vollbild"; clicked => { root.toggle-fullscreen(); } }
+                    Text { text: "Fenster ist jetzt resizebar/maximierbar"; vertical-alignment: center; color: #666666; }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Export Gesamt"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "TXT"; clicked => { root.export-text(); } }
                     Button { text: "RTF"; clicked => { root.export-rtf(); } }
                     Button { text: "HTML"; clicked => { root.export-html(); } }
                     Button { text: "MD"; clicked => { root.export-markdown(); } }
                     Button { text: "JSON"; clicked => { root.export-json(); } }
-                    Button { text: "Teil ALX"; clicked => { root.export-alx(); } }
                     Button { text: "OPML"; clicked => { root.export-opml(); } }
                     Button { text: "NotesDoc"; clicked => { root.export-notes-doc(); } }
-                    Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
-                    Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
-                    Button { text: "Notiz-RTF"; clicked => { root.export-note-rtf(); } }
-                    Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
                     Rectangle { horizontal-stretch: 1; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Import/Baum"; font-weight: 700; vertical-alignment: center; }
-                    Button { text: "Import TXT"; clicked => { root.import-text(); } }
-                    Button { text: "Import RTF"; clicked => { root.import-rtf(); } }
-                    Button { text: "Import JSON"; clicked => { root.import-json(); } }
-                    Button { text: "Import OPML"; clicked => { root.import-opml(); } }
+                    Text { text: "Export Teil"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "Teil ALX"; clicked => { root.export-alx(); } }
+                    Button { text: "Teil TXT"; clicked => { root.export-subtree-text(); } }
+                    Button { text: "Teil RTF"; clicked => { root.export-subtree-rtf(); } }
+                    Button { text: "Notiz-RTF"; clicked => { root.export-note-rtf(); } }
+                    Button { text: "Sticky HTML"; clicked => { root.export-sticky-html(); } }
+                    Button { text: "Bilder"; clicked => { root.extract-images(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Import"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "TXT"; clicked => { root.import-text(); } }
+                    Button { text: "RTF"; clicked => { root.import-rtf(); } }
+                    Button { text: "JSON"; clicked => { root.import-json(); } }
+                    Button { text: "OPML"; clicked => { root.import-opml(); } }
                     Button { text: "Bild+"; clicked => { root.insert-image(); } }
-                    Rectangle { width: 1px; background: #cccccc; }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Baum Bearbeiten"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "+ Kind"; clicked => { root.add-child(); } }
                     Button { text: "+ Daneben"; clicked => { root.add-sibling(); } }
                     Button { text: "Dupl."; clicked => { root.duplicate-note(); } }
@@ -198,7 +200,7 @@ export component AppWindow inherits Window {
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Ordnen/RTF"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Baum Ordnen"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "↑"; clicked => { root.move-up(); } }
                     Button { text: "↓"; clicked => { root.move-down(); } }
                     Button { text: "Einr."; clicked => { root.indent-note(); } }
@@ -206,7 +208,11 @@ export component AppWindow inherits Window {
                     Button { text: "Auf/Zu"; clicked => { root.toggle-expand(); } }
                     Button { text: "Alle auf"; clicked => { root.expand-all(); } }
                     Button { text: "Alle zu"; clicked => { root.collapse-all(); } }
-                    Rectangle { width: 1px; background: #cccccc; }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "RTF Format"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Format"; clicked => { root.format-note(); } }
                     Button { text: "B"; clicked => { root.apply-bold(); } }
                     Button { text: "I"; clicked => { root.apply-italic(); } }
@@ -215,9 +221,18 @@ export component AppWindow inherits Window {
                     Button { text: "Normal"; clicked => { root.apply-regular(); } }
                     Button { text: "A+"; clicked => { root.increase-font-size(); } }
                     Button { text: "A-"; clicked => { root.decrease-font-size(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Inhalt/Suche"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "Datum+"; clicked => { root.append-date(); } }
                     Button { text: "•+"; clicked => { root.append-bullet(); } }
-                    Button { text: "Bilder"; clicked => { root.extract-images(); } }
+                    Button { text: "RTF/Text"; clicked => { root.toggle-raw-rtf(); } }
+                    Button { text: "Suchen"; clicked => { root.search-next(root.search-text); } }
+                    Button { text: "Alle Treffer"; clicked => { root.search-all(root.search-text); } }
+                    Button { text: "Ersetzen"; clicked => { root.replace-text(root.search-text); } }
+                    Button { text: "RTF Kontext"; clicked => { root.editor-context-visible = true; root.tree-context-visible = false; } }
                     Rectangle { horizontal-stretch: 1; }
                 }
                 HorizontalLayout {
@@ -229,21 +244,25 @@ export component AppWindow inherits Window {
                     Button { text: "Farben"; clicked => { root.set-colors(); } }
                     Button { text: "Hell"; clicked => { root.apply-light-color(); } }
                     Button { text: "Farbe weg"; clicked => { root.clear-colors(); } }
-                    Rectangle { width: 1px; background: #cccccc; }
-                    Button { text: "Stats"; clicked => { root.show-stats(); } }
-                    Button { text: "Backups"; clicked => { root.show-backups(); } }
                     Rectangle { horizontal-stretch: 1; }
-                    Text { text: "Kontextmenüs: Rechtsklick im Baum oder Editor"; vertical-alignment: center; color: #666666; }
+                    Text { text: "Baum und Text: Rechtsklick öffnet Kontext."; vertical-alignment: center; color: #666666; }
                 }
                 HorizontalLayout {
                     spacing: 6px;
-                    Text { text: "Info/Extras"; font-weight: 700; vertical-alignment: center; }
+                    Text { text: "Info"; font-weight: 700; vertical-alignment: center; }
+                    Button { text: "Stats"; clicked => { root.show-stats(); } }
+                    Button { text: "Backups"; clicked => { root.show-backups(); } }
                     Button { text: "Info"; clicked => { root.show-about(); } }
                     Button { text: "Tasten"; clicked => { root.show-shortcuts(); } }
                     Button { text: "Kontext"; clicked => { root.show-context-menus(); } }
                     Button { text: "Fonts"; clicked => { root.show-fonts(); } }
                     Button { text: "Compat"; clicked => { root.show-compat-report(); } }
                     Button { text: "Pfade"; clicked => { root.show-default-paths(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: "Extras"; font-weight: 700; vertical-alignment: center; }
                     Button { text: "PwInfo"; clicked => { root.show-password-info(); } }
                     Button { text: "Reparieren"; clicked => { root.repair-document(); } }
                     Button { text: "ToolStrips"; clicked => { root.show-toolstrips(); } }
@@ -255,7 +274,6 @@ export component AppWindow inherits Window {
                 }
             }
         }
-
         HorizontalLayout {
             spacing: 8px;
             Rectangle {
@@ -299,57 +317,61 @@ export component AppWindow inherits Window {
                                 vertical-alignment: center;
                                 overflow: elide;
                             }
-                            row-touch := TouchArea {
+                            TouchArea {
                                 width: parent.width;
                                 height: parent.height;
                                 clicked => {
-                                    root.tree-menu-open = false;
-                                    root.editor-menu-open = false;
                                     root.select-row(i);
+                                    root.tree-context-visible = false;
+                                    root.editor-context-visible = false;
                                 }
                                 pointer-event(event) => {
-                                    if event.kind == PointerEventKind.up && event.button == PointerEventButton.right {
-                                        root.context-row = i;
+                                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
                                         root.select-row(i);
-                                        root.editor-menu-open = false;
-                                        root.tree-menu-open = true;
+                                        root.context-row-index = i;
+                                        root.tree-context-visible = true;
+                                        root.editor-context-visible = false;
                                     }
                                 }
                             }
                         }
                     }
                 }
-                if root.tree-menu-open : Rectangle {
-                    x: 70px;
-                    y: 112px;
-                    width: 272px;
-                    height: 448px;
+
+                Rectangle {
+                    visible: root.tree-context-visible;
+                    x: 112px;
+                    y: 88px;
+                    width: 232px;
+                    height: 500px;
                     background: #ffffff;
-                    border-color: #64748b;
+                    border-color: #8a8a8a;
                     border-width: 1px;
+                    z: 20;
                     VerticalLayout {
-                        padding: 4px;
-                        spacing: 1px;
-                        ContextAction { label: "Neu darunter"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.add-child(); } }
-                        ContextAction { label: "Neu daneben"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.add-sibling(); } }
-                        ContextAction { label: "Umbenennen"; activated => { root.tree-menu-open = false; root.rename-row(root.context-row); } }
-                        ContextSeparator { }
-                        ContextAction { label: "Kopieren"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.copy-node(); } }
-                        ContextAction { label: "Ausschneiden"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.cut-node(); } }
-                        ContextAction { label: "Einfügen danach"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.paste-node(); } }
-                        ContextAction { label: "Duplizieren"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.duplicate-note(); } }
-                        ContextSeparator { }
-                        ContextAction { label: "Löschen"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.delete-note(); } }
-                        ContextAction { label: "Auf/Zuklappen"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.toggle-expand(); } }
-                        ContextAction { label: "Nach oben"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.move-up(); } }
-                        ContextAction { label: "Nach unten"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.move-down(); } }
-                        ContextAction { label: "Einrücken"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.indent-note(); } }
-                        ContextAction { label: "Ausrücken"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.outdent-note(); } }
-                        ContextSeparator { }
-                        ContextAction { label: "Notiz als RTF speichern"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.export-note-rtf(); } }
-                        ContextAction { label: "Desktop-Notiz / Sticky"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.toggle-sticky(); } }
-                        ContextAction { label: "Hintergrund-/Schriftfarbe"; activated => { root.select-row(root.context-row); root.tree-menu-open = false; root.set-colors(); } }
-                        ContextAction { label: "Schließen"; activated => { root.tree-menu-open = false; } }
+                        padding: 5px;
+                        spacing: 3px;
+                        Text { text: "Baum-Kontext"; font-weight: 700; height: 22px; vertical-alignment: center; }
+                        Button { text: "Neu darunter"; clicked => { root.add-child(); root.tree-context-visible = false; } }
+                        Button { text: "Neu daneben"; clicked => { root.add-sibling(); root.tree-context-visible = false; } }
+                        Button { text: "Umbenennen"; clicked => { root.rename-row(root.context-row-index); root.tree-context-visible = false; } }
+                        Rectangle { height: 1px; background: #dddddd; }
+                        Button { text: "Kopieren"; clicked => { root.copy-node(); root.tree-context-visible = false; } }
+                        Button { text: "Ausschneiden"; clicked => { root.cut-node(); root.tree-context-visible = false; } }
+                        Button { text: "Einfügen danach"; clicked => { root.paste-node(); root.tree-context-visible = false; } }
+                        Button { text: "Duplizieren"; clicked => { root.duplicate-note(); root.tree-context-visible = false; } }
+                        Rectangle { height: 1px; background: #dddddd; }
+                        Button { text: "Löschen"; clicked => { root.delete-note(); root.tree-context-visible = false; } }
+                        Button { text: "Auf/Zuklappen"; clicked => { root.toggle-expand(); root.tree-context-visible = false; } }
+                        Button { text: "Nach oben"; clicked => { root.move-up(); root.tree-context-visible = false; } }
+                        Button { text: "Nach unten"; clicked => { root.move-down(); root.tree-context-visible = false; } }
+                        Button { text: "Einrücken"; clicked => { root.indent-note(); root.tree-context-visible = false; } }
+                        Button { text: "Ausrücken"; clicked => { root.outdent-note(); root.tree-context-visible = false; } }
+                        Rectangle { height: 1px; background: #dddddd; }
+                        Button { text: "Notiz als RTF speichern"; clicked => { root.export-note-rtf(); root.tree-context-visible = false; } }
+                        Button { text: "Desktop-Notiz / Sticky"; clicked => { root.toggle-sticky(); root.tree-context-visible = false; } }
+                        Button { text: "Hintergrund-/Schriftfarbe"; clicked => { root.set-colors(); root.tree-context-visible = false; } }
+                        Button { text: "Schließen"; clicked => { root.tree-context-visible = false; } }
                     }
                 }
             }
@@ -369,89 +391,105 @@ export component AppWindow inherits Window {
                         Rectangle { width: 1px; background: #cccccc; }
                         Text { text: root.mode-label; vertical-alignment: center; }
                         Button { text: "RTF/Text"; clicked => { root.toggle-raw-rtf(); } }
+                        Button { text: "Kontext"; clicked => { root.editor-context-visible = true; root.tree-context-visible = false; } }
                         Button { text: "Bild+"; clicked => { root.insert-image(); } }
                         Button { text: "Datum+"; clicked => { root.append-date(); } }
                         Button { text: "•+"; clicked => { root.append-bullet(); } }
-                        Button { text: "RTF Kontext"; clicked => { root.tree-menu-open = false; root.editor-menu-open = !root.editor-menu-open; } }
                         Rectangle { horizontal-stretch: 1; }
-                        Text { text: "Kontext über RTF-Kontext oder den Knopf ☰ im Textfeld"; vertical-alignment: center; color: #666666; }
+                        Text { text: "☰ rechts neben dem Text öffnet das RTF-Menü"; vertical-alignment: center; color: #666666; }
                     }
-                    editor-area := Rectangle {
+                    Rectangle {
                         vertical-stretch: 1;
-                        background: #ffffff;
-                        editor := TextEdit {
-                            width: parent.width - 36px;
+                        // The TouchArea wraps the TextEdit so right-clicks in the real
+                        // text area can open the RTF context menu. The TextEdit remains
+                        // the visible/editable child; the extra right strip is only a fallback.
+                        editor_hitbox := TouchArea {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width - 28px;
                             height: parent.height;
-                            text <=> root.editor-text;
-                            wrap: word-wrap;
-                            edited(text) => { root.editor-changed(text); }
+                            pointer-event(event) => {
+                                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                    root.editor-context-x = editor_hitbox.mouse-x;
+                                    root.editor-context-y = editor_hitbox.mouse-y;
+                                    root.editor-context-visible = true;
+                                    root.tree-context-visible = false;
+                                }
+                            }
+                            editor := TextEdit {
+                                x: 0px;
+                                y: 0px;
+                                width: parent.width;
+                                height: parent.height;
+                                text <=> root.editor-text;
+                                wrap: word-wrap;
+                                edited(text) => { root.editor-changed(text); }
+                            }
                         }
                         Rectangle {
-                            x: parent.width - 34px;
+                            x: parent.width - 28px;
                             y: 0px;
-                            width: 34px;
+                            width: 28px;
                             height: parent.height;
-                            background: #f8fafc;
-                            border-color: #cbd5e1;
+                            background: #f5f5f5;
+                            border-color: #dddddd;
                             border-width: 1px;
                             Text {
-                                y: 6px;
                                 width: parent.width;
-                                height: 24px;
+                                height: 36px;
                                 text: "☰";
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
+                                font-size: 20px;
                             }
-                            Text {
-                                y: 36px;
-                                width: parent.width;
-                                height: parent.height - 42px;
-                                text: "RTF\nMenü";
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                                color: #64748b;
-                            }
-                            menu-handle := TouchArea {
+                            TouchArea {
                                 width: parent.width;
                                 height: parent.height;
                                 clicked => {
-                                    root.tree-menu-open = false;
-                                    root.editor-menu-open = !root.editor-menu-open;
+                                    root.editor-context-x = parent.x - 260px;
+                                    root.editor-context-y = 8px;
+                                    root.editor-context-visible = true;
+                                    root.tree-context-visible = false;
                                 }
                                 pointer-event(event) => {
-                                    if event.kind == PointerEventKind.up && event.button == PointerEventButton.right {
-                                        root.tree-menu-open = false;
-                                        root.editor-menu-open = true;
+                                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                        root.editor-context-x = parent.x - 260px;
+                                        root.editor-context-y = 8px;
+                                        root.editor-context-visible = true;
+                                        root.tree-context-visible = false;
                                     }
                                 }
                             }
                         }
-                        if root.editor-menu-open : Rectangle {
-                            x: parent.width - 268px;
-                            y: 34px;
+                        Rectangle {
+                            visible: root.editor-context-visible;
+                            x: root.editor-context-x;
+                            y: root.editor-context-y;
                             width: 260px;
-                            height: 365px;
+                            height: 374px;
                             background: #ffffff;
-                            border-color: #64748b;
+                            border-color: #8a8a8a;
                             border-width: 1px;
+                            z: 20;
                             VerticalLayout {
-                                padding: 4px;
-                                spacing: 1px;
-                                ContextAction { label: "Kopieren"; activated => { root.editor-menu-open = false; editor.copy(); } }
-                                ContextAction { label: "Ausschneiden"; activated => { root.editor-menu-open = false; editor.cut(); } }
-                                ContextAction { label: "Einfügen"; activated => { root.editor-menu-open = false; editor.paste(); } }
-                                ContextAction { label: "Alles markieren"; activated => { root.editor-menu-open = false; editor.select-all(); } }
-                                ContextSeparator { }
-                                ContextAction { label: "Bild einfügen"; activated => { root.editor-menu-open = false; root.insert-image(); } }
-                                ContextAction { label: "Datum einfügen"; activated => { root.editor-menu-open = false; root.append-date(); } }
-                                ContextAction { label: "Aufzählungszeichen einfügen"; activated => { root.editor-menu-open = false; root.append-bullet(); } }
-                                ContextAction { label: "Löschen"; activated => { root.editor-menu-open = false; editor.cut(); } }
-                                ContextSeparator { }
-                                ContextAction { label: "Suchen"; activated => { root.editor-menu-open = false; root.search-next(root.search-text); } }
-                                ContextAction { label: "Alle Treffer"; activated => { root.editor-menu-open = false; root.search-all(root.search-text); } }
-                                ContextAction { label: "Ersetzen"; activated => { root.editor-menu-open = false; root.replace-text(root.search-text); } }
-                                ContextAction { label: "Roh-RTF/Text umschalten"; activated => { root.editor-menu-open = false; root.toggle-raw-rtf(); } }
-                                ContextAction { label: "Schließen"; activated => { root.editor-menu-open = false; } }
+                                padding: 5px;
+                                spacing: 3px;
+                                Text { text: "RTF-Kontext"; font-weight: 700; height: 22px; vertical-alignment: center; }
+                                Button { text: "Kopieren"; clicked => { editor.copy(); root.editor-context-visible = false; } }
+                                Button { text: "Ausschneiden"; clicked => { editor.cut(); root.editor-context-visible = false; } }
+                                Button { text: "Einfügen"; clicked => { editor.paste(); root.editor-context-visible = false; } }
+                                Button { text: "Alles markieren"; clicked => { editor.select-all(); } }
+                                Rectangle { height: 1px; background: #dddddd; }
+                                Button { text: "Bild einfügen"; clicked => { root.insert-image(); root.editor-context-visible = false; } }
+                                Button { text: "Datum einfügen"; clicked => { root.append-date(); root.editor-context-visible = false; } }
+                                Button { text: "Aufzählungszeichen einfügen"; clicked => { root.append-bullet(); root.editor-context-visible = false; } }
+                                Button { text: "Löschen"; clicked => { editor.cut(); root.editor-context-visible = false; } }
+                                Rectangle { height: 1px; background: #dddddd; }
+                                Button { text: "Suchen"; clicked => { root.search-next(root.search-text); root.editor-context-visible = false; } }
+                                Button { text: "Alle Treffer"; clicked => { root.search-all(root.search-text); root.editor-context-visible = false; } }
+                                Button { text: "Ersetzen"; clicked => { root.replace-text(root.search-text); root.editor-context-visible = false; } }
+                                Button { text: "Roh-RTF/Text umschalten"; clicked => { root.toggle-raw-rtf(); root.editor-context-visible = false; } }
+                                Button { text: "Schließen"; clicked => { root.editor-context-visible = false; } }
                             }
                         }
                     }

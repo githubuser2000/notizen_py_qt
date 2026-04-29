@@ -31,28 +31,28 @@ class LegacyContextAction:
 
 # From kontext_inhalt.vb: RichTextBox context menu.
 CONTENT_CONTEXT: tuple[LegacyContextAction, ...] = (
-    LegacyContextAction("content", 0, "kontext1", "Kopieren", "copy selection", "kontext_inhalt.vb", "Slint editor context menu / system clipboard"),
-    LegacyContextAction("content", 1, "kontext2", "Ausschneiden", "cut selection", "kontext_inhalt.vb", "Slint editor context menu / delete-range + clipboard"),
-    LegacyContextAction("content", 2, "kontext3", "Einfügen", "paste selection", "kontext_inhalt.vb", "Slint editor context menu / insert-text/import-text/import-rtf"),
-    LegacyContextAction("content", 3, "kontext6", "Bild einfügen", "insert image", "kontext_inhalt.vb", "Slint editor context menu / insert-image / Bilder"),
-    LegacyContextAction("content", 4, "kontext7", "Datum einfügen", "insert date", "kontext_inhalt.vb", "Slint editor context menu / insert-text --date / Datum+"),
-    LegacyContextAction("content", 5, "kontext4", "Löschen", "delete selected range", "kontext_inhalt.vb", "Slint editor context menu / delete-range"),
-    LegacyContextAction("content", 6, "kontext5", "Suchen", "search", "kontext_inhalt.vb", "Slint editor context menu / search/search-next/search-all"),
+    LegacyContextAction("content", 0, "kontext1", "Kopieren", "copy selection", "kontext_inhalt.vb", "Slint editor right-click context panel / system clipboard"),
+    LegacyContextAction("content", 1, "kontext2", "Ausschneiden", "cut selection", "kontext_inhalt.vb", "Slint editor right-click context panel / delete-range + clipboard"),
+    LegacyContextAction("content", 2, "kontext3", "Einfügen", "paste selection", "kontext_inhalt.vb", "Slint editor right-click context panel / insert-text/import-text/import-rtf"),
+    LegacyContextAction("content", 3, "kontext6", "Bild einfügen", "insert image", "kontext_inhalt.vb", "Slint editor right-click context panel / insert-image / Bilder"),
+    LegacyContextAction("content", 4, "kontext7", "Datum einfügen", "insert date", "kontext_inhalt.vb", "Slint editor right-click context panel / insert-text --date / Datum+"),
+    LegacyContextAction("content", 5, "kontext4", "Löschen", "delete selected range", "kontext_inhalt.vb", "Slint editor right-click context panel / delete-range"),
+    LegacyContextAction("content", 6, "kontext5", "Suchen", "search", "kontext_inhalt.vb", "Slint editor right-click context panel / search/search-next/search-all"),
 )
 
 # From Baum_Kontext_.vb: TreeNode context menu.
 TREE_CONTEXT: tuple[LegacyContextAction, ...] = (
-    LegacyContextAction("tree", 0, "kontext2_1", "Neu darunter", "new child", "Baum_Kontext_.vb", "Slint tree context menu / add-note --where child / + Kind"),
-    LegacyContextAction("tree", 1, "kontext11", "Neu daneben", "new sibling", "Baum_Kontext_.vb", "Slint tree context menu / add-note --where after / + Daneben"),
-    LegacyContextAction("tree", 2, "kontext2_2", "Umbenennen", "rename", "Baum_Kontext_.vb", "Slint tree context menu / rename / Umbenennen"),
-    LegacyContextAction("tree", 3, "kontext2_6", "Kopieren", "copy subtree", "Baum_Kontext_.vb", "Slint tree context menu / copy-node"),
-    LegacyContextAction("tree", 4, "kontext2_7", "Ausschneiden", "cut subtree", "Baum_Kontext_.vb", "Slint tree context menu / cut-node"),
-    LegacyContextAction("tree", 5, "kontext2_8", "Einfügen", "paste subtree", "Baum_Kontext_.vb", "Slint tree context menu / paste-node/import-json/import-file"),
-    LegacyContextAction("tree", 6, "kontext2_3", "Löschen", "delete node", "Baum_Kontext_.vb", "Slint tree context menu / delete-note / Löschen"),
-    LegacyContextAction("tree", 7, "kontext2_4", "Speichern", "save current note as RTF", "Baum_Kontext_.vb", "Slint tree context menu / export-note-rtf"),
-    LegacyContextAction("tree", 8, "kontext2_5", "Desktop-Notiz", "create sticky note", "Baum_Kontext_.vb", "Slint tree context menu / sticky/sticky-run/Sticky"),
-    LegacyContextAction("tree", 9, "kontext2_9", "Hintergrundfarbe", "node background color", "Baum_Kontext_.vb", "Slint tree context menu / color-note --bg-color / Farben"),
-    LegacyContextAction("tree", 10, "kontext2_10", "Schriftfarbe", "node foreground color", "Baum_Kontext_.vb", "Slint tree context menu / color-note --fg-color / Farben"),
+    LegacyContextAction("tree", 0, "kontext2_1", "Neu darunter", "new child", "Baum_Kontext_.vb", "Slint tree context panel / add-note --where child / + Kind"),
+    LegacyContextAction("tree", 1, "kontext11", "Neu daneben", "new sibling", "Baum_Kontext_.vb", "Slint tree context panel / add-note --where after / + Daneben"),
+    LegacyContextAction("tree", 2, "kontext2_2", "Umbenennen", "rename", "Baum_Kontext_.vb", "Slint tree context panel / rename / Umbenennen"),
+    LegacyContextAction("tree", 3, "kontext2_6", "Kopieren", "copy subtree", "Baum_Kontext_.vb", "Slint tree context panel / copy-node"),
+    LegacyContextAction("tree", 4, "kontext2_7", "Ausschneiden", "cut subtree", "Baum_Kontext_.vb", "Slint tree context panel / cut-node"),
+    LegacyContextAction("tree", 5, "kontext2_8", "Einfügen", "paste subtree", "Baum_Kontext_.vb", "Slint tree context panel / paste-node/import-json/import-file"),
+    LegacyContextAction("tree", 6, "kontext2_3", "Löschen", "delete node", "Baum_Kontext_.vb", "Slint tree context panel / delete-note / Löschen"),
+    LegacyContextAction("tree", 7, "kontext2_4", "Speichern", "save current note as RTF", "Baum_Kontext_.vb", "Slint tree context panel / export-note-rtf"),
+    LegacyContextAction("tree", 8, "kontext2_5", "Desktop-Notiz", "create sticky note", "Baum_Kontext_.vb", "Slint tree context panel / sticky/sticky-run/Sticky"),
+    LegacyContextAction("tree", 9, "kontext2_9", "Hintergrundfarbe", "node background color", "Baum_Kontext_.vb", "Slint tree context panel / color-note --bg-color / Farben"),
+    LegacyContextAction("tree", 10, "kontext2_10", "Schriftfarbe", "node foreground color", "Baum_Kontext_.vb", "Slint tree context panel / color-note --fg-color / Farben"),
 )
 
 # From desknote_kontext.vb: sticky-window context menu.

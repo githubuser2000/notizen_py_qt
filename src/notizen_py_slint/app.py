@@ -228,6 +228,54 @@ class NotizenSlintApp:
         self.window.show_password_info = self.show_password_info
         self.window.repair_document = self.repair_document
         self.window.show_toolstrips = self.show_toolstrips
+        self.window.toggle_maximized = self.toggle_maximized
+        self.window.toggle_fullscreen = self.toggle_fullscreen
+
+    # Window actions -------------------------------------------------------
+    def _native_slint_window(self) -> object | None:
+        """Return the underlying Slint window handle when the binding exposes it."""
+
+        getter = getattr(self.window, "window", None)
+        if callable(getter):
+            try:
+                return getter()
+            except Exception:  # noqa: BLE001 - binding/backends differ here
+                return None
+        return None
+
+    def toggle_maximized(self) -> None:
+        """Best-effort maximize/unmaximize for Slint Python releases/backends."""
+
+        native = self._native_slint_window()
+        try:
+            if native is not None and hasattr(native, "set_maximized"):
+                is_maximized = False
+                checker = getattr(native, "is_maximized", None)
+                if callable(checker):
+                    is_maximized = bool(checker())
+                elif hasattr(native, "maximized"):
+                    is_maximized = bool(getattr(native, "maximized"))
+                native.set_maximized(not is_maximized)  # type: ignore[attr-defined]
+                self._set_status("Fenster maximiert/wiederhergestellt.")
+                return
+            if native is not None and hasattr(native, "maximized"):
+                setattr(native, "maximized", not bool(getattr(native, "maximized")))
+                self._set_status("Fenster maximiert/wiederhergestellt.")
+                return
+        except Exception as exc:  # noqa: BLE001 - keep GUI usable on older bindings
+            self._set_status(f"Maximieren wird von diesem Slint-Backend nicht unterstützt: {exc}")
+            return
+        self._set_status("Dieses Slint-Python-Backend bietet keine Maximize-API; nutze den nativen Fensterrand.")
+
+    def toggle_fullscreen(self) -> None:
+        """Toggle Slint's portable full-screen property as a fallback to maximize."""
+
+        try:
+            current = bool(getattr(self.window, "fullscreen_enabled", False))
+            setattr(self.window, "fullscreen_enabled", not current)
+            self._set_status("Vollbild aktiviert." if not current else "Vollbild beendet.")
+        except Exception as exc:  # noqa: BLE001
+            self._set_status(f"Vollbild konnte nicht umgeschaltet werden: {exc}")
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:

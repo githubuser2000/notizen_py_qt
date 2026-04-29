@@ -1246,18 +1246,28 @@ class AppCompatTests(unittest.TestCase):
         self.assertEqual(_normalize_legacy_argv(["/h"]), ["--help"])
         self.assertEqual(_normalize_legacy_argv(["/?"]), ["--help"])
 
-    def test_slint_ui_has_compatible_context_menus_and_taller_toolbar(self) -> None:
+    def test_slint_ui_has_compile_safe_context_panels_and_taller_resizable_toolbar(self) -> None:
         ui_text = resources.files("notizen_py_slint.ui").joinpath("app-window.slint").read_text(encoding="utf-8")
-        self.assertIn("height: 900px;", ui_text)
-        self.assertIn("height: 232px;", ui_text)
+        self.assertIn("preferred-width: 1360px;", ui_text)
+        self.assertIn("preferred-height: 1080px;", ui_text)
+        self.assertIn("min-width: 980px;", ui_text)
+        self.assertIn("min-height: 760px;", ui_text)
+        self.assertNotIn("    width: 1240px;", ui_text)
+        self.assertNotIn("    height: 970px;", ui_text)
+        self.assertIn("height: 540px;", ui_text)
         self.assertNotIn("ContextMenuArea", ui_text)
         self.assertNotIn("MenuItem", ui_text)
         self.assertNotIn("MenuSeparator", ui_text)
-        self.assertIn("component ContextAction", ui_text)
-        self.assertIn('ContextAction { label: "Neu darunter"', ui_text)
-        self.assertIn('ContextAction { label: "Kopieren"; activated => { root.editor-menu-open = false; editor.copy(); } }', ui_text)
-        self.assertIn("RTF Kontext", ui_text)
+        self.assertIn("tree-context-visible", ui_text)
+        self.assertIn("editor-context-visible", ui_text)
+        self.assertIn("editor_hitbox := TouchArea", ui_text)
+        self.assertIn("root.editor-context-x = editor_hitbox.mouse-x;", ui_text)
         self.assertIn("PointerEventButton.right", ui_text)
+        self.assertIn('Text { text: "Baum-Kontext"', ui_text)
+        self.assertIn('Text { text: "RTF-Kontext"', ui_text)
+        self.assertIn('Button { text: "Kopieren"; clicked => { editor.copy(); root.editor-context-visible = false; } }', ui_text)
+        self.assertIn("callback toggle-maximized();", ui_text)
+        self.assertIn("callback toggle-fullscreen();", ui_text)
 
     def test_rename_row_callback_selects_and_renames_visible_tree_row(self) -> None:
         class DummyWindow:

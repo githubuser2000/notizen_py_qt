@@ -2,20 +2,6 @@
 
 Das ist ein Python-orientierter Port von **Notizen.NET** aus dem gelieferten VB.NET/WinForms-Projekt. Der alte Code wurde nicht nur zeilenweise umgeschrieben: Dateiformat, Notizbaum, RTF-Textinhalt, Sicherheitskopien, Konfiguration, FTP-Transport, Wecker-Logik und die historische DES-Kaskadenverschlüsselung wurden als pure-Python-Kern neu aufgebaut. Die Oberfläche liegt als Slint-Datei plus Python-Controller vor.
 
-## Stand v16 / 0.16.0
-
-Diese Version entfernt die in v15 eingeführte harte Abhängigkeit von Slints nativen Menüelementen `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator`. Einige installierte Slint-Python-Bindings erkennen diese Elemente nicht, obwohl neuere Dokumentation sie kennt. Die Oberfläche verwendet deshalb jetzt ein kompatibles Kontextmenü aus normalen Slint-Elementen (`Rectangle`, `TouchArea`, `Button`-artige Eigenkomponenten).
-
-Neu in v16:
-
-- Baum-Kontextmenü ohne native Slint-Menüelemente
-- Rechtsklick auf Baumzeilen öffnet das kompatible Baum-Menü
-- Editor-/RTF-Kontextmenü als kompatibles Overlay über `RTF Kontext` oder die rechte `☰`-Kontextleiste im Editor
-- obere Werkzeugleiste bleibt hoch und thematisch gruppiert
-- Slint-Datei kompiliert mit Slint 1.8.0a1 und 1.16.1b1
-- statischer Schutztest gegen versehentliches Wiedereinführen der nicht kompatiblen Menüelemente
-
-
 ## Status
 
 Funktioniert im Port:
@@ -287,12 +273,13 @@ Dieser Schritt zieht weitere alte Dialog- und Migrationsdetails nach:
 - Der große CLI-Parser wird nun pro Prozess gecacht; dadurch bleiben wiederholte In-Process-Aufrufe wie in Tests, Skripten oder eingebetteten Workflows stabil und schneller. Der Sticky-Befehl hat zusätzlich einen kleinen Direktparser für den alten Desktop-Notiz-Hotpath.
 
 
-## Neu in v15 / 0.15.0
+## Neu in v17 / 0.17.0
 
-Dieser Schritt setzt zwei sichtbare GUI-Lücken aus dem alten WinForms-Programm um:
+Dieser Schritt greift die drei gemeldeten UI-Probleme gezielt an:
 
-- Der Baum hat jetzt ein echtes Slint-Kontextmenü pro Zeile. Rechtsklick auf eine Notiz bietet die alten Kernaktionen direkt an: neues Kind, neuer Nachbar, umbenennen, kopieren, ausschneiden, einfügen, duplizieren, löschen, auf-/zuklappen, verschieben/einrücken/ausrücken, aktuelle Notiz als RTF speichern, Sticky aktivieren und Farben setzen.
-- Das Text-/RTF-Fenster hat jetzt ebenfalls ein Slint-Kontextmenü. Rechtsklick im Editor bietet Kopieren, Ausschneiden, Einfügen, Alles markieren, Bild einfügen, Datum, Aufzählungszeichen, Löschen, Suchen, Alle Treffer, Ersetzen und RTF/Text-Umschaltung. Die Standard-Clipboard-Aktionen nutzen Slints `TextEdit.copy()`, `cut()`, `paste()` und `select-all()`.
-- Die obere Leiste wurde von drei übervollen Reihen auf sechs thematische Reihen umgebaut und von 122 px auf 232 px erhöht. Dadurch passen die Buttons bei normaler Fensterbreite sichtbar in die Oberfläche, statt rechts abgeschnitten zu werden.
-- Die Editor-Kopfleiste wurde entrümpelt; Import-/Export-/Baumaktionen liegen jetzt in der größeren Hauptleiste, während der Editor oben nur noch Titel, Modus und die wichtigsten Schnellaktionen zeigt.
-- Für das Baum-Kontextmenü wurde der neue Slint-Callback `rename-row(int)` ergänzt, damit Umbenennen direkt auf der rechtsgeklickten Zeile arbeitet.
+- Der Text-/RTF-Bereich hat jetzt ebenfalls eine Rechtsklick-Fläche über dem tatsächlichen Editorbereich. Rechtsklick im Text öffnet das RTF-Kontextpanel; die schmale `☰`-Leiste und der `RTF Kontext`-Button bleiben nur als Fallback erhalten.
+- Die obere Buttonzone ist deutlich höher und stärker aufgeteilt: statt einer gedrängten Leiste gibt es zwölf thematische Zeilen für Datei, Fenster, Export, Import, Baum, RTF, Suche, Sticky/Farbe, Info und Extras. Die Toolbar ist jetzt `540px` hoch.
+- Das Slint-Fenster verwendet keine feste `width`/`height` mehr. Die Startgröße läuft über `preferred-width`/`preferred-height`, die Mindestgröße über `min-width`/`min-height`. Dadurch kann der Fenstermanager das Fenster wieder normal resizen und maximieren.
+- Zusätzlich gibt es oben eine kleine Fenster-Zeile mit `Max` und `Vollbild`. `Max` nutzt die Slint-Python-Maximize-API, falls die installierte Slint-Version sie anbietet; `Vollbild` nutzt die portable Slint-Property `full-screen`.
+- `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator` bleiben weiterhin entfernt, damit die UI auch mit Slint-Versionen kompiliert, die diese nativen Menüelemente noch nicht kennen.
+- Für das Baum-Kontextpanel bleibt der Callback `rename-row(int)` erhalten, damit Umbenennen direkt auf der rechtsgeklickten Zeile arbeitet.

@@ -176,18 +176,12 @@ Die alte Verschlüsselung hatte eine leicht ungewöhnliche Passwortaufbereitung:
 Weil die CLI inzwischen sehr viele alte Menü- und Dialogpfade abbildet, wird der große Argumentparser pro Prozess gecacht. Das ändert die Kommandozeilenoberfläche nicht, macht aber wiederholte Aufrufe aus Tests, Skripten und der Slint-Schicht deutlich robuster.
 
 
-## v15: echte Slint-Kontextmenüs und höhere Toolbar
+## v17: Textbereich-Kontextmenü, dickere Toolbar und resizebares Fenster
 
-Die alten WinForms-Kontextmenüs lagen seit v11 als Manifest vor, waren in der GUI aber noch nicht an die eigentlichen Klickflächen gebunden. In v15 sind sie an Slints `ContextMenuArea` angeschlossen: Jede sichtbare Baumzeile besitzt jetzt ein eigenes Kontextmenü, dessen Aktionen vor der Ausführung die passende Zeile auswählen. Damit verhält sich Rechtsklick im Baum deutlich näher an der alten `Baum_Kontext_.vb`-Oberfläche.
+v17 entfernt weiterhin `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator`, damit die UI mit den Slint-Versionen kompiliert, die diese nativen Menüelemente noch nicht kennen. Das Baum-Kontextmenü bleibt als eigenes Overlay aus normalen Slint-Elementen erhalten; Rechtsklick auf eine Zeile wählt die Notiz aus und zeigt die alten Kernaktionen. Der Callback `rename-row(int)` bleibt dafür erhalten.
 
-Auch der Editorbereich ist jetzt von einer `ContextMenuArea` umgeben. Die Zwischenablagefunktionen werden direkt über Slints `TextEdit`-Methoden ausgeführt; Datei-/Notizaktionen wie Bild, Datum, Suche, Ersetzen und Raw-RTF-Umschaltung rufen weiterhin die Python-Callbacks auf. Eine Einschränkung bleibt: Slints `TextEdit` ersetzt keine vollständige WinForms-RichTextBox. Die sichtbaren Kontextaktionen sind vorhanden, aber gemischte RichTextBox-Formatierungen pro Auswahl bleiben weiterhin über die bereits portierten Range-/RTF-Helfer und CLI-Pfade stabiler als über eine native Slint-Auswahl.
+Der Editor ist jetzt einen Schritt näher am alten RichTextBox-Verhalten: Der eigentliche Textbereich wird von einer `TouchArea` umschlossen, die Rechtsklicks erkennt und das RTF-Kontextpanel öffnet. Die sichtbare `☰`-Leiste und der `RTF Kontext`-Button bleiben nur als alternative Auslöser. Clipboard-Aktionen laufen weiterhin über `TextEdit.copy()`, `cut()`, `paste()` und `select-all()`.
 
-Die obere Werkzeugleiste wurde bewusst höher gemacht: Statt drei übervoller HorizontalLayouts gibt es jetzt sechs thematisch getrennte Zeilen für Datei, Export, Import/Baum, Ordnen/RTF, Sticky/Farbe und Info/Extras. Das entspricht nicht pixelgenau dem alten frei verschiebbaren ToolStrip-System, ist aber für Slint deutlich robuster und verhindert, dass Buttons bei normaler Fensterbreite verschwinden. Die alten ToolStrip-Koordinaten bleiben weiterhin als Migrationsdaten erhalten.
+Die obere Werkzeugleiste wurde erneut deutlich vergrößert: `540px` Höhe und zwölf thematische Reihen statt weniger überladener Zeilen. Damit haben die vielen portierten Datei-, Export-, Import-, Baum-, RTF-, Sticky- und Diagnoseaktionen sichtbar Platz, ohne dass der Benutzer die Fensterbreite sofort erhöhen muss.
 
-## v16 / 0.16.0
-
-- v15 hatte `ContextMenuArea`, `Menu`, `MenuItem` und `MenuSeparator` aus neueren Slint-Menü-APIs verwendet. Das bricht bei Installationen, deren Compiler diese Elemente nicht kennt.
-- v16 ersetzt diese nativen Menüs durch portable Slint-Overlays mit `Rectangle` und `TouchArea`.
-- Baumzeilen reagieren weiterhin auf Rechtsklick über `TouchArea.pointer-event` und `PointerEventButton.right`.
-- Im Editor gibt es ein kompatibles RTF-Kontextmenü über `RTF Kontext` beziehungsweise die rechte `☰`-Kontextleiste im Textfeld. Damit bleibt die Textbearbeitung intakt, weil kein vollflächiger `TouchArea` über dem `TextEdit` liegt.
-- Die UI wurde mit Slint 1.8.0a1 und 1.16.1b1 kompiliert.
+Das Fenster ist jetzt nicht mehr durch feste `width`/`height`-Angaben fixiert. `app-window.slint` nutzt `preferred-width: 1360px`, `preferred-height: 1080px`, `min-width: 980px` und `min-height: 760px`. Nach Slints Layoutmodell sind feste `width`/`height` am Root-Fenster eine harte Geometrie-Vorgabe; mit Preferred-/Minimum-Werten kann der Fenstermanager wieder normal resizen und maximieren. Zusätzlich gibt es einen Best-Effort-Button `Max` für Slint-Python-Bindings mit Maximize-API und einen portablen `Vollbild`-Fallback über die Slint-Property `full-screen`.
