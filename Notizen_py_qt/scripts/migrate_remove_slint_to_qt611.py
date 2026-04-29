@@ -1,0 +1,384 @@
+#!/usr/bin/env python3
+"""
+Qt 6.11 / Slint migration assistant.
+
+Default mode is dry-run. Use --apply to edit files.
+The script is intentionally conservative: it removes obvious Slint dependency
+lines and archives .slint files, but it does not pretend to semantically
+translate arbitrary Slint UI logic into QML.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as _dt
+import os
+import re
+import shutil
+import sys
+from pathlib import Path
+from typing import Iterable
+
+IGNORE_DIRS = {".git", "target", "build", "node_modules", ".qt611_no_slint_backup", "legacy_slint", "dist", ".venv"}
+SLINT_DEP_RE = re.compile(
+    r"^\s*(slint|slint-build|slint_build|slint-interpreter|slint_interpreter|i-slint-[A-Za-z0-9_-]+)\s*=.*$"
+)
+SLINT_TEXT_RE = re.compile(r"slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint")
+
+CPP_MAIN = r'''#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQuickStyle>
+#include <QUrl>
+#include <QObject>
+
+int main(int argc, char *argv[])
+{
+    QGuiApplication app(argc, argv);
+    QQuickStyle::setStyle(QStringLiteral("Fusion"));
+
+    QQmlApplicationEngine engine;
+    const QUrl url(QStringLiteral("qrc:/qt/qml/Notizen/Main.qml"));
+
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreated,
+        &app,
+        [url](QObject *obj, const QUrl &objUrl) {
+            if (!obj && url == objUrl) {
+                QCoreApplication::exit(-1);
+            }
+        },
+        Qt::QueuedConnection);
+
+    engine.load(url);
+    return app.exec();
+}
+'''
+
+QML_MAIN = r'''import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+ApplicationWindow {
+    id: root
+    width: 1100
+    height: 720
+    visible: true
+    title: qsTr("Notizen / Transpiler")
+
+    header: ToolBar {
+        RowLayout {
+            anchors.fill: parent
+            ToolButton { text: qsTr("Öffnen") }
+            ToolButton { text: qsTr("Transpilieren") }
+            ToolButton { text: qsTr("Export") }
+            Item { Layout.fillWidth: true }
+            Label { text: qsTr("Qt 6.11") }
+        }
+    }
+
+    SplitView {
+        anchors.fill: parent
+        orientation: Qt.Horizontal
+
+        TextArea {
+            id: sourceEditor
+            SplitView.preferredWidth: root.width * 0.5
+            placeholderText: qsTr("Quelle hier einfügen …")
+            wrapMode: TextArea.NoWrap
+            selectByMouse: true
+        }
+
+        TextArea {
+            id: outputEditor
+            readOnly: true
+            placeholderText: qsTr("Transpilierte Ausgabe erscheint hier …")
+            wrapMode: TextArea.NoWrap
+            selectByMouse: true
+        }
+    }
+}
+'''
+
+CMAKE = r'''cmake_minimum_required(VERSION 3.25)
+
+project(NotizenQt611 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+
+find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+qt_standard_project_setup(REQUIRES 6.11)
+
+qt_add_executable(notizen_qt611
+    cpp/main.cpp
+)
+
+qt_add_qml_module(notizen_qt611
+    URI Notizen
+    VERSION 1.0
+    QML_FILES
+        qml/Main.qml
+)
+
+target_link_libraries(notizen_qt611
+    PRIVATE
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Qml
+        Qt6::Quick
+        Qt6::QuickControls2
+)
+'''
+
+RUST_CARGO_SNIPPET = r'''
+# Qt/QML bridge replacing previous UI integration
+cxx = "1"
+cxx-qt = "0.8.1"
+cxx-qt-lib = "0.8.1"
+'''
+
+RUST_BUILD_DEP_SNIPPET = r'''
+# Qt/QML bridge build integration
+cxx-qt-build = "0.8.1"
+'''
+
+RUST_BUILD_RS = r'''use cxx_qt_build::{CxxQtBuilder, QmlModule};
+
+fn main() {
+    CxxQtBuilder::new_qml_module(
+        QmlModule::new("org.notizen.transpiler")
+            .qml_files(["qml/Main.qml"]),
+    )
+    .files(["src/backend.rs"])
+    .qt_module("Quick")
+    .qt_module("QuickControls2")
+    .build();
+}
+'''
+
+RUST_BACKEND = r'''#[cxx_qt::bridge]
+mod ffi {
+    extern "RustQt" {
+        #[qobject]
+        #[qml_element]
+        #[qproperty(QString, source)]
+        #[qproperty(QString, output)]
+        type TranspilerBackend = super::TranspilerBackendRust;
+    }
+
+    extern "RustQt" {
+        #[qinvokable]
+        fn transpile(self: Pin<&mut TranspilerBackend>);
+    }
+}
+
+use core::pin::Pin;
+use cxx_qt_lib::QString;
+
+#[derive(Default)]
+pub struct TranspilerBackendRust {
+    source: QString,
+    output: QString,
+}
+
+impl ffi::TranspilerBackend {
+    pub fn transpile(self: Pin<&mut Self>) {
+        let source = self.as_ref().source().to_string();
+        let translated = format!("// TODO: real transpiler output\n{}", source);
+        self.set_output(QString::from(translated));
+    }
+}
+'''
+
+
+def iter_files(root: Path) -> Iterable[Path]:
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
+        for filename in filenames:
+            yield Path(dirpath) / filename
+
+
+def backup_file(path: Path, backup_root: Path, root: Path) -> None:
+    rel = path.relative_to(root)
+    target = backup_root / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, target)
+
+
+def write_if_missing(path: Path, content: str, apply: bool, actions: list[str]) -> None:
+    if path.exists():
+        actions.append(f"keep existing: {path}")
+        return
+    actions.append(f"create: {path}")
+    if apply:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def remove_slint_dependency_lines(text: str) -> tuple[str, int]:
+    removed = 0
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if SLINT_DEP_RE.match(line):
+            removed += 1
+            continue
+        out.append(line)
+    return "".join(out), removed
+
+
+def ensure_toml_section(text: str, section: str, snippet: str) -> tuple[str, bool]:
+    if snippet.strip().splitlines()[-1].split("=")[0].strip() in text:
+        return text, False
+    pattern = re.compile(rf"^\[{re.escape(section)}\]\s*$", re.MULTILINE)
+    if pattern.search(text):
+        # append directly after the section header
+        return pattern.sub(f"[{section}]\n{snippet.strip()}\n", text, count=1), True
+    else:
+        return text.rstrip() + f"\n\n[{section}]\n{snippet.strip()}\n", True
+
+
+def migrate_cargo(path: Path, backup_root: Path, root: Path, apply: bool, rust_cxx_qt: bool, actions: list[str]) -> None:
+    original = path.read_text(encoding="utf-8")
+    updated, removed = remove_slint_dependency_lines(original)
+    changed = removed > 0
+    if rust_cxx_qt:
+        updated, added_dep = ensure_toml_section(updated, "dependencies", RUST_CARGO_SNIPPET)
+        updated, added_build = ensure_toml_section(updated, "build-dependencies", RUST_BUILD_DEP_SNIPPET)
+        changed = changed or added_dep or added_build
+    if changed:
+        actions.append(f"edit Cargo.toml: {path} (removed {removed} Slint dependency lines; rust_cxx_qt={rust_cxx_qt})")
+        if apply:
+            backup_file(path, backup_root, root)
+            path.write_text(updated, encoding="utf-8")
+
+
+def migrate_build_rs(path: Path, backup_root: Path, root: Path, apply: bool, rust_cxx_qt: bool, actions: list[str]) -> None:
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    kept: list[str] = []
+    removed = 0
+    for line in lines:
+        if "slint_build" in line or ".slint" in line:
+            removed += 1
+            continue
+        kept.append(line)
+    updated = "".join(kept)
+    if rust_cxx_qt:
+        updated = RUST_BUILD_RS
+        removed = max(removed, 1)
+    if updated != text:
+        actions.append(f"edit build.rs: {path} (removed/replaced Slint build hooks)")
+        if apply:
+            backup_file(path, backup_root, root)
+            path.write_text(updated, encoding="utf-8")
+
+
+def archive_or_delete_slint(path: Path, backup_root: Path, root: Path, apply: bool, delete: bool, actions: list[str]) -> None:
+    rel = path.relative_to(root)
+    if delete:
+        actions.append(f"delete .slint: {rel}")
+        if apply:
+            backup_file(path, backup_root, root)
+            path.unlink()
+    else:
+        dest = root / "legacy_slint" / rel
+        actions.append(f"archive .slint: {rel} -> {dest.relative_to(root)}")
+        if apply:
+            backup_file(path, backup_root, root)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(path), str(dest))
+
+
+def scan_remaining(root: Path) -> list[str]:
+    hits: list[str] = []
+    for path in iter_files(root):
+        if path.suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        for i, line in enumerate(text.splitlines(), start=1):
+            if SLINT_TEXT_RE.search(line):
+                hits.append(f"{path.relative_to(root)}:{i}: {line.strip()[:160]}")
+    return hits
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("root", nargs="?", default=".")
+    parser.add_argument("--apply", action="store_true", help="actually modify files")
+    parser.add_argument("--delete-slint", action="store_true", help="delete .slint files instead of archiving them")
+    parser.add_argument("--rust-cxx-qt", action="store_true", help="add CXX-Qt dependencies and build.rs for Rust backend")
+    args = parser.parse_args()
+
+    root = Path(args.root).resolve()
+    if not root.exists():
+        print(f"ERROR: root does not exist: {root}", file=sys.stderr)
+        return 2
+
+    stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_root = root / ".qt611_no_slint_backup" / stamp
+    actions: list[str] = []
+
+    cargo_files: list[Path] = []
+    build_rs_files: list[Path] = []
+    slint_files: list[Path] = []
+    cmake_files: list[Path] = []
+
+    for path in iter_files(root):
+        if path.name == "Cargo.toml":
+            cargo_files.append(path)
+        elif path.name == "build.rs":
+            build_rs_files.append(path)
+        elif path.name == "CMakeLists.txt":
+            cmake_files.append(path)
+        elif path.suffix == ".slint":
+            slint_files.append(path)
+
+    for path in cargo_files:
+        migrate_cargo(path, backup_root, root, args.apply, args.rust_cxx_qt, actions)
+    for path in build_rs_files:
+        migrate_build_rs(path, backup_root, root, args.apply, args.rust_cxx_qt, actions)
+    for path in slint_files:
+        archive_or_delete_slint(path, backup_root, root, args.apply, args.delete_slint, actions)
+
+    # Always add a Qt Quick shell if the project doesn't already have one.
+    write_if_missing(root / "cpp" / "main.cpp", CPP_MAIN, args.apply, actions)
+    write_if_missing(root / "qml" / "Main.qml", QML_MAIN, args.apply, actions)
+    if not (root / "CMakeLists.txt").exists():
+        write_if_missing(root / "CMakeLists.txt", CMAKE, args.apply, actions)
+    else:
+        write_if_missing(root / "CMakeLists.qt611.generated.txt", CMAKE, args.apply, actions)
+
+    if args.rust_cxx_qt:
+        write_if_missing(root / "src" / "backend.rs", RUST_BACKEND, args.apply, actions)
+        if not build_rs_files:
+            write_if_missing(root / "build.rs", RUST_BUILD_RS, args.apply, actions)
+
+    print("Mode:", "APPLY" if args.apply else "DRY-RUN")
+    print("Root:", root)
+    print(f"Found: {len(cargo_files)} Cargo.toml, {len(build_rs_files)} build.rs, {len(cmake_files)} CMakeLists.txt, {len(slint_files)} .slint files")
+    print("\nActions:")
+    if actions:
+        for action in actions:
+            print("-", action)
+    else:
+        print("- No changes required.")
+
+    remaining = scan_remaining(root)
+    if remaining:
+        print("\nRemaining Slint references to handle manually:")
+        for hit in remaining[:200]:
+            print("-", hit)
+        if len(remaining) > 200:
+            print(f"... {len(remaining) - 200} more")
+        return 1 if args.apply else 0
+
+    print("\nNo remaining Slint references detected by scanner.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

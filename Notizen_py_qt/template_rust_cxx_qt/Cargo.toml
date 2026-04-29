@@ -1,0 +1,13 @@
+[package]
+name = "notizen_qt611_cxx_qt"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+cxx = "1"
+cxx-qt = "0.8.1"
+cxx-qt-lib = "0.8.1"
+
+[build-dependencies]
+cxx-qt-build = "0.8.1"
