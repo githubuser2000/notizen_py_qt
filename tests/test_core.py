@@ -622,10 +622,15 @@ class ConfigMigrationTests(unittest.TestCase):
 class LegacyContextMenuTests(unittest.TestCase):
     def test_context_menu_manifest_matches_old_winforms_menus(self) -> None:
         tree = context_actions_payload("tree", "en")
-        self.assertEqual(len(tree), 11)
-        self.assertIn("rename", {item["action"] for item in tree})
+        self.assertGreaterEqual(len(tree), 23)
+        actions = {item["action"] for item in tree}
+        self.assertIn("rename", actions)
+        self.assertIn("move up", actions)
+        self.assertIn("clear node colors", actions)
         content_text = format_context_actions("content", "de")
         self.assertIn("Bild", content_text)
+        self.assertIn("Fett", content_text)
+        self.assertIn("Roh-RTF", content_text)
         opacity = sticky_opacity_payload()
         self.assertEqual(opacity[0]["label"], "90 %")
         self.assertEqual(opacity[0]["opacity"], 0.1)
@@ -1249,18 +1254,18 @@ class AppCompatTests(unittest.TestCase):
         self.assertEqual(_normalize_legacy_argv(["fs"]), ["--fullscreen"])
         self.assertEqual(_normalize_legacy_argv(["/max"]), ["--maximized"])
 
-    def test_slint_ui_has_compile_safe_context_panels_and_taller_resizable_toolbar(self) -> None:
+    def test_slint_ui_has_compile_safe_context_panels_and_compact_resizable_toolbar(self) -> None:
         ui_text = resources.files("notizen_py_slint.ui").joinpath("app-window.slint").read_text(encoding="utf-8")
-        self.assertIn("preferred-width: 1360px;", ui_text)
-        self.assertIn("preferred-height: 1360px;", ui_text)
-        self.assertIn("min-width: 980px;", ui_text)
-        self.assertIn("min-height: 900px;", ui_text)
+        self.assertIn("preferred-width: 1280px;", ui_text)
+        self.assertIn("preferred-height: 860px;", ui_text)
+        self.assertIn("min-width: 760px;", ui_text)
+        self.assertIn("min-height: 520px;", ui_text)
         self.assertNotIn("    width: 1240px;", ui_text)
         self.assertNotIn("    height: 970px;", ui_text)
-        self.assertIn("height: 760px;", ui_text)
+        self.assertIn("height: 184px;", ui_text)
+        self.assertNotIn("height: 760px;", ui_text)
         self.assertNotIn("full-screen", ui_text)
-        self.assertIn("Vollbild Start", ui_text)
-        self.assertIn("Fullscreen beim Start per --fullscreen", ui_text)
+        self.assertIn("Vollbild", ui_text)
         self.assertNotIn("ContextMenuArea", ui_text)
         self.assertNotIn("MenuItem", ui_text)
         self.assertNotIn("MenuSeparator", ui_text)
@@ -1270,10 +1275,38 @@ class AppCompatTests(unittest.TestCase):
         self.assertIn("root.editor-context-x = editor_hitbox.mouse-x;", ui_text)
         self.assertIn("PointerEventButton.right", ui_text)
         self.assertIn('Text { text: "Baum-Kontext"', ui_text)
-        self.assertIn('Text { text: "RTF-Kontext"', ui_text)
+        self.assertIn('Text { text: "RTF-/Text-Kontext"', ui_text)
         self.assertIn('Button { text: "Kopieren"; clicked => { editor.copy(); root.editor-context-visible = false; } }', ui_text)
+        self.assertIn('Button { text: "Fett"; clicked => { root.apply-bold(); root.editor-context-visible = false; } }', ui_text)
         self.assertIn("callback toggle-maximized();", ui_text)
         self.assertIn("callback toggle-fullscreen();", ui_text)
+
+        toolbar_start = ui_text.index("// Compact global toolbar")
+        toolbar_marker = """        HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                width: 320px;"""
+        toolbar_end = ui_text.index(toolbar_marker, toolbar_start)
+        toolbar_text = ui_text[toolbar_start:toolbar_end]
+        # Actions available in the Baum or RTF context menus should no longer
+        # consume permanent vertical space in the top toolbar.
+        for duplicate in (
+            "root.add-child();",
+            "root.add-sibling();",
+            "root.copy-node();",
+            "root.cut-node();",
+            "root.paste-node();",
+            "root.delete-note();",
+            "root.move-up();",
+            "root.indent-note();",
+            "root.insert-image();",
+            "root.append-date();",
+            "root.append-bullet();",
+            "root.apply-bold();",
+            "root.search-next(root.search-text);",
+            "root.replace-text(root.search-text);",
+        ):
+            self.assertNotIn(duplicate, toolbar_text)
 
     def test_rename_row_callback_selects_and_renames_visible_tree_row(self) -> None:
         class DummyWindow:

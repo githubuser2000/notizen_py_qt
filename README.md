@@ -304,3 +304,11 @@ Die alte Weiterleitung bleibt ebenfalls erhalten:
 ```bash
 python3 -m notizen_pypy_slint
 ```
+
+## Neu in v19 / 0.19.0
+
+- Obere Toolbar von 760px auf 184px zurückgebaut, aber horizontal in vier Gruppen aufgeteilt.
+- Fenstergeometrie auf `preferred-width: 1280px`, `preferred-height: 860px`, `min-width: 760px`, `min-height: 520px` geändert, damit Resize/Maximieren praktikabler wird.
+- Buttons, die bereits im Baum-Kontextmenü oder RTF/Text-Kontextmenü liegen, wurden aus der oberen Leiste entfernt.
+- Baum-Kontextmenü zweispaltig erweitert: Bearbeiten, Ansicht/Ordnen, Sticky/Farben.
+- RTF/Text-Kontextmenü zweispaltig erweitert: Bearbeiten/Suche links, Format/Roh-RTF rechts.

@@ -193,3 +193,9 @@ v18 entfernt die `full-screen`-Property aus `app-window.slint`, weil reale Slint
 Die resizebare Geometrie bleibt über `preferred-width: 1360px`, `preferred-height: 1360px`, `min-width: 980px` und `min-height: 900px` erhalten. Feste Root-`width`/`height`-Werte bleiben absichtlich weg, damit der Fenstermanager resizen und maximieren kann.
 
 Die obere Werkzeugleiste ist nun `760px` hoch und stärker aufgeteilt: Datei, Export, Baum-Bearbeitung, Info und Extras wurden in zusätzliche Reihen geteilt. Das ist optisch grob, aber absichtlich näher an der alten sehr funktionsreichen Oberfläche und verhindert, dass die vielen portierten Buttons oben wieder gequetscht werden.
+
+## v19: Toolbar wieder kompakt, Kontextmenüs tragen Baum-/RTF-Aktionen
+
+v19 nimmt die zu hohe v18-Werkzeugleiste zurück. Die Slint-Startgröße ist nun `preferred-width: 1280px`, `preferred-height: 860px`, `min-width: 760px` und `min-height: 520px`. Dadurch kann das Fenster wieder deutlich kleiner gezogen werden und Baum plus Textbereich sind beim Start sichtbar.
+
+Die obere Leiste enthält nur noch globale Datei-, Export-, Import-, Fenster-, Info- und Werkzeugaktionen. Baumaktionen wie Neu/Kopieren/Ausschneiden/Einfügen/Löschen/Verschieben/Sticky/Farbe sowie Textaktionen wie Bild, Datum, Aufzählung, Suche, Ersetzen, Roh-RTF und Formatierung liegen in den jeweiligen Rechtsklick-Kontextmenüs.
