@@ -18,6 +18,12 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+try:
+    from slint_to_qml import transpile_file, transpile_text
+except Exception:  # pragma: no cover - allows partial use if the helper is missing
+    transpile_file = None
+    transpile_text = None
+
 IGNORE_DIRS = {".git", "target", "build", "node_modules", ".qt611_no_slint_backup", "legacy_slint", "dist", ".venv"}
 SLINT_DEP_RE = re.compile(
     r"^\s*(slint|slint-build|slint_build|slint-interpreter|slint_interpreter|i-slint-[A-Za-z0-9_-]+)\s*=.*$"
@@ -114,11 +120,15 @@ qt_add_executable(notizen_qt611
     cpp/main.cpp
 )
 
+file(GLOB_RECURSE NOTIZEN_QML_FILES CONFIGURE_DEPENDS
+    qml/*.qml
+)
+
 qt_add_qml_module(notizen_qt611
     URI Notizen
     VERSION 1.0
     QML_FILES
-        qml/Main.qml
+        ${NOTIZEN_QML_FILES}
 )
 
 target_link_libraries(notizen_qt611
@@ -135,41 +145,42 @@ RUST_CARGO_SNIPPET = r'''
 # Qt/QML bridge replacing previous UI integration
 cxx = "1"
 cxx-qt = "0.8.1"
-cxx-qt-lib = "0.8.1"
+cxx-qt-lib = { version = "0.8.1", features = ["qt_full"] }
 '''
 
 RUST_BUILD_DEP_SNIPPET = r'''
 # Qt/QML bridge build integration
-cxx-qt-build = "0.8.1"
+cxx-qt-build = { version = "0.8.1", features = ["link_qt_object_files"] }
 '''
 
 RUST_BUILD_RS = r'''use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
-    CxxQtBuilder::new_qml_module(
-        QmlModule::new("org.notizen.transpiler")
-            .qml_files(["qml/Main.qml"]),
-    )
-    .files(["src/backend.rs"])
-    .qt_module("Quick")
-    .qt_module("QuickControls2")
-    .build();
+    CxxQtBuilder::new_qml_module(QmlModule::new("org.notizen.transpiler").qml_file("qml/Main.qml"))
+        .files(["src/backend.rs"])
+        .qt_module("Network")
+        .qt_module("Quick")
+        .qt_module("QuickControls2")
+        .build();
 }
 '''
 
 RUST_BACKEND = r'''#[cxx_qt::bridge]
-mod ffi {
+pub mod qobject {
+    unsafe extern "C++" {
+        include!("cxx-qt-lib/qstring.h");
+        type QString = cxx_qt_lib::QString;
+    }
+
     extern "RustQt" {
         #[qobject]
         #[qml_element]
         #[qproperty(QString, source)]
         #[qproperty(QString, output)]
         type TranspilerBackend = super::TranspilerBackendRust;
-    }
 
-    extern "RustQt" {
         #[qinvokable]
-        fn transpile(self: Pin<&mut TranspilerBackend>);
+        fn transpile(self: Pin<&mut Self>);
     }
 }
 
@@ -182,15 +193,14 @@ pub struct TranspilerBackendRust {
     output: QString,
 }
 
-impl ffi::TranspilerBackend {
+impl qobject::TranspilerBackend {
     pub fn transpile(self: Pin<&mut Self>) {
         let source = self.as_ref().source().to_string();
-        let translated = format!("// TODO: real transpiler output\n{}", source);
+        let translated = format!("// TODO: plug real transpiler core here\n{}", source);
         self.set_output(QString::from(translated));
     }
 }
 '''
-
 
 def iter_files(root: Path) -> Iterable[Path]:
     for dirpath, dirnames, filenames in os.walk(root):
@@ -227,6 +237,24 @@ def remove_slint_dependency_lines(text: str) -> tuple[str, int]:
     return "".join(out), removed
 
 
+def rename_slint_package_metadata(text: str) -> tuple[str, int]:
+    changed = 0
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal changed
+        changed += 1
+        value = re.sub("slint", "qt611", match.group("value"), flags=re.IGNORECASE)
+        return f'{match.group("prefix")}{value}{match.group("quote")}'
+
+    updated = re.sub(
+        r'(?m)^(?P<prefix>\s*name\s*=\s*(?P<quote>["\']))(?P<value>[^"\']*slint[^"\']*)(?P=quote)',
+        repl,
+        text,
+        flags=re.IGNORECASE,
+    )
+    return updated, changed
+
+
 def ensure_toml_section(text: str, section: str, snippet: str) -> tuple[str, bool]:
     if snippet.strip().splitlines()[-1].split("=")[0].strip() in text:
         return text, False
@@ -241,13 +269,14 @@ def ensure_toml_section(text: str, section: str, snippet: str) -> tuple[str, boo
 def migrate_cargo(path: Path, backup_root: Path, root: Path, apply: bool, rust_cxx_qt: bool, actions: list[str]) -> None:
     original = path.read_text(encoding="utf-8")
     updated, removed = remove_slint_dependency_lines(original)
-    changed = removed > 0
+    updated, renamed = rename_slint_package_metadata(updated)
+    changed = removed > 0 or renamed > 0
     if rust_cxx_qt:
         updated, added_dep = ensure_toml_section(updated, "dependencies", RUST_CARGO_SNIPPET)
         updated, added_build = ensure_toml_section(updated, "build-dependencies", RUST_BUILD_DEP_SNIPPET)
         changed = changed or added_dep or added_build
     if changed:
-        actions.append(f"edit Cargo.toml: {path} (removed {removed} Slint dependency lines; rust_cxx_qt={rust_cxx_qt})")
+        actions.append(f"edit Cargo.toml: {path} (removed {removed} Slint dependency lines; renamed {renamed} package metadata values; rust_cxx_qt={rust_cxx_qt})")
         if apply:
             backup_file(path, backup_root, root)
             path.write_text(updated, encoding="utf-8")
@@ -274,6 +303,22 @@ def migrate_build_rs(path: Path, backup_root: Path, root: Path, apply: bool, rus
             path.write_text(updated, encoding="utf-8")
 
 
+def transpile_slint_to_qml(path: Path, root: Path, apply: bool, overwrite_qml: bool, actions: list[str]) -> None:
+    out_dir = root / "qml"
+    if transpile_file is None or transpile_text is None:
+        actions.append(f"cannot transpile .slint because slint_to_qml.py is unavailable: {path.relative_to(root)}")
+        return
+
+    if apply:
+        result = transpile_file(path, out_dir, overwrite=overwrite_qml, main_alias=True)
+        names = ", ".join(sorted(result.outputs))
+        actions.append(f"transpile .slint -> QML: {path.relative_to(root)} -> qml/ ({names}; warnings={len(result.warnings)})")
+    else:
+        result = transpile_text(path.read_text(encoding="utf-8"), str(path))
+        names = ", ".join(sorted(result.outputs))
+        actions.append(f"would transpile .slint -> QML: {path.relative_to(root)} -> qml/ ({names}; warnings={len(result.warnings)})")
+
+
 def archive_or_delete_slint(path: Path, backup_root: Path, root: Path, apply: bool, delete: bool, actions: list[str]) -> None:
     rel = path.relative_to(root)
     if delete:
@@ -293,7 +338,7 @@ def archive_or_delete_slint(path: Path, backup_root: Path, root: Path, apply: bo
 def scan_remaining(root: Path) -> list[str]:
     hits: list[str] = []
     for path in iter_files(root):
-        if path.suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip"}:
+        if path.suffix in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip", ".json", ".md", ".log", ".txt", ".out"}:
             continue
         try:
             text = path.read_text(encoding="utf-8")
@@ -310,6 +355,8 @@ def main() -> int:
     parser.add_argument("root", nargs="?", default=".")
     parser.add_argument("--apply", action="store_true", help="actually modify files")
     parser.add_argument("--delete-slint", action="store_true", help="delete .slint files instead of archiving them")
+    parser.add_argument("--no-transpile-slint", action="store_true", help="archive/delete .slint files without generating QML first")
+    parser.add_argument("--overwrite-qml", action="store_true", help="overwrite generated QML files if they already exist")
     parser.add_argument("--rust-cxx-qt", action="store_true", help="add CXX-Qt dependencies and build.rs for Rust backend")
     args = parser.parse_args()
 
@@ -341,6 +388,9 @@ def main() -> int:
         migrate_cargo(path, backup_root, root, args.apply, args.rust_cxx_qt, actions)
     for path in build_rs_files:
         migrate_build_rs(path, backup_root, root, args.apply, args.rust_cxx_qt, actions)
+    if not args.no_transpile_slint:
+        for path in slint_files:
+            transpile_slint_to_qml(path, root, args.apply, args.overwrite_qml, actions)
     for path in slint_files:
         archive_or_delete_slint(path, backup_root, root, args.apply, args.delete_slint, actions)
 

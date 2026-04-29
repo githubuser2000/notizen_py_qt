@@ -1,13 +1,14 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.notizen.transpiler
+import org.notizen.transpiler 1.0
 
 ApplicationWindow {
+    id: root
     width: 1100
     height: 720
     visible: true
-    title: qsTr("Notizen / Transpiler")
+    title: qsTr("Notizen / Qt 6.11")
 
     TranspilerBackend {
         id: backend
@@ -31,17 +32,22 @@ ApplicationWindow {
 
     SplitView {
         anchors.fill: parent
+        orientation: Qt.Horizontal
+
         TextArea {
             id: sourceEditor
-            SplitView.preferredWidth: parent.width * 0.5
+            SplitView.preferredWidth: root.width * 0.5
             placeholderText: qsTr("Quelle hier einfügen …")
             wrapMode: TextArea.NoWrap
+            selectByMouse: true
         }
+
         TextArea {
             id: outputEditor
             readOnly: true
-            placeholderText: qsTr("Ausgabe …")
+            placeholderText: qsTr("Transpilierte Ausgabe erscheint hier …")
             wrapMode: TextArea.NoWrap
+            selectByMouse: true
         }
     }
 }

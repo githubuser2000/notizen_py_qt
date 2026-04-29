@@ -13,11 +13,15 @@ qt_add_executable(notizen_qt611
     cpp/main.cpp
 )
 
+file(GLOB_RECURSE NOTIZEN_QML_FILES CONFIGURE_DEPENDS
+    qml/*.qml
+)
+
 qt_add_qml_module(notizen_qt611
     URI Notizen
     VERSION 1.0
     QML_FILES
-        qml/Main.qml
+        ${NOTIZEN_QML_FILES}
 )
 
 target_link_libraries(notizen_qt611

@@ -1,67 +1,87 @@
-# Qt 6.11 / Slint-Removal Migration Kit
+# Qt 6.11 / Slint-Removal Migration Kit v2
 
-This kit is for moving a Slint-based transpilation/GUI project to the current Qt 6 line, pinned to **Qt 6.11**.
+Dieses Kit stellt ein Slint-basiertes Transpilierungsprojekt auf **Qt 6.11 + Qt Quick/QML** um. Gegenüber v1 ist jetzt ein echter Best-Effort-Transpilierer enthalten: `.slint`-Dateien werden nicht nur archiviert, sondern zuerst nach QML übersetzt.
 
-What it does:
+## Was v2 jetzt macht
 
-- removes Slint references from build files where it can do so safely;
-- archives or deletes `.slint` files;
-- creates a Qt Quick / QML starter shell using Qt 6.11;
-- provides a CXX-Qt Rust bridge template for Rust projects that still need Rust backend logic;
-- provides a Slint detector so active source/build files can be checked after migration.
+- entfernt Slint-Abhängigkeiten aus `Cargo.toml`;
+- ersetzt `build.rs`-Slint-Build-Hooks durch CXX-Qt-Buildintegration;
+- benennt Cargo-Paketnamen um, wenn darin `slint` vorkommt;
+- transpiliert `.slint` nach `qml/*.qml`;
+- erzeugt pro `.slint` einen JSON-Report mit Warnungen;
+- archiviert oder löscht alte `.slint`-Dateien danach;
+- erzeugt einen Qt-6.11-CMake/Qt-Quick-Shell;
+- liefert eine Cargo/CXX-Qt-Vorlage mit `cxx-qt 0.8.1`;
+- prüft aktiv, ob Slint-Referenzen in Source-/Build-Dateien übrig sind.
 
-What it cannot do automatically without your real source tree:
+## Wichtig
 
-- faithfully translate custom Slint components, callbacks, stores, and layouts into QML;
-- infer project-specific Rust/C++ backend APIs;
-- run a successful build where Qt/Cargo/Rust are not installed.
+Der Transpilierer ist bewusst konservativ. Er übersetzt häufige Slint-UI-Strukturen direkt und markiert unsichere Stellen als `TODO(slint->qml)`. Das ist besser als ein scheinbar erfolgreicher Blindflug: QML soll danach kompilierbar und reviewbar sein, aber komplexe Slint-Zustände, Animationen, globale Singletons und eigene Datenmodelle brauchen fast immer manuelle Nacharbeit.
 
-## Recommended target architecture
+## Sofort auf ein echtes Projekt anwenden
 
-Use one of these two shapes:
-
-1. **C++/Qt Quick only**: best when the transpiler can be in C++ or already has a C++ core.
-2. **Qt Quick + CXX-Qt Rust backend**: best when the transpiler core stays in Rust and only the UI moves from Slint to Qt/QML.
-
-For the user's existing Rust+Slint direction, option 2 is the safer default.
-
-## Apply to a real project
-
-From the root of the real project:
+Vom Projektwurzelverzeichnis aus:
 
 ```bash
-python3 /path/to/qt611_no_slint_migration_kit/scripts/migrate_remove_slint_to_qt611.py . --apply --rust-cxx-qt
-bash /path/to/qt611_no_slint_migration_kit/scripts/check_no_slint.sh .
+python3 /pfad/zum/kit/scripts/migrate_remove_slint_to_qt611.py . --apply --rust-cxx-qt --overwrite-qml
+bash /pfad/zum/kit/scripts/check_no_slint.sh .
+bash /pfad/zum/kit/scripts/verify_qt611_environment.sh --rust
 ```
 
-Then build the generated Qt shell:
+Dann bauen:
 
 ```bash
-cmake -S . -B build/qt611 -DCMAKE_BUILD_TYPE=Release
-cmake --build build/qt611 --parallel
+bash /pfad/zum/kit/scripts/build_qt611.sh . build/qt611
 ```
 
-If multiple Qt versions are installed, point CMake at Qt 6.11 explicitly, for example:
+Wenn Qt 6.11 nicht im Standardsuchpfad liegt:
 
 ```bash
+export QMAKE="$HOME/Qt/6.11.0/gcc_64/bin/qmake6"
 cmake -S . -B build/qt611 \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH="$HOME/Qt/6.11.0/gcc_64"
+cmake --build build/qt611 --parallel
 ```
 
-For Cargo/CXX-Qt builds with multiple Qt versions, set:
+Für Cargo/CXX-Qt zusätzlich:
 
 ```bash
 export QT_VERSION_MAJOR=6
 export QMAKE="$HOME/Qt/6.11.0/gcc_64/bin/qmake6"
+cargo run
 ```
 
-## Files in this kit
+## Einzelne `.slint`-Datei direkt transpilieren
 
-- `scripts/migrate_remove_slint_to_qt611.py` — migration assistant.
-- `scripts/check_no_slint.sh` — hard check for leftover Slint references.
-- `scripts/build_qt611.sh` — generic Qt 6.11 CMake build command.
-- `template_cpp_qml/` — minimal pure C++/Qt Quick project.
-- `template_rust_cxx_qt/` — minimal Rust+CXX-Qt+QML project skeleton.
-- `cmake/Qt611QuickApp.CMakeLists.txt` — CMake fragment you can merge into an existing project.
-- `TRANSPILE_ATTEMPT.log` — what was checked in this session.
+```bash
+python3 scripts/slint_to_qml.py path/to/MainWindow.slint -o qml --overwrite
+```
+
+Das erzeugt z. B.:
+
+- `qml/MainWindow.qml`
+- `qml/Main.qml`, falls der Komponentenname nach Hauptfenster aussieht
+- `qml/main_window.slint_to_qml.report.json`
+
+## Tests ausführen
+
+```bash
+PYTHONPATH=scripts python3 -m unittest discover -s tests -v
+```
+
+In dieser Containerumgebung musste ich `python3 -S` verwenden, weil der globale Python-`site`-Import hängt. Auf normalen Entwicklungsmaschinen sollte `python3` reichen.
+
+## Dateien im Kit
+
+- `scripts/slint_to_qml.py` — Best-Effort-Transpilierer von Slint nach QML.
+- `scripts/migrate_remove_slint_to_qt611.py` — Projektmigration: Slint raus, QML rein, Qt-6.11-Shell erzeugen.
+- `scripts/check_no_slint.sh` — harter Scanner für aktive Source-/Build-Dateien.
+- `scripts/verify_qt611_environment.sh` — prüft Qt-6.11/qmake/CMake/Cargo-Umgebung.
+- `scripts/build_qt611.sh` — prüft Umgebung und baut über CMake.
+- `template_cpp_qml/` — reines C++/Qt-Quick-Projekt.
+- `template_rust_cxx_qt/` — Cargo/CXX-Qt/QML-Projekt mit Rust-Backend.
+- `examples/main_window.slint` — Beispielquelle.
+- `transpiled_examples/MainWindow.qml` — Ergebnis der Beispieltranspilierung.
+- `docs/MAPPING.md` — genaue Mapping-Regeln und Grenzen.
+- `TRANSPILE_ATTEMPT.log` — Protokoll der bisherigen Arbeit.
