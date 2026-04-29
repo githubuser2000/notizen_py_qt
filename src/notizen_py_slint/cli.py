@@ -31,6 +31,8 @@ from .feedback import FeedbackError, write_feedback_gzip
 from .fonts import format_font_list, list_system_fonts
 from .legacy_config import import_legacy_config, load_legacy_config, write_legacy_like_config
 from .paths import default_file_path, default_paths
+from .passwords import legacy_password_info, normalize_legacy_password
+from .repair import format_repair_report, repair_document
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import load_uri, save_uri
 from .notify import notify
@@ -38,6 +40,8 @@ from .shortcuts import format_shortcuts, shortcut_manifest
 from .sticky_runtime import run_tk_sticky_windows, sticky_window_specs
 from .translations import LANGUAGE_NAMES, LEGACY_KEYS, iter_translations, normalize_language, translate, translation_table
 from .rtf import detect_rtf_style, restyle_rtf_as_plain, restyle_rtf_with_defaults, text_to_rtf
+_CACHED_PARSER: argparse.ArgumentParser | None = None
+
 from .storage import (
     NotizenFileError,
     append_bullet_into_note,
@@ -282,6 +286,41 @@ def _sticky(
     doc.modified = True
     _save_after_edit(doc, output, password, new_password)
     print(note.sticky.summary() if note.sticky else "Sticky-Metadaten gelöscht", file=sys.stderr)
+
+
+def _main_sticky_fast(argv: list[str]) -> int:
+    """Small parser for the Sticky edit command.
+
+    The full CLI parser is intentionally large because it mirrors many old
+    Notizen.NET context-menu flows.  In embedded/test use the same process may
+    call ``main()`` dozens of times; the Sticky command is a hot path in those
+    workflows, so this avoids rebuilding the whole parser when only this command
+    is needed.
+    """
+    parser = argparse.ArgumentParser(prog="notizen-alx sticky", description="Sticky-Metadaten einer Notiz setzen/löschen")
+    parser.add_argument("file")
+    parser.add_argument("output")
+    parser.add_argument("--title", required=True)
+    parser.add_argument("--show", action="store_true")
+    parser.add_argument("--hide", action="store_true")
+    parser.add_argument("--clear", action="store_true")
+    parser.add_argument("--autosize", action="store_true")
+    parser.add_argument("--x", type=int)
+    parser.add_argument("--y", type=int)
+    parser.add_argument("--width", type=int)
+    parser.add_argument("--height", type=int)
+    parser.add_argument("--opacity", type=float)
+    parser.add_argument("--opacity-choice", help="alter Desktop-Notiz-Transparenzwert, z.B. 90%% oder 0")
+    parser.add_argument("--argb", help="Farbe als signed ARGB, 0xAARRGGBB oder #AARRGGBB")
+    _add_new_password_arg(parser)
+    _add_password_arg(parser)
+    try:
+        args = parser.parse_args(argv)
+        _sticky(args.file, args.output, args.title, args.password, args.new_password, args.show, args.hide, args.clear, args.autosize, args.x, args.y, args.width, args.height, args.opacity, args.opacity_choice, args.argb)
+        return 0
+    except (NotizenFileError, ValueError, OSError, NotizenClipboardError, FeedbackError) as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return 2
 
 
 def _change_password(file: str, output: str, old_password: str | None, new_password: str | None) -> None:
@@ -1126,6 +1165,80 @@ def _compat_report(file: str, password: str | None, as_json: bool) -> None:
     print(report_json(report) if as_json else format_report(report))
 
 
+def _password_info(password: str | None, reveal: bool, as_json: bool) -> None:
+    info = legacy_password_info(password)
+    print(info.to_json(reveal=reveal) if as_json else info.format(reveal=reveal))
+
+
+def _password_normalize(password: str | None, reveal: bool, as_json: bool) -> None:
+    normalized = normalize_legacy_password(password)
+    payload = {
+        "normalized": normalized if reveal else "·" * len(normalized),
+        "repr": repr(normalized) if reveal else repr("·" * len(normalized)),
+        "length": len(normalized),
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    elif reveal:
+        print(repr(normalized))
+    else:
+        print(payload["repr"])
+
+
+def _repair(
+    file: str,
+    output: str | None,
+    password: str | None,
+    new_password: str | None,
+    dry_run: bool,
+    as_json: bool,
+    no_empty_titles: bool,
+    no_plain_to_rtf: bool,
+    no_transparent_colors: bool,
+    no_sticky: bool,
+    no_argb: bool,
+) -> None:
+    doc = load_uri(file, password=password)
+    report = repair_document(
+        doc,
+        fix_empty_titles=not no_empty_titles,
+        convert_plain_text=not no_plain_to_rtf,
+        clear_transparent_colors=not no_transparent_colors,
+        fix_sticky=not no_sticky,
+        normalize_argb=not no_argb,
+    )
+    if as_json:
+        print(report.to_json())
+    else:
+        print(format_repair_report(report))
+    if dry_run:
+        return
+    if not output:
+        raise NotizenFileError("repair braucht ein output-Ziel, außer mit --dry-run")
+    save_uri(doc, output, password=new_password if new_password is not None else password, backup_count=0)
+    print(output, file=sys.stderr)
+
+
+def _toolstrips(set_values: list[list[str]] | None, as_json: bool) -> None:
+    config = AppConfig.load()
+    changed = False
+    for item in set_values or []:
+        if len(item) != 3:
+            raise ValueError("--set erwartet NAME X Y")
+        name, x, y = item
+        config.set_toolstrip_position(name, int(x), int(y))
+        changed = True
+    if changed:
+        config.save()
+    payload = dict(config.toolstrip_positions)
+    if as_json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        for name in ("haupt", "elements", "font", "cutpastecopy"):
+            x, y = config.toolstrip_position(name)
+            print(f"{name}: {x},{y}")
+
+
 def _backup_list(file: str, as_json: bool) -> None:
     backups = list_backups(file)
     if as_json:
@@ -1165,6 +1278,7 @@ def _config_set(
     clear_recent: bool,
     window: str | None,
     window_state: str | None,
+    toolstrip: list[list[str]] | None,
     as_json: bool,
 ) -> None:
     config = AppConfig.load()
@@ -1206,6 +1320,11 @@ def _config_set(
         if state not in aliases:
             raise ValueError("--window-state muss normal, maximized oder minimized sein")
         config.window_state = aliases[state]
+    for item in toolstrip or []:
+        if len(item) != 3:
+            raise ValueError("--toolstrip erwartet NAME X Y")
+        name, x, y = item
+        config.set_toolstrip_position(name, int(x), int(y))
     config.save()
     if as_json:
         print(json.dumps(_slots_dict(config), indent=2, ensure_ascii=False))
@@ -1463,641 +1582,679 @@ def _add_new_password_arg(parser: argparse.ArgumentParser) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Kommandozeilenwerkzeug für Notizen.NET-.alx-Dateien")
-    sub = parser.add_subparsers(dest="cmd", required=True)
-
-    tree = sub.add_parser("tree", help="Notizbaum ausgeben")
-    tree.add_argument("file")
-    tree.add_argument("--visible-only", action="store_true", help="eingeklappte Unterknoten ausblenden")
-    _add_password_arg(tree)
-
-    txt = sub.add_parser("export-txt", help="Nach TXT exportieren")
-    txt.add_argument("file")
-    txt.add_argument("output")
-    txt.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    txt.add_argument("--numbered", action="store_true")
-    _add_password_arg(txt)
-
-    rtf = sub.add_parser("export-rtf", help="Nach RTF exportieren")
-    rtf.add_argument("file")
-    rtf.add_argument("output")
-    rtf.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    rtf.add_argument("--numbered", action="store_true")
-    _add_password_arg(rtf)
-
-    html = sub.add_parser("export-html", help="Nach HTML exportieren")
-    html.add_argument("file")
-    html.add_argument("output")
-    html.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    _add_password_arg(html)
-
-    legacy_txt = sub.add_parser("export-legacy-txt", help="TXT-Export näher am alten Notizen.NET-Codepage-/CRLF-Verhalten")
-    legacy_txt.add_argument("file")
-    legacy_txt.add_argument("output")
-    legacy_txt.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    legacy_txt.add_argument("--numbered", action="store_true", default=True)
-    legacy_txt.add_argument("--plain", action="store_true", help="ohne Nummerierung exportieren")
-    legacy_txt.add_argument("--encoding", default="cp1252", help="Zielencoding; Standard cp1252 wie viele alte Windows-Installationen")
-    _add_password_arg(legacy_txt)
-
-    unity_rtf = sub.add_parser("export-unity-rtf", help="RTF-Export im Stil der alten Einheit/Zusammenfassen-Funktion")
-    unity_rtf.add_argument("file")
-    unity_rtf.add_argument("output")
-    unity_rtf.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    unity_rtf.add_argument("--numbered", action="store_true", default=True)
-    unity_rtf.add_argument("--plain", action="store_true", help="ohne Nummerierung exportieren")
-    _add_password_arg(unity_rtf)
-
-    md = sub.add_parser("export-md", help="Nach Markdown exportieren")
-    md.add_argument("file")
-    md.add_argument("output")
-    md.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    _add_password_arg(md)
-
-    json_exp = sub.add_parser("export-json", help="Dokument oder Teilbaum als JSON exportieren")
-    json_exp.add_argument("file")
-    json_exp.add_argument("output")
-    json_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    _add_password_arg(json_exp)
-
-    alx_exp = sub.add_parser("export-alx", help="Teilbaum als eigenständige .alx/.xml-Datei exportieren")
-    alx_exp.add_argument("file")
-    alx_exp.add_argument("output")
-    alx_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren; ohne Angabe die ganze Datei")
-    _add_new_password_arg(alx_exp)
-    _add_password_arg(alx_exp)
-
-    opml_exp = sub.add_parser("export-opml", help="Dokument oder Teilbaum als OPML-Outliner-Datei exportieren")
-    opml_exp.add_argument("file")
-    opml_exp.add_argument("output")
-    opml_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    opml_exp.add_argument("--no-metadata", action="store_true", help="keine privaten _notizen_*-Attribute schreiben")
-    opml_exp.add_argument("--no-rtf", action="store_true", help="RTF nicht als Base64-Metadatum mitschreiben")
-    opml_exp.add_argument("--no-text", action="store_true", help="Klartext nicht als OPML-Notiz/Metadatum mitschreiben")
-    _add_password_arg(opml_exp)
-
-    notes_doc = sub.add_parser("export-notes-doc", help="älteres notes_doc/node/leaf-XML exportieren")
-    notes_doc.add_argument("file")
-    notes_doc.add_argument("output")
-    notes_doc.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
-    notes_doc.add_argument("--no-leaf-terminal-nodes", action="store_true", help="alle Knoten als <node> statt Blätter als <leaf> schreiben")
-    notes_doc.add_argument("--include-empty-paragraphs", action="store_true", help="leere Absätze mitschreiben")
-    notes_doc.add_argument("--encoding", default="utf-8", help="XML-Encoding, Standard utf-8")
-    _add_password_arg(notes_doc)
-
-    note_rtf = sub.add_parser("export-note-rtf", help="Roh-RTF einer einzelnen Notiz exportieren")
-    note_rtf.add_argument("file")
-    note_rtf.add_argument("output")
-    note_rtf.add_argument("--title", required=True)
-    _add_password_arg(note_rtf)
-
-    images = sub.add_parser("extract-images", help="eingebettete RTF-Bilder extrahieren")
-    images.add_argument("file")
-    images.add_argument("output_dir")
-    images.add_argument("--title", help="nur eine Notiz untersuchen")
-    _add_password_arg(images)
-
-    sticky_html = sub.add_parser("export-sticky-html", help="sichtbare Sticky-Notizen als HTML-Board exportieren")
-    sticky_html.add_argument("file")
-    sticky_html.add_argument("output")
-    sticky_html.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten exportieren")
-    _add_password_arg(sticky_html)
-
-    password = sub.add_parser("change-password", help="Datei neu speichern und Passwort ändern/entfernen")
-    password.add_argument("file")
-    password.add_argument("output")
-    password.add_argument("--old-password")
-    password.add_argument("--new-password", help="Leer/fehlend speichert unverschlüsselt")
-
-    dump_xml = sub.add_parser("dump-xml", help=".alx/.xml/FTP-Datei als lesbares XML ausgeben")
-    dump_xml.add_argument("file")
-    dump_xml.add_argument("output", nargs="?")
-    _add_password_arg(dump_xml)
-
-    pack_xml = sub.add_parser("pack-xml", help="XML wieder als .alx/.xml oder FTP-Ziel speichern")
-    pack_xml.add_argument("xml_file")
-    pack_xml.add_argument("output")
-    pack_xml.add_argument("--password")
-
-    stats = sub.add_parser("stats", help="Baumstatistik ausgeben")
-    stats.add_argument("file")
-    _add_password_arg(stats)
-
-    search = sub.add_parser("search", help="Titel und Text durchsuchen")
-    search.add_argument("file")
-    search.add_argument("needle")
-    search.add_argument("--case-sensitive", action="store_true")
-    search.add_argument("--whole-words", action="store_true")
-    search.add_argument("--details", action="store_true", help="Treffer zählen und Snippets ausgeben")
-    search.add_argument("--occurrences", action="store_true", help="exakte Trefferpositionen wie alte suchergebnisse.SelectionStart-Liste ausgeben")
-    search.add_argument("--json", action="store_true", help="detaillierte Treffer als JSON ausgeben")
-    search.add_argument("--context", type=int, default=40, help="Snippet-Kontextzeichen")
-    search.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel durchsuchen")
-    _add_password_arg(search)
-
-    search_occ = sub.add_parser("search-occurrences", help="einzelne Suchtreffer mit Positionen ausgeben")
-    search_occ.add_argument("file")
-    search_occ.add_argument("needle")
-    search_occ.add_argument("--case-sensitive", action="store_true")
-    search_occ.add_argument("--whole-words", action="store_true")
-    search_occ.add_argument("--json", action="store_true")
-    search_occ.add_argument("--context", type=int, default=40)
-    search_occ.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel durchsuchen")
-    search_occ.add_argument("--field", action="append", choices=["title", "text", "body", "inhalt"], help="Suchfeld; mehrfach nutzbar")
-    search_occ.add_argument("--limit", type=int)
-    _add_password_arg(search_occ)
-
-    replace = sub.add_parser("replace", help="Text in Titeln und/oder Notiztext ersetzen")
-    replace.add_argument("file")
-    replace.add_argument("output")
-    replace.add_argument("needle")
-    replace.add_argument("replacement")
-    replace.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel ändern")
-    replace.add_argument("--case-sensitive", action="store_true")
-    replace.add_argument("--whole-words", action="store_true")
-    group_replace = replace.add_mutually_exclusive_group()
-    group_replace.add_argument("--titles-only", action="store_true")
-    group_replace.add_argument("--text-only", action="store_true")
-    _add_new_password_arg(replace)
-    _add_password_arg(replace)
-
-    validate = sub.add_parser("validate", help="Datei laden und Kompatibilitäts-/Statistikcheck ausgeben")
-    validate.add_argument("file")
-    validate.add_argument("--json", action="store_true")
-    _add_password_arg(validate)
-
-    sub_recent = sub.add_parser("recent", help="zuletzt geöffnete Dateien aus der Port-Konfiguration anzeigen")
-    sub_recent.add_argument("--json", action="store_true")
-
-    palette = sub.add_parser("color-palette", help="alte helle Notizen.NET-Farbpalette anzeigen")
-    palette.add_argument("--json", action="store_true")
-
-    color_note = sub.add_parser("color-note", help="Knotenfarben bgcolor/fgcolor setzen, löschen oder anzeigen")
-    color_note.add_argument("file")
-    color_note.add_argument("output")
-    color_note.add_argument("--title", required=True)
-    color_note.add_argument("--bg-color")
-    color_note.add_argument("--fg-color")
-    color_note.add_argument("--bg-name", help="Name aus color-palette, z.B. LightYellow")
-    color_note.add_argument("--fg-name", help="Name aus color-palette")
-    color_note.add_argument("--random-bg", action="store_true", help="alte zufällige helle Hintergrundfarbe setzen")
-    color_note.add_argument("--random-fg", action="store_true", help="alte zufällige helle Vordergrundfarbe setzen")
-    color_note.add_argument("--random-index", type=int, help="deterministischer Palette-Index für --random-bg/--random-fg")
-    color_note.add_argument("--clear", action="store_true", help="bgcolor und fgcolor löschen")
-    color_note.add_argument("--clear-bg", action="store_true")
-    color_note.add_argument("--clear-fg", action="store_true")
-    color_note.add_argument("--show", action="store_true", help="Farben nach der Änderung als JSON ausgeben")
-    _add_new_password_arg(color_note)
-    _add_password_arg(color_note)
-
-    sticky_list = sub.add_parser("sticky-list", help="Sticky-Fenster-Metadaten normalisiert anzeigen")
-    sticky_list.add_argument("file")
-    sticky_list.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten anzeigen")
-    sticky_list.add_argument("--json", action="store_true")
-    _add_password_arg(sticky_list)
-
-    sticky_run = sub.add_parser("sticky-run", help="sichtbare Sticky-Notizen als kleine Python/Tk-Fenster öffnen")
-    sticky_run.add_argument("file")
-    sticky_run.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten öffnen")
-    sticky_run.add_argument("--readonly", action="store_true", help="Sticky-Fenster nicht editierbar machen")
-    sticky_run.add_argument("--output", help="Zieldatei für Änderungen; ohne Angabe wird die Eingabedatei überschrieben")
-    _add_new_password_arg(sticky_run)
-    _add_password_arg(sticky_run)
-
-    sticky_opacity = sub.add_parser("sticky-opacity", help="alte Transparenzauswahl aus dem Desktop-Notiz-Menü anzeigen")
-    sticky_opacity.add_argument("--json", action="store_true")
-
-    set_note = sub.add_parser("set-note", help="Text/RTF einer Notiz ersetzen und speichern")
-    set_note.add_argument("file")
-    set_note.add_argument("output")
-    set_note.add_argument("--title", required=True)
-    set_note.add_argument("--input", required=True)
-    set_note.add_argument("--rtf", action="store_true")
-    _add_new_password_arg(set_note)
-    _add_password_arg(set_note)
-
-    json_imp = sub.add_parser("import-json", help="JSON-Teilbaum in eine Datei importieren")
-    json_imp.add_argument("file")
-    json_imp.add_argument("output")
-    json_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
-    json_imp.add_argument("--input", required=True)
-    json_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
-    _add_new_password_arg(json_imp)
-    _add_password_arg(json_imp)
-
-    opml_imp = sub.add_parser("import-opml", help="OPML-Datei als Teilbaum importieren")
-    opml_imp.add_argument("file")
-    opml_imp.add_argument("output")
-    opml_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
-    opml_imp.add_argument("--input", required=True, help="zu importierende OPML-Datei")
-    opml_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
-    _add_new_password_arg(opml_imp)
-    _add_password_arg(opml_imp)
-
-    file_imp = sub.add_parser("import-file", help="Root-Teilbaum einer anderen .alx/.xml/FTP-Datei importieren")
-    file_imp.add_argument("file")
-    file_imp.add_argument("output")
-    file_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
-    file_imp.add_argument("--input", required=True, help="zu importierende .alx/.xml/FTP-Datei")
-    file_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
-    file_imp.add_argument("--input-password")
-    _add_new_password_arg(file_imp)
-    _add_password_arg(file_imp)
-
-    img = sub.add_parser("insert-image", help="PNG/JPEG/BMP als RTF-Bild an eine Notiz anhängen")
-    img.add_argument("file")
-    img.add_argument("output")
-    img.add_argument("--title", required=True)
-    img.add_argument("--image", required=True)
-    img.add_argument("--width-twips", type=int)
-    img.add_argument("--height-twips", type=int)
-    _add_new_password_arg(img)
-    _add_password_arg(img)
-
-    date = sub.add_parser("append-date", help="aktuelles Datum/Uhrzeit an eine Notiz anhängen")
-    date.add_argument("file")
-    date.add_argument("output")
-    date.add_argument("--title", required=True)
-    _add_new_password_arg(date)
-    _add_password_arg(date)
-
-    bullet = sub.add_parser("append-bullet", help="Aufzählungszeichen an eine Notiz anhängen")
-    bullet.add_argument("file")
-    bullet.add_argument("output")
-    bullet.add_argument("--title", required=True)
-    _add_new_password_arg(bullet)
-    _add_password_arg(bullet)
-
-    insert_text = sub.add_parser("insert-text", help="Text/Datum/Aufzählung an einer Plain-Text-Position einfügen")
-    insert_text.add_argument("file")
-    insert_text.add_argument("output")
-    insert_text.add_argument("--title", required=True)
-    insert_text.add_argument("--at", type=int, required=True, help="Einfügeposition im Klartext der Notiz")
-    insert_payload = insert_text.add_mutually_exclusive_group(required=True)
-    insert_payload.add_argument("--text")
-    insert_payload.add_argument("--input", help="UTF-8-Textdatei zum Einfügen")
-    insert_payload.add_argument("--date", action="store_true", help="aktuelles Datum/Uhrzeit an der Position einfügen")
-    insert_payload.add_argument("--bullet", action="store_true", help="Aufzählungszeichen an der Position einfügen")
-    _add_new_password_arg(insert_text)
-    _add_password_arg(insert_text)
-
-    delete_range = sub.add_parser("delete-range", help="Plain-Text-Bereich einer Notiz löschen")
-    delete_range.add_argument("file")
-    delete_range.add_argument("output")
-    delete_range.add_argument("--title", required=True)
-    delete_range.add_argument("--start", type=int, required=True)
-    delete_group = delete_range.add_mutually_exclusive_group(required=True)
-    delete_group.add_argument("--length", type=int)
-    delete_group.add_argument("--end", type=int)
-    _add_new_password_arg(delete_range)
-    _add_password_arg(delete_range)
-
-    style_range = sub.add_parser("style-range", help="RichTextBox-Toolbar-Stil auf einen Plain-Text-Bereich anwenden")
-    style_range.add_argument("file")
-    style_range.add_argument("output")
-    style_range.add_argument("--title", required=True)
-    style_range.add_argument("--start", type=int, required=True)
-    style_range_group = style_range.add_mutually_exclusive_group(required=True)
-    style_range_group.add_argument("--length", type=int)
-    style_range_group.add_argument("--end", type=int)
-    style_range.add_argument("--style", choices=["bold", "italic", "underline", "strike", "regular"], help="Toolbar-Stil wie im Original")
-    style_range.add_argument("--font-family")
-    style_range.add_argument("--font-size", type=int, help="RTF-Halbpunkte, 18 = 9pt")
-    style_range.add_argument("--fg-color")
-    style_range.add_argument("--bg-color")
-    style_range.add_argument("--show", action="store_true")
-    _add_new_password_arg(style_range)
-    _add_password_arg(style_range)
-
-    fmt = sub.add_parser("format-note", help="eine Notiz als schlichtes, formatiertes RTF neu schreiben")
-    fmt.add_argument("file")
-    fmt.add_argument("output")
-    fmt.add_argument("--title", required=True)
-    fmt.add_argument("--font-family", default="Sans Serif")
-    fmt.add_argument("--font-size", type=int, default=18, help="RTF-Halbpunkte, 18 = 9pt")
-    fmt.add_argument("--bold", action="store_true")
-    fmt.add_argument("--italic", action="store_true")
-    fmt.add_argument("--underline", action="store_true")
-    fmt.add_argument("--strike", action="store_true")
-    fmt.add_argument("--fg-color")
-    fmt.add_argument("--bg-color")
-    _add_new_password_arg(fmt)
-    _add_password_arg(fmt)
-
-    style = sub.add_parser("style-note", help="alte RichTextBox-Toolbar-Stile auf eine ganze Notiz anwenden")
-    style.add_argument("file")
-    style.add_argument("output")
-    style.add_argument("--title", required=True)
-    style.add_argument("--style", choices=["bold", "italic", "underline", "strike", "regular"], help="Toolbar-Stil wie im Original")
-    style.add_argument("--font-family", help="Schriftfamilie setzen")
-    style.add_argument("--font-size", type=int, help="RTF-Halbpunkte setzen, 18 = 9pt")
-    style.add_argument("--fg-color")
-    style.add_argument("--bg-color")
-    style.add_argument("--show", action="store_true", help="erkannte globale Formatwerte anzeigen")
-    _add_new_password_arg(style)
-    _add_password_arg(style)
-
-    font_size = sub.add_parser("font-size", help="Textgröße einer Notiz wie Ctrl+Plus/Ctrl+Minus ändern")
-    font_size.add_argument("file")
-    font_size.add_argument("output")
-    font_size.add_argument("--title", required=True)
-    size_group = font_size.add_mutually_exclusive_group(required=True)
-    size_group.add_argument("--bigger", action="store_true")
-    size_group.add_argument("--smaller", action="store_true")
-    size_group.add_argument("--set", dest="set_size", type=int, help="RTF-Halbpunkte direkt setzen, z.B. 22")
-    font_size.add_argument("--step", type=int, default=2, help="Halbpunkte pro Schritt; Standard 2 = 1pt")
-    _add_new_password_arg(font_size)
-    _add_password_arg(font_size)
-
-    sticky = sub.add_parser("sticky", help="Sticky-Metadaten einer Notiz anzeigen/ändern")
-    sticky.add_argument("file")
-    sticky.add_argument("output")
-    sticky.add_argument("--title", required=True)
-    state_group = sticky.add_mutually_exclusive_group()
-    state_group.add_argument("--show", action="store_true")
-    state_group.add_argument("--hide", action="store_true")
-    sticky.add_argument("--clear", action="store_true", help="Sticky-Metadaten entfernen")
-    sticky.add_argument("--autosize", action="store_true", help="Breite/Höhe aus Textlänge schätzen")
-    sticky.add_argument("--x", type=int)
-    sticky.add_argument("--y", type=int)
-    sticky.add_argument("--width", type=int)
-    sticky.add_argument("--height", type=int)
-    sticky.add_argument("--opacity", type=float)
-    sticky.add_argument("--opacity-choice", help="alte Transparenzauswahl 0..9 oder Label wie 90%; siehe sticky-opacity")
-    sticky.add_argument("--argb", help="ARGB/Farbe dezimal oder hex, z.B. 0xFFFFFF99")
-    _add_new_password_arg(sticky)
-    _add_password_arg(sticky)
-
-    rename = sub.add_parser("rename", help="Notiz umbenennen")
-    rename.add_argument("file")
-    rename.add_argument("output")
-    rename.add_argument("--title", required=True)
-    rename.add_argument("--new-title", required=True)
-    _add_new_password_arg(rename)
-    _add_password_arg(rename)
-
-    add = sub.add_parser("add-note", help="neue Notiz einfügen")
-    add.add_argument("file")
-    add.add_argument("output")
-    add.add_argument("--title", required=True, help="Bezugsknoten")
-    add.add_argument("--new-title", required=True)
-    add.add_argument("--text", default="")
-    add.add_argument("--where", choices=["child", "before", "after"], default="child")
-    _add_new_password_arg(add)
-    _add_password_arg(add)
-
-    delete = sub.add_parser("delete-note", help="Notiz löschen")
-    delete.add_argument("file")
-    delete.add_argument("output")
-    delete.add_argument("--title", required=True)
-    _add_new_password_arg(delete)
-    _add_password_arg(delete)
-
-    move = sub.add_parser("move", help="Notiz verschieben und speichern")
-    move.add_argument("file")
-    move.add_argument("output")
-    move.add_argument("--title", required=True)
-    move.add_argument("--action", choices=["up", "down", "indent", "outdent"], required=True)
-    _add_new_password_arg(move)
-    _add_password_arg(move)
-
-    move_under = sub.add_parser("move-under", help="Notiz unter einen Zielknoten verschieben")
-    move_under.add_argument("file")
-    move_under.add_argument("output")
-    move_under.add_argument("--title", required=True)
-    move_under.add_argument("--target-title", required=True)
-    _add_new_password_arg(move_under)
-    _add_password_arg(move_under)
-
-    move_relative = sub.add_parser("move-relative", help="Notiz relativ zu einem Zielknoten verschieben")
-    move_relative.add_argument("file")
-    move_relative.add_argument("output")
-    move_relative.add_argument("--title", required=True)
-    move_relative.add_argument("--target-title", required=True)
-    move_relative.add_argument("--where", choices=["child", "before", "after"], default="child")
-    _add_new_password_arg(move_relative)
-    _add_password_arg(move_relative)
-
-    copy_relative = sub.add_parser("copy-relative", help="Notiz/Subtree relativ zu einem Zielknoten kopieren")
-    copy_relative.add_argument("file")
-    copy_relative.add_argument("output")
-    copy_relative.add_argument("--title", required=True)
-    copy_relative.add_argument("--target-title", required=True)
-    copy_relative.add_argument("--where", choices=["child", "before", "after"], default="after")
-    _add_new_password_arg(copy_relative)
-    _add_password_arg(copy_relative)
-
-    duplicate = sub.add_parser("duplicate", help="Notiz duplizieren und speichern")
-    duplicate.add_argument("file")
-    duplicate.add_argument("output")
-    duplicate.add_argument("--title", required=True)
-    _add_new_password_arg(duplicate)
-    _add_password_arg(duplicate)
-
-    copy_node = sub.add_parser("copy-node", help="Notiz/Subtree in die portable Notizen-Zwischenablage kopieren")
-    copy_node.add_argument("file")
-    copy_node.add_argument("--title", required=True)
-    copy_node.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner, '-' gibt JSON aus")
-    copy_node.add_argument("--system", action="store_true", help="zusätzlich in die System-Zwischenablage schreiben")
-    copy_node.add_argument("--json", action="store_true", help="Metadaten als JSON ausgeben")
-    _add_password_arg(copy_node)
-
-    cut_node = sub.add_parser("cut-node", help="Notiz/Subtree ausschneiden, in Zwischenablage schreiben und Datei speichern")
-    cut_node.add_argument("file")
-    cut_node.add_argument("output")
-    cut_node.add_argument("--title", required=True)
-    cut_node.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner, '-' gibt JSON aus")
-    cut_node.add_argument("--system", action="store_true", help="zusätzlich in die System-Zwischenablage schreiben")
-    _add_new_password_arg(cut_node)
-    _add_password_arg(cut_node)
-
-    paste_node = sub.add_parser("paste-node", help="Notiz/Subtree aus Zwischenablage relativ zu einem Ziel einfügen")
-    paste_node.add_argument("file")
-    paste_node.add_argument("output")
-    paste_node.add_argument("--target-title", required=True)
-    paste_node.add_argument("--where", choices=["child", "before", "after"], default="child")
-    paste_node.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner")
-    paste_node.add_argument("--system", action="store_true", help="aus der System-Zwischenablage lesen")
-    _add_new_password_arg(paste_node)
-    _add_password_arg(paste_node)
-
-    clipboard_show = sub.add_parser("clipboard-show", help="portable Notizen-Zwischenablage anzeigen")
-    clipboard_show.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner")
-    clipboard_show.add_argument("--system", action="store_true", help="aus der System-Zwischenablage lesen")
-    clipboard_show.add_argument("--json", action="store_true")
-    clipboard_show.add_argument("--text", action="store_true", help="nur Klartextvorschau ausgeben")
-
-    clipboard_clear = sub.add_parser("clipboard-clear", help="portable Notizen-Zwischenablagedatei löschen")
-    clipboard_clear.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner")
-
-    combine = sub.add_parser("combine-subtree", help="Teilbaum wie die alte Einheit/Zusammenfassen-Funktion als neue Notiz einfügen")
-    combine.add_argument("file")
-    combine.add_argument("output")
-    combine.add_argument("--title", help="Teilbaum ab erstem passenden Titel; ohne Angabe die Wurzel")
-    combine.add_argument("--new-title")
-    combine.add_argument("--numbered", action="store_true", default=True)
-    combine.add_argument("--plain", action="store_true", help="ohne Nummerierung zusammenfassen")
-    combine.add_argument("--attach-to-selected", action="store_true", help="neue Zusammenfassung als Kind des ausgewählten Knotens statt unter der Wurzel")
-    _add_new_password_arg(combine)
-    _add_password_arg(combine)
-
-    expand_state = sub.add_parser("expand-state", help="Auf-/Zu-Zustand einzelner Knoten oder aller Knoten setzen")
-    expand_state.add_argument("file")
-    expand_state.add_argument("output")
-    expand_target = expand_state.add_mutually_exclusive_group(required=True)
-    expand_target.add_argument("--title")
-    expand_target.add_argument("--all", action="store_true", help="alle Knoten ändern")
-    expand_value = expand_state.add_mutually_exclusive_group(required=True)
-    expand_value.add_argument("--expanded", action="store_true")
-    expand_value.add_argument("--collapsed", action="store_true")
-    expand_state.add_argument("--close-root", action="store_true", help="bei --all --collapsed auch die Wurzel schließen")
-    _add_new_password_arg(expand_state)
-    _add_password_arg(expand_state)
-
-    font_list = sub.add_parser("font-list", help="installierte Systemschriften portabel auflisten")
-    font_list.add_argument("--contains")
-    font_list.add_argument("--limit", type=int)
-    font_list.add_argument("--json", action="store_true")
-    font_list.add_argument("--path", action="append", help="zusätzlicher oder alternativer Font-Pfad; mehrfach nutzbar")
-
-    defaults = sub.add_parser("default-paths", help="alte Datei.vb-Standardpfade anzeigen/optional anlegen")
-    defaults.add_argument("--create", action="store_true", help="Documents/Notizen wie im alten Programm anlegen")
-    defaults.add_argument("--json", action="store_true")
-
-    init_file = sub.add_parser("init-file", help="neue leere Notizen-Datei am alten Standardpfad oder Zielpfad erzeugen")
-    init_file.add_argument("output", nargs="?", help="Zieldatei; ohne Angabe Documents/Notizen/unbenannt.alx")
-    init_file.add_argument("--title", default="start")
-    init_file.add_argument("--text", help="optionaler Anfangstext")
-    init_file.add_argument("--overwrite", action="store_true", help="existierende Datei ersetzen")
-    _add_password_arg(init_file)
-
-    compat = sub.add_parser("compat-report", help="Migration-/Kompatibilitätsbericht für alte .alx/.xml-Dateien")
-    compat.add_argument("file")
-    compat.add_argument("--json", action="store_true")
-    _add_password_arg(compat)
-
-    backup_list = sub.add_parser("backup-list", help="lokale Sicherheitskopien einer Datei anzeigen")
-    backup_list.add_argument("file")
-    backup_list.add_argument("--json", action="store_true")
-
-    backup_restore = sub.add_parser("backup-restore", help="eine Sicherheitskopie zurückspielen")
-    backup_restore.add_argument("backup")
-    backup_restore.add_argument("--target", help="Zieldatei; ohne Angabe aus Backup-Ordner abgeleitet")
-    backup_restore.add_argument("--no-backup-current", action="store_true", help="aktuelle Zieldatei vor dem Überschreiben nicht sichern")
-
-    cfg_show = sub.add_parser("config-show", help="Port-Konfiguration anzeigen")
-
-    sub.add_parser("config-path", help="Pfad zur neuen JSON-Konfiguration ausgeben")
-
-    cfg_set = sub.add_parser("config-set", help="allgemeine Einstellungen aus dem alten Einstellungen-Dialog setzen")
-    cfg_set.add_argument("--backup-count", type=int)
-    cfg_set.add_argument("--autosave-seconds", type=int)
-    cfg_set.add_argument("--language", help="de/en/zh/fr/es/ru oder alter Name wie Deutsch/English")
-    autorun_group = cfg_set.add_mutually_exclusive_group()
-    autorun_group.add_argument("--autorun", action="store_true")
-    autorun_group.add_argument("--no-autorun", action="store_true")
-    autorun_min_group = cfg_set.add_mutually_exclusive_group()
-    autorun_min_group.add_argument("--autorun-minimized", action="store_true")
-    autorun_min_group.add_argument("--no-autorun-minimized", action="store_true")
-    taskbar_group = cfg_set.add_mutually_exclusive_group()
-    taskbar_group.add_argument("--show-in-taskbar", action="store_true")
-    taskbar_group.add_argument("--hide-in-taskbar", action="store_true")
-    border_group = cfg_set.add_mutually_exclusive_group()
-    border_group.add_argument("--show-desknote-borders", action="store_true")
-    border_group.add_argument("--hide-desknote-borders", action="store_true")
-    cfg_set.add_argument("--scrollbars-choice", type=int, choices=[0, 1, 2, 3])
-    cfg_set.add_argument("--last-file")
-    cfg_set.add_argument("--add-recent", action="append")
-    cfg_set.add_argument("--clear-recent", action="store_true")
-    cfg_set.add_argument("--window", help="Fenstergeometrie x,y,width,height")
-    cfg_set.add_argument("--window-state", choices=["normal", "max", "maximized", "min", "minimized"])
-    cfg_set.add_argument("--json", action="store_true")
-
-    lang_list = sub.add_parser("lang-list", help="portierte alte UI-Sprachen anzeigen")
-    lang_list.add_argument("--json", action="store_true")
-
-    lang_get = sub.add_parser("lang-get", help="alten lang_keys-Text übersetzen")
-    lang_get.add_argument("key", help="Name wie Strip1_1 oder numerischer Index")
-    lang_get.add_argument("--language", default="de")
-    lang_get.add_argument("--all", action="store_true", help="alle Sprachen für diesen Schlüssel anzeigen")
-    lang_get.add_argument("--json", action="store_true")
-
-    lang_dump = sub.add_parser("lang-dump", help="portierte alte Sprachtexte ausgeben")
-    lang_dump.add_argument("--language", default="de")
-    lang_dump.add_argument("--all", action="store_true", help="alle Sprachen tabellarisch ausgeben")
-    lang_dump.add_argument("--json", action="store_true")
-
-    shortcuts = sub.add_parser("shortcuts", help="alte Notizen.NET-Tastenkürzel anzeigen")
-    shortcuts.add_argument("--json", action="store_true")
-
-    contexts = sub.add_parser("context-menus", help="alte WinForms-Kontextmenüs als Portierungsmanifest anzeigen")
-    contexts.add_argument("--menu", choices=["content", "tree", "sticky", "all"], default="all")
-    contexts.add_argument("--language", default="de")
-    contexts.add_argument("--json", action="store_true")
-    contexts.add_argument("--include-opacity", action="store_true", help="alte Desktop-Notiz-Transparenzauswahl mit anzeigen")
-
-    about = sub.add_parser("about", help="portierten alten Hilfe-/Info-Text anzeigen")
-    about.add_argument("--language", default="de")
-    about.add_argument("--json", action="store_true")
-
-    feedback = sub.add_parser("feedback-draft", help="Feedback wie im alten Dialog als gzip/UTF-16-Datei vorbereiten, ohne es hochzuladen")
-    feedback.add_argument("output")
-    source_group = feedback.add_mutually_exclusive_group(required=True)
-    source_group.add_argument("--text")
-    source_group.add_argument("--input")
-
-    cfg_read_legacy = sub.add_parser("config-read-legacy", help="alte notizen.config.xml lesen und ausgeben")
-    cfg_read_legacy.add_argument("path")
-
-    cfg_import = sub.add_parser("config-import-legacy", help="alte notizen.config.xml in die neue JSON-Konfiguration übernehmen")
-    cfg_import.add_argument("path", nargs="?")
-
-    cfg_export = sub.add_parser("config-export-legacy", help="neue Konfiguration als alte XML-Struktur schreiben")
-    cfg_export.add_argument("output")
-
-    cfg_ftp = sub.add_parser("config-set-ftp", help="FTP/FTPS-Standardziel in der Port-Konfiguration setzen")
-    cfg_ftp.add_argument("--host")
-    cfg_ftp.add_argument("--user")
-    cfg_ftp.add_argument("--password")
-    cfg_ftp.add_argument("--path")
-    tls_group = cfg_ftp.add_mutually_exclusive_group()
-    tls_group.add_argument("--tls", action="store_true")
-    tls_group.add_argument("--no-tls", action="store_true")
-
-    auto = sub.add_parser("autostart", help="Autostart-Eintrag anzeigen/setzen")
-    group = auto.add_mutually_exclusive_group()
-    group.add_argument("--enable", action="store_true")
-    group.add_argument("--disable", action="store_true")
-
-    alarm_add = sub.add_parser("alarm-add", help="Wecker/Erinnerung anlegen oder ersetzen")
-    alarm_add.add_argument("--name", required=True)
-    alarm_add.add_argument("--at", required=True, help="z.B. 2026-04-27 09:30 oder 27.04.2026 09:30")
-    alarm_add.add_argument("--repeat", default="none", help="none/daily/weekly/monthly/yearly oder deutsch: einmal/tage/wochen/monate/jahre")
-    alarm_add.add_argument("--interval", type=int, default=1)
-    alarm_add.add_argument("--weekday", action="append", help="für weekly: mo,di,mi,do,fr,sa,so; mehrfach oder kommagetrennt")
-    alarm_add.add_argument("--message", default="")
-    alarm_add.add_argument("--note-title", default="")
-    alarm_add.add_argument("--inactive", action="store_true")
-
-    sub.add_parser("alarm-list", help="gespeicherte Wecker anzeigen")
-    sub.add_parser("alarm-next", help="nächsten aktiven Wecker anzeigen")
-    alarm_remove = sub.add_parser("alarm-remove", help="Wecker entfernen")
-    alarm_remove.add_argument("--name", required=True)
-
-    alarm_due = sub.add_parser("alarm-due", help="fällige Wecker im aktuellen Zeitfenster prüfen")
-    alarm_due.add_argument("--now", help="Test-/Vergleichszeit, z.B. 2026-04-27 09:30")
-    alarm_due.add_argument("--grace-seconds", type=int, default=60, help="Rückblickfenster für fällige Termine")
-    alarm_due.add_argument("--notify", action="store_true", help="Desktop-Benachrichtigung auslösen")
-    alarm_due.add_argument("--dry-run", action="store_true", help="Benachrichtigung nur simulieren")
-
-    alarm_watch = sub.add_parser("alarm-watch", help="Wecker-Schleife starten und bei Fälligkeit melden")
-    alarm_watch.add_argument("--poll-seconds", type=float, default=30)
-    alarm_watch.add_argument("--grace-seconds", type=int, default=60)
-    alarm_watch.add_argument("--once", action="store_true", help="nur einmal prüfen und beenden")
-    alarm_watch.add_argument("--no-notify", action="store_true", help="nur in stdout ausgeben")
-    alarm_watch.add_argument("--dry-run", action="store_true", help="Benachrichtigung nur simulieren")
-
-    args = parser.parse_args(argv)
+    argv_list = list(sys.argv[1:] if argv is None else argv)
+    if argv_list and argv_list[0] == "sticky":
+        return _main_sticky_fast(argv_list[1:])
+
+    global _CACHED_PARSER
+    if _CACHED_PARSER is None:
+        parser = argparse.ArgumentParser(description="Kommandozeilenwerkzeug für Notizen.NET-.alx-Dateien")
+        sub = parser.add_subparsers(dest="cmd", required=True)
+
+        tree = sub.add_parser("tree", help="Notizbaum ausgeben")
+        tree.add_argument("file")
+        tree.add_argument("--visible-only", action="store_true", help="eingeklappte Unterknoten ausblenden")
+        _add_password_arg(tree)
+
+        txt = sub.add_parser("export-txt", help="Nach TXT exportieren")
+        txt.add_argument("file")
+        txt.add_argument("output")
+        txt.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        txt.add_argument("--numbered", action="store_true")
+        _add_password_arg(txt)
+
+        rtf = sub.add_parser("export-rtf", help="Nach RTF exportieren")
+        rtf.add_argument("file")
+        rtf.add_argument("output")
+        rtf.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        rtf.add_argument("--numbered", action="store_true")
+        _add_password_arg(rtf)
+
+        html = sub.add_parser("export-html", help="Nach HTML exportieren")
+        html.add_argument("file")
+        html.add_argument("output")
+        html.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        _add_password_arg(html)
+
+        legacy_txt = sub.add_parser("export-legacy-txt", help="TXT-Export näher am alten Notizen.NET-Codepage-/CRLF-Verhalten")
+        legacy_txt.add_argument("file")
+        legacy_txt.add_argument("output")
+        legacy_txt.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        legacy_txt.add_argument("--numbered", action="store_true", default=True)
+        legacy_txt.add_argument("--plain", action="store_true", help="ohne Nummerierung exportieren")
+        legacy_txt.add_argument("--encoding", default="cp1252", help="Zielencoding; Standard cp1252 wie viele alte Windows-Installationen")
+        _add_password_arg(legacy_txt)
+
+        unity_rtf = sub.add_parser("export-unity-rtf", help="RTF-Export im Stil der alten Einheit/Zusammenfassen-Funktion")
+        unity_rtf.add_argument("file")
+        unity_rtf.add_argument("output")
+        unity_rtf.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        unity_rtf.add_argument("--numbered", action="store_true", default=True)
+        unity_rtf.add_argument("--plain", action="store_true", help="ohne Nummerierung exportieren")
+        _add_password_arg(unity_rtf)
+
+        md = sub.add_parser("export-md", help="Nach Markdown exportieren")
+        md.add_argument("file")
+        md.add_argument("output")
+        md.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        _add_password_arg(md)
+
+        json_exp = sub.add_parser("export-json", help="Dokument oder Teilbaum als JSON exportieren")
+        json_exp.add_argument("file")
+        json_exp.add_argument("output")
+        json_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        _add_password_arg(json_exp)
+
+        alx_exp = sub.add_parser("export-alx", help="Teilbaum als eigenständige .alx/.xml-Datei exportieren")
+        alx_exp.add_argument("file")
+        alx_exp.add_argument("output")
+        alx_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren; ohne Angabe die ganze Datei")
+        _add_new_password_arg(alx_exp)
+        _add_password_arg(alx_exp)
+
+        opml_exp = sub.add_parser("export-opml", help="Dokument oder Teilbaum als OPML-Outliner-Datei exportieren")
+        opml_exp.add_argument("file")
+        opml_exp.add_argument("output")
+        opml_exp.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        opml_exp.add_argument("--no-metadata", action="store_true", help="keine privaten _notizen_*-Attribute schreiben")
+        opml_exp.add_argument("--no-rtf", action="store_true", help="RTF nicht als Base64-Metadatum mitschreiben")
+        opml_exp.add_argument("--no-text", action="store_true", help="Klartext nicht als OPML-Notiz/Metadatum mitschreiben")
+        _add_password_arg(opml_exp)
+
+        notes_doc = sub.add_parser("export-notes-doc", help="älteres notes_doc/node/leaf-XML exportieren")
+        notes_doc.add_argument("file")
+        notes_doc.add_argument("output")
+        notes_doc.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel exportieren")
+        notes_doc.add_argument("--no-leaf-terminal-nodes", action="store_true", help="alle Knoten als <node> statt Blätter als <leaf> schreiben")
+        notes_doc.add_argument("--include-empty-paragraphs", action="store_true", help="leere Absätze mitschreiben")
+        notes_doc.add_argument("--encoding", default="utf-8", help="XML-Encoding, Standard utf-8")
+        _add_password_arg(notes_doc)
+
+        note_rtf = sub.add_parser("export-note-rtf", help="Roh-RTF einer einzelnen Notiz exportieren")
+        note_rtf.add_argument("file")
+        note_rtf.add_argument("output")
+        note_rtf.add_argument("--title", required=True)
+        _add_password_arg(note_rtf)
+
+        images = sub.add_parser("extract-images", help="eingebettete RTF-Bilder extrahieren")
+        images.add_argument("file")
+        images.add_argument("output_dir")
+        images.add_argument("--title", help="nur eine Notiz untersuchen")
+        _add_password_arg(images)
+
+        sticky_html = sub.add_parser("export-sticky-html", help="sichtbare Sticky-Notizen als HTML-Board exportieren")
+        sticky_html.add_argument("file")
+        sticky_html.add_argument("output")
+        sticky_html.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten exportieren")
+        _add_password_arg(sticky_html)
+
+        password = sub.add_parser("change-password", help="Datei neu speichern und Passwort ändern/entfernen")
+        password.add_argument("file")
+        password.add_argument("output")
+        password.add_argument("--old-password")
+        password.add_argument("--new-password", help="Leer/fehlend speichert unverschlüsselt")
+
+        dump_xml = sub.add_parser("dump-xml", help=".alx/.xml/FTP-Datei als lesbares XML ausgeben")
+        dump_xml.add_argument("file")
+        dump_xml.add_argument("output", nargs="?")
+        _add_password_arg(dump_xml)
+
+        pack_xml = sub.add_parser("pack-xml", help="XML wieder als .alx/.xml oder FTP-Ziel speichern")
+        pack_xml.add_argument("xml_file")
+        pack_xml.add_argument("output")
+        pack_xml.add_argument("--password")
+
+        stats = sub.add_parser("stats", help="Baumstatistik ausgeben")
+        stats.add_argument("file")
+        _add_password_arg(stats)
+
+        search = sub.add_parser("search", help="Titel und Text durchsuchen")
+        search.add_argument("file")
+        search.add_argument("needle")
+        search.add_argument("--case-sensitive", action="store_true")
+        search.add_argument("--whole-words", action="store_true")
+        search.add_argument("--details", action="store_true", help="Treffer zählen und Snippets ausgeben")
+        search.add_argument("--occurrences", action="store_true", help="exakte Trefferpositionen wie alte suchergebnisse.SelectionStart-Liste ausgeben")
+        search.add_argument("--json", action="store_true", help="detaillierte Treffer als JSON ausgeben")
+        search.add_argument("--context", type=int, default=40, help="Snippet-Kontextzeichen")
+        search.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel durchsuchen")
+        _add_password_arg(search)
+
+        search_occ = sub.add_parser("search-occurrences", help="einzelne Suchtreffer mit Positionen ausgeben")
+        search_occ.add_argument("file")
+        search_occ.add_argument("needle")
+        search_occ.add_argument("--case-sensitive", action="store_true")
+        search_occ.add_argument("--whole-words", action="store_true")
+        search_occ.add_argument("--json", action="store_true")
+        search_occ.add_argument("--context", type=int, default=40)
+        search_occ.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel durchsuchen")
+        search_occ.add_argument("--field", action="append", choices=["title", "text", "body", "inhalt"], help="Suchfeld; mehrfach nutzbar")
+        search_occ.add_argument("--limit", type=int)
+        _add_password_arg(search_occ)
+
+        replace = sub.add_parser("replace", help="Text in Titeln und/oder Notiztext ersetzen")
+        replace.add_argument("file")
+        replace.add_argument("output")
+        replace.add_argument("needle")
+        replace.add_argument("replacement")
+        replace.add_argument("--title", help="nur Teilbaum ab erstem passenden Titel ändern")
+        replace.add_argument("--case-sensitive", action="store_true")
+        replace.add_argument("--whole-words", action="store_true")
+        group_replace = replace.add_mutually_exclusive_group()
+        group_replace.add_argument("--titles-only", action="store_true")
+        group_replace.add_argument("--text-only", action="store_true")
+        _add_new_password_arg(replace)
+        _add_password_arg(replace)
+
+        validate = sub.add_parser("validate", help="Datei laden und Kompatibilitäts-/Statistikcheck ausgeben")
+        validate.add_argument("file")
+        validate.add_argument("--json", action="store_true")
+        _add_password_arg(validate)
+
+        sub_recent = sub.add_parser("recent", help="zuletzt geöffnete Dateien aus der Port-Konfiguration anzeigen")
+        sub_recent.add_argument("--json", action="store_true")
+
+        palette = sub.add_parser("color-palette", help="alte helle Notizen.NET-Farbpalette anzeigen")
+        palette.add_argument("--json", action="store_true")
+
+        color_note = sub.add_parser("color-note", help="Knotenfarben bgcolor/fgcolor setzen, löschen oder anzeigen")
+        color_note.add_argument("file")
+        color_note.add_argument("output")
+        color_note.add_argument("--title", required=True)
+        color_note.add_argument("--bg-color")
+        color_note.add_argument("--fg-color")
+        color_note.add_argument("--bg-name", help="Name aus color-palette, z.B. LightYellow")
+        color_note.add_argument("--fg-name", help="Name aus color-palette")
+        color_note.add_argument("--random-bg", action="store_true", help="alte zufällige helle Hintergrundfarbe setzen")
+        color_note.add_argument("--random-fg", action="store_true", help="alte zufällige helle Vordergrundfarbe setzen")
+        color_note.add_argument("--random-index", type=int, help="deterministischer Palette-Index für --random-bg/--random-fg")
+        color_note.add_argument("--clear", action="store_true", help="bgcolor und fgcolor löschen")
+        color_note.add_argument("--clear-bg", action="store_true")
+        color_note.add_argument("--clear-fg", action="store_true")
+        color_note.add_argument("--show", action="store_true", help="Farben nach der Änderung als JSON ausgeben")
+        _add_new_password_arg(color_note)
+        _add_password_arg(color_note)
+
+        sticky_list = sub.add_parser("sticky-list", help="Sticky-Fenster-Metadaten normalisiert anzeigen")
+        sticky_list.add_argument("file")
+        sticky_list.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten anzeigen")
+        sticky_list.add_argument("--json", action="store_true")
+        _add_password_arg(sticky_list)
+
+        sticky_run = sub.add_parser("sticky-run", help="sichtbare Sticky-Notizen als kleine Python/Tk-Fenster öffnen")
+        sticky_run.add_argument("file")
+        sticky_run.add_argument("--all", action="store_true", help="auch ausgeblendete Sticky-Metadaten öffnen")
+        sticky_run.add_argument("--readonly", action="store_true", help="Sticky-Fenster nicht editierbar machen")
+        sticky_run.add_argument("--output", help="Zieldatei für Änderungen; ohne Angabe wird die Eingabedatei überschrieben")
+        _add_new_password_arg(sticky_run)
+        _add_password_arg(sticky_run)
+
+        sticky_opacity = sub.add_parser("sticky-opacity", help="alte Transparenzauswahl aus dem Desktop-Notiz-Menü anzeigen")
+        sticky_opacity.add_argument("--json", action="store_true")
+
+        set_note = sub.add_parser("set-note", help="Text/RTF einer Notiz ersetzen und speichern")
+        set_note.add_argument("file")
+        set_note.add_argument("output")
+        set_note.add_argument("--title", required=True)
+        set_note.add_argument("--input", required=True)
+        set_note.add_argument("--rtf", action="store_true")
+        _add_new_password_arg(set_note)
+        _add_password_arg(set_note)
+
+        json_imp = sub.add_parser("import-json", help="JSON-Teilbaum in eine Datei importieren")
+        json_imp.add_argument("file")
+        json_imp.add_argument("output")
+        json_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
+        json_imp.add_argument("--input", required=True)
+        json_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
+        _add_new_password_arg(json_imp)
+        _add_password_arg(json_imp)
+
+        opml_imp = sub.add_parser("import-opml", help="OPML-Datei als Teilbaum importieren")
+        opml_imp.add_argument("file")
+        opml_imp.add_argument("output")
+        opml_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
+        opml_imp.add_argument("--input", required=True, help="zu importierende OPML-Datei")
+        opml_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
+        _add_new_password_arg(opml_imp)
+        _add_password_arg(opml_imp)
+
+        file_imp = sub.add_parser("import-file", help="Root-Teilbaum einer anderen .alx/.xml/FTP-Datei importieren")
+        file_imp.add_argument("file")
+        file_imp.add_argument("output")
+        file_imp.add_argument("--title", required=True, help="Ziel-/Bezugsknoten")
+        file_imp.add_argument("--input", required=True, help="zu importierende .alx/.xml/FTP-Datei")
+        file_imp.add_argument("--where", choices=["child", "before", "after"], default="child")
+        file_imp.add_argument("--input-password")
+        _add_new_password_arg(file_imp)
+        _add_password_arg(file_imp)
+
+        img = sub.add_parser("insert-image", help="PNG/JPEG/BMP als RTF-Bild an eine Notiz anhängen")
+        img.add_argument("file")
+        img.add_argument("output")
+        img.add_argument("--title", required=True)
+        img.add_argument("--image", required=True)
+        img.add_argument("--width-twips", type=int)
+        img.add_argument("--height-twips", type=int)
+        _add_new_password_arg(img)
+        _add_password_arg(img)
+
+        date = sub.add_parser("append-date", help="aktuelles Datum/Uhrzeit an eine Notiz anhängen")
+        date.add_argument("file")
+        date.add_argument("output")
+        date.add_argument("--title", required=True)
+        _add_new_password_arg(date)
+        _add_password_arg(date)
+
+        bullet = sub.add_parser("append-bullet", help="Aufzählungszeichen an eine Notiz anhängen")
+        bullet.add_argument("file")
+        bullet.add_argument("output")
+        bullet.add_argument("--title", required=True)
+        _add_new_password_arg(bullet)
+        _add_password_arg(bullet)
+
+        insert_text = sub.add_parser("insert-text", help="Text/Datum/Aufzählung an einer Plain-Text-Position einfügen")
+        insert_text.add_argument("file")
+        insert_text.add_argument("output")
+        insert_text.add_argument("--title", required=True)
+        insert_text.add_argument("--at", type=int, required=True, help="Einfügeposition im Klartext der Notiz")
+        insert_payload = insert_text.add_mutually_exclusive_group(required=True)
+        insert_payload.add_argument("--text")
+        insert_payload.add_argument("--input", help="UTF-8-Textdatei zum Einfügen")
+        insert_payload.add_argument("--date", action="store_true", help="aktuelles Datum/Uhrzeit an der Position einfügen")
+        insert_payload.add_argument("--bullet", action="store_true", help="Aufzählungszeichen an der Position einfügen")
+        _add_new_password_arg(insert_text)
+        _add_password_arg(insert_text)
+
+        delete_range = sub.add_parser("delete-range", help="Plain-Text-Bereich einer Notiz löschen")
+        delete_range.add_argument("file")
+        delete_range.add_argument("output")
+        delete_range.add_argument("--title", required=True)
+        delete_range.add_argument("--start", type=int, required=True)
+        delete_group = delete_range.add_mutually_exclusive_group(required=True)
+        delete_group.add_argument("--length", type=int)
+        delete_group.add_argument("--end", type=int)
+        _add_new_password_arg(delete_range)
+        _add_password_arg(delete_range)
+
+        style_range = sub.add_parser("style-range", help="RichTextBox-Toolbar-Stil auf einen Plain-Text-Bereich anwenden")
+        style_range.add_argument("file")
+        style_range.add_argument("output")
+        style_range.add_argument("--title", required=True)
+        style_range.add_argument("--start", type=int, required=True)
+        style_range_group = style_range.add_mutually_exclusive_group(required=True)
+        style_range_group.add_argument("--length", type=int)
+        style_range_group.add_argument("--end", type=int)
+        style_range.add_argument("--style", choices=["bold", "italic", "underline", "strike", "regular"], help="Toolbar-Stil wie im Original")
+        style_range.add_argument("--font-family")
+        style_range.add_argument("--font-size", type=int, help="RTF-Halbpunkte, 18 = 9pt")
+        style_range.add_argument("--fg-color")
+        style_range.add_argument("--bg-color")
+        style_range.add_argument("--show", action="store_true")
+        _add_new_password_arg(style_range)
+        _add_password_arg(style_range)
+
+        fmt = sub.add_parser("format-note", help="eine Notiz als schlichtes, formatiertes RTF neu schreiben")
+        fmt.add_argument("file")
+        fmt.add_argument("output")
+        fmt.add_argument("--title", required=True)
+        fmt.add_argument("--font-family", default="Sans Serif")
+        fmt.add_argument("--font-size", type=int, default=18, help="RTF-Halbpunkte, 18 = 9pt")
+        fmt.add_argument("--bold", action="store_true")
+        fmt.add_argument("--italic", action="store_true")
+        fmt.add_argument("--underline", action="store_true")
+        fmt.add_argument("--strike", action="store_true")
+        fmt.add_argument("--fg-color")
+        fmt.add_argument("--bg-color")
+        _add_new_password_arg(fmt)
+        _add_password_arg(fmt)
+
+        style = sub.add_parser("style-note", help="alte RichTextBox-Toolbar-Stile auf eine ganze Notiz anwenden")
+        style.add_argument("file")
+        style.add_argument("output")
+        style.add_argument("--title", required=True)
+        style.add_argument("--style", choices=["bold", "italic", "underline", "strike", "regular"], help="Toolbar-Stil wie im Original")
+        style.add_argument("--font-family", help="Schriftfamilie setzen")
+        style.add_argument("--font-size", type=int, help="RTF-Halbpunkte setzen, 18 = 9pt")
+        style.add_argument("--fg-color")
+        style.add_argument("--bg-color")
+        style.add_argument("--show", action="store_true", help="erkannte globale Formatwerte anzeigen")
+        _add_new_password_arg(style)
+        _add_password_arg(style)
+
+        font_size = sub.add_parser("font-size", help="Textgröße einer Notiz wie Ctrl+Plus/Ctrl+Minus ändern")
+        font_size.add_argument("file")
+        font_size.add_argument("output")
+        font_size.add_argument("--title", required=True)
+        size_group = font_size.add_mutually_exclusive_group(required=True)
+        size_group.add_argument("--bigger", action="store_true")
+        size_group.add_argument("--smaller", action="store_true")
+        size_group.add_argument("--set", dest="set_size", type=int, help="RTF-Halbpunkte direkt setzen, z.B. 22")
+        font_size.add_argument("--step", type=int, default=2, help="Halbpunkte pro Schritt; Standard 2 = 1pt")
+        _add_new_password_arg(font_size)
+        _add_password_arg(font_size)
+
+        sticky = sub.add_parser("sticky", help="Sticky-Metadaten einer Notiz anzeigen/ändern")
+        sticky.add_argument("file")
+        sticky.add_argument("output")
+        sticky.add_argument("--title", required=True)
+        state_group = sticky.add_mutually_exclusive_group()
+        state_group.add_argument("--show", action="store_true")
+        state_group.add_argument("--hide", action="store_true")
+        sticky.add_argument("--clear", action="store_true", help="Sticky-Metadaten entfernen")
+        sticky.add_argument("--autosize", action="store_true", help="Breite/Höhe aus Textlänge schätzen")
+        sticky.add_argument("--x", type=int)
+        sticky.add_argument("--y", type=int)
+        sticky.add_argument("--width", type=int)
+        sticky.add_argument("--height", type=int)
+        sticky.add_argument("--opacity", type=float)
+        sticky.add_argument("--opacity-choice", help="alte Transparenzauswahl 0..9 oder Label wie 90%; siehe sticky-opacity")
+        sticky.add_argument("--argb", help="ARGB/Farbe dezimal oder hex, z.B. 0xFFFFFF99")
+        _add_new_password_arg(sticky)
+        _add_password_arg(sticky)
+
+        rename = sub.add_parser("rename", help="Notiz umbenennen")
+        rename.add_argument("file")
+        rename.add_argument("output")
+        rename.add_argument("--title", required=True)
+        rename.add_argument("--new-title", required=True)
+        _add_new_password_arg(rename)
+        _add_password_arg(rename)
+
+        add = sub.add_parser("add-note", help="neue Notiz einfügen")
+        add.add_argument("file")
+        add.add_argument("output")
+        add.add_argument("--title", required=True, help="Bezugsknoten")
+        add.add_argument("--new-title", required=True)
+        add.add_argument("--text", default="")
+        add.add_argument("--where", choices=["child", "before", "after"], default="child")
+        _add_new_password_arg(add)
+        _add_password_arg(add)
+
+        delete = sub.add_parser("delete-note", help="Notiz löschen")
+        delete.add_argument("file")
+        delete.add_argument("output")
+        delete.add_argument("--title", required=True)
+        _add_new_password_arg(delete)
+        _add_password_arg(delete)
+
+        move = sub.add_parser("move", help="Notiz verschieben und speichern")
+        move.add_argument("file")
+        move.add_argument("output")
+        move.add_argument("--title", required=True)
+        move.add_argument("--action", choices=["up", "down", "indent", "outdent"], required=True)
+        _add_new_password_arg(move)
+        _add_password_arg(move)
+
+        move_under = sub.add_parser("move-under", help="Notiz unter einen Zielknoten verschieben")
+        move_under.add_argument("file")
+        move_under.add_argument("output")
+        move_under.add_argument("--title", required=True)
+        move_under.add_argument("--target-title", required=True)
+        _add_new_password_arg(move_under)
+        _add_password_arg(move_under)
+
+        move_relative = sub.add_parser("move-relative", help="Notiz relativ zu einem Zielknoten verschieben")
+        move_relative.add_argument("file")
+        move_relative.add_argument("output")
+        move_relative.add_argument("--title", required=True)
+        move_relative.add_argument("--target-title", required=True)
+        move_relative.add_argument("--where", choices=["child", "before", "after"], default="child")
+        _add_new_password_arg(move_relative)
+        _add_password_arg(move_relative)
+
+        copy_relative = sub.add_parser("copy-relative", help="Notiz/Subtree relativ zu einem Zielknoten kopieren")
+        copy_relative.add_argument("file")
+        copy_relative.add_argument("output")
+        copy_relative.add_argument("--title", required=True)
+        copy_relative.add_argument("--target-title", required=True)
+        copy_relative.add_argument("--where", choices=["child", "before", "after"], default="after")
+        _add_new_password_arg(copy_relative)
+        _add_password_arg(copy_relative)
+
+        duplicate = sub.add_parser("duplicate", help="Notiz duplizieren und speichern")
+        duplicate.add_argument("file")
+        duplicate.add_argument("output")
+        duplicate.add_argument("--title", required=True)
+        _add_new_password_arg(duplicate)
+        _add_password_arg(duplicate)
+
+        copy_node = sub.add_parser("copy-node", help="Notiz/Subtree in die portable Notizen-Zwischenablage kopieren")
+        copy_node.add_argument("file")
+        copy_node.add_argument("--title", required=True)
+        copy_node.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner, '-' gibt JSON aus")
+        copy_node.add_argument("--system", action="store_true", help="zusätzlich in die System-Zwischenablage schreiben")
+        copy_node.add_argument("--json", action="store_true", help="Metadaten als JSON ausgeben")
+        _add_password_arg(copy_node)
+
+        cut_node = sub.add_parser("cut-node", help="Notiz/Subtree ausschneiden, in Zwischenablage schreiben und Datei speichern")
+        cut_node.add_argument("file")
+        cut_node.add_argument("output")
+        cut_node.add_argument("--title", required=True)
+        cut_node.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner, '-' gibt JSON aus")
+        cut_node.add_argument("--system", action="store_true", help="zusätzlich in die System-Zwischenablage schreiben")
+        _add_new_password_arg(cut_node)
+        _add_password_arg(cut_node)
+
+        paste_node = sub.add_parser("paste-node", help="Notiz/Subtree aus Zwischenablage relativ zu einem Ziel einfügen")
+        paste_node.add_argument("file")
+        paste_node.add_argument("output")
+        paste_node.add_argument("--target-title", required=True)
+        paste_node.add_argument("--where", choices=["child", "before", "after"], default="child")
+        paste_node.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner")
+        paste_node.add_argument("--system", action="store_true", help="aus der System-Zwischenablage lesen")
+        _add_new_password_arg(paste_node)
+        _add_password_arg(paste_node)
+
+        clipboard_show = sub.add_parser("clipboard-show", help="portable Notizen-Zwischenablage anzeigen")
+        clipboard_show.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner")
+        clipboard_show.add_argument("--system", action="store_true", help="aus der System-Zwischenablage lesen")
+        clipboard_show.add_argument("--json", action="store_true")
+        clipboard_show.add_argument("--text", action="store_true", help="nur Klartextvorschau ausgeben")
+
+        clipboard_clear = sub.add_parser("clipboard-clear", help="portable Notizen-Zwischenablagedatei löschen")
+        clipboard_clear.add_argument("--clipboard", help="JSON-Zwischenablagedatei; Standard im Konfigurationsordner")
+
+        combine = sub.add_parser("combine-subtree", help="Teilbaum wie die alte Einheit/Zusammenfassen-Funktion als neue Notiz einfügen")
+        combine.add_argument("file")
+        combine.add_argument("output")
+        combine.add_argument("--title", help="Teilbaum ab erstem passenden Titel; ohne Angabe die Wurzel")
+        combine.add_argument("--new-title")
+        combine.add_argument("--numbered", action="store_true", default=True)
+        combine.add_argument("--plain", action="store_true", help="ohne Nummerierung zusammenfassen")
+        combine.add_argument("--attach-to-selected", action="store_true", help="neue Zusammenfassung als Kind des ausgewählten Knotens statt unter der Wurzel")
+        _add_new_password_arg(combine)
+        _add_password_arg(combine)
+
+        expand_state = sub.add_parser("expand-state", help="Auf-/Zu-Zustand einzelner Knoten oder aller Knoten setzen")
+        expand_state.add_argument("file")
+        expand_state.add_argument("output")
+        expand_target = expand_state.add_mutually_exclusive_group(required=True)
+        expand_target.add_argument("--title")
+        expand_target.add_argument("--all", action="store_true", help="alle Knoten ändern")
+        expand_value = expand_state.add_mutually_exclusive_group(required=True)
+        expand_value.add_argument("--expanded", action="store_true")
+        expand_value.add_argument("--collapsed", action="store_true")
+        expand_state.add_argument("--close-root", action="store_true", help="bei --all --collapsed auch die Wurzel schließen")
+        _add_new_password_arg(expand_state)
+        _add_password_arg(expand_state)
+
+        font_list = sub.add_parser("font-list", help="installierte Systemschriften portabel auflisten")
+        font_list.add_argument("--contains")
+        font_list.add_argument("--limit", type=int)
+        font_list.add_argument("--json", action="store_true")
+        font_list.add_argument("--path", action="append", help="zusätzlicher oder alternativer Font-Pfad; mehrfach nutzbar")
+
+        defaults = sub.add_parser("default-paths", help="alte Datei.vb-Standardpfade anzeigen/optional anlegen")
+        defaults.add_argument("--create", action="store_true", help="Documents/Notizen wie im alten Programm anlegen")
+        defaults.add_argument("--json", action="store_true")
+
+        init_file = sub.add_parser("init-file", help="neue leere Notizen-Datei am alten Standardpfad oder Zielpfad erzeugen")
+        init_file.add_argument("output", nargs="?", help="Zieldatei; ohne Angabe Documents/Notizen/unbenannt.alx")
+        init_file.add_argument("--title", default="start")
+        init_file.add_argument("--text", help="optionaler Anfangstext")
+        init_file.add_argument("--overwrite", action="store_true", help="existierende Datei ersetzen")
+        _add_password_arg(init_file)
+
+        compat = sub.add_parser("compat-report", help="Migration-/Kompatibilitätsbericht für alte .alx/.xml-Dateien")
+        compat.add_argument("file")
+        compat.add_argument("--json", action="store_true")
+        _add_password_arg(compat)
+
+        repair = sub.add_parser("repair", help="alte/malformierte Notizen-Datei normalisieren und repariert speichern")
+        repair.add_argument("file")
+        repair.add_argument("output", nargs="?", help="Zieldatei; nur mit --dry-run optional")
+        repair.add_argument("--dry-run", action="store_true", help="nur Reparaturbericht ausgeben, nicht speichern")
+        repair.add_argument("--json", action="store_true")
+        repair.add_argument("--no-empty-titles", action="store_true")
+        repair.add_argument("--no-plain-to-rtf", action="store_true")
+        repair.add_argument("--no-transparent-colors", action="store_true")
+        repair.add_argument("--no-sticky", action="store_true")
+        repair.add_argument("--no-argb", action="store_true")
+        _add_password_arg(repair)
+        _add_new_password_arg(repair)
+
+        password_info = sub.add_parser("password-info", help="alte 24-Zeichen-Passwortnormalisierung und DES-Schlüsselbereiche anzeigen")
+        password_info.add_argument("password", nargs="?", default="")
+        password_info.add_argument("--reveal", action="store_true", help="normalisiertes Passwort und DES-Schlüsselbereiche anzeigen")
+        password_info.add_argument("--json", action="store_true")
+
+        password_norm = sub.add_parser("password-normalize", help="Passwort wie Notizen.NET auf 24 Zeichen kürzen/auffüllen")
+        password_norm.add_argument("password", nargs="?", default="")
+        password_norm.add_argument("--reveal", action="store_true")
+        password_norm.add_argument("--json", action="store_true")
+
+        backup_list = sub.add_parser("backup-list", help="lokale Sicherheitskopien einer Datei anzeigen")
+        backup_list.add_argument("file")
+        backup_list.add_argument("--json", action="store_true")
+
+        backup_restore = sub.add_parser("backup-restore", help="eine Sicherheitskopie zurückspielen")
+        backup_restore.add_argument("backup")
+        backup_restore.add_argument("--target", help="Zieldatei; ohne Angabe aus Backup-Ordner abgeleitet")
+        backup_restore.add_argument("--no-backup-current", action="store_true", help="aktuelle Zieldatei vor dem Überschreiben nicht sichern")
+
+        cfg_show = sub.add_parser("config-show", help="Port-Konfiguration anzeigen")
+
+        sub.add_parser("config-path", help="Pfad zur neuen JSON-Konfiguration ausgeben")
+
+        cfg_set = sub.add_parser("config-set", help="allgemeine Einstellungen aus dem alten Einstellungen-Dialog setzen")
+        cfg_set.add_argument("--backup-count", type=int)
+        cfg_set.add_argument("--autosave-seconds", type=int)
+        cfg_set.add_argument("--language", help="de/en/zh/fr/es/ru oder alter Name wie Deutsch/English")
+        autorun_group = cfg_set.add_mutually_exclusive_group()
+        autorun_group.add_argument("--autorun", action="store_true")
+        autorun_group.add_argument("--no-autorun", action="store_true")
+        autorun_min_group = cfg_set.add_mutually_exclusive_group()
+        autorun_min_group.add_argument("--autorun-minimized", action="store_true")
+        autorun_min_group.add_argument("--no-autorun-minimized", action="store_true")
+        taskbar_group = cfg_set.add_mutually_exclusive_group()
+        taskbar_group.add_argument("--show-in-taskbar", action="store_true")
+        taskbar_group.add_argument("--hide-in-taskbar", action="store_true")
+        border_group = cfg_set.add_mutually_exclusive_group()
+        border_group.add_argument("--show-desknote-borders", action="store_true")
+        border_group.add_argument("--hide-desknote-borders", action="store_true")
+        cfg_set.add_argument("--scrollbars-choice", type=int, choices=[0, 1, 2, 3])
+        cfg_set.add_argument("--last-file")
+        cfg_set.add_argument("--add-recent", action="append")
+        cfg_set.add_argument("--clear-recent", action="store_true")
+        cfg_set.add_argument("--window", help="Fenstergeometrie x,y,width,height")
+        cfg_set.add_argument("--window-state", choices=["normal", "max", "maximized", "min", "minimized"])
+        cfg_set.add_argument("--toolstrip", nargs=3, action="append", metavar=("NAME", "X", "Y"), help="alte ToolStrip-Position speichern: haupt/elements/font/cutpastecopy X Y")
+        cfg_set.add_argument("--json", action="store_true")
+
+        toolstrips = sub.add_parser("toolstrips", help="alte ToolStrip-Positionen aus der Konfiguration anzeigen/setzen")
+        toolstrips.add_argument("--set", nargs=3, action="append", metavar=("NAME", "X", "Y"))
+        toolstrips.add_argument("--json", action="store_true")
+
+        lang_list = sub.add_parser("lang-list", help="portierte alte UI-Sprachen anzeigen")
+        lang_list.add_argument("--json", action="store_true")
+
+        lang_get = sub.add_parser("lang-get", help="alten lang_keys-Text übersetzen")
+        lang_get.add_argument("key", help="Name wie Strip1_1 oder numerischer Index")
+        lang_get.add_argument("--language", default="de")
+        lang_get.add_argument("--all", action="store_true", help="alle Sprachen für diesen Schlüssel anzeigen")
+        lang_get.add_argument("--json", action="store_true")
+
+        lang_dump = sub.add_parser("lang-dump", help="portierte alte Sprachtexte ausgeben")
+        lang_dump.add_argument("--language", default="de")
+        lang_dump.add_argument("--all", action="store_true", help="alle Sprachen tabellarisch ausgeben")
+        lang_dump.add_argument("--json", action="store_true")
+
+        shortcuts = sub.add_parser("shortcuts", help="alte Notizen.NET-Tastenkürzel anzeigen")
+        shortcuts.add_argument("--json", action="store_true")
+
+        contexts = sub.add_parser("context-menus", help="alte WinForms-Kontextmenüs als Portierungsmanifest anzeigen")
+        contexts.add_argument("--menu", choices=["content", "tree", "sticky", "all"], default="all")
+        contexts.add_argument("--language", default="de")
+        contexts.add_argument("--json", action="store_true")
+        contexts.add_argument("--include-opacity", action="store_true", help="alte Desktop-Notiz-Transparenzauswahl mit anzeigen")
+
+        about = sub.add_parser("about", help="portierten alten Hilfe-/Info-Text anzeigen")
+        about.add_argument("--language", default="de")
+        about.add_argument("--json", action="store_true")
+
+        feedback = sub.add_parser("feedback-draft", help="Feedback wie im alten Dialog als gzip/UTF-16-Datei vorbereiten, ohne es hochzuladen")
+        feedback.add_argument("output")
+        source_group = feedback.add_mutually_exclusive_group(required=True)
+        source_group.add_argument("--text")
+        source_group.add_argument("--input")
+
+        cfg_read_legacy = sub.add_parser("config-read-legacy", help="alte notizen.config.xml lesen und ausgeben")
+        cfg_read_legacy.add_argument("path")
+
+        cfg_import = sub.add_parser("config-import-legacy", help="alte notizen.config.xml in die neue JSON-Konfiguration übernehmen")
+        cfg_import.add_argument("path", nargs="?")
+
+        cfg_export = sub.add_parser("config-export-legacy", help="neue Konfiguration als alte XML-Struktur schreiben")
+        cfg_export.add_argument("output")
+
+        cfg_ftp = sub.add_parser("config-set-ftp", help="FTP/FTPS-Standardziel in der Port-Konfiguration setzen")
+        cfg_ftp.add_argument("--host")
+        cfg_ftp.add_argument("--user")
+        cfg_ftp.add_argument("--password")
+        cfg_ftp.add_argument("--path")
+        tls_group = cfg_ftp.add_mutually_exclusive_group()
+        tls_group.add_argument("--tls", action="store_true")
+        tls_group.add_argument("--no-tls", action="store_true")
+
+        auto = sub.add_parser("autostart", help="Autostart-Eintrag anzeigen/setzen")
+        group = auto.add_mutually_exclusive_group()
+        group.add_argument("--enable", action="store_true")
+        group.add_argument("--disable", action="store_true")
+
+        alarm_add = sub.add_parser("alarm-add", help="Wecker/Erinnerung anlegen oder ersetzen")
+        alarm_add.add_argument("--name", required=True)
+        alarm_add.add_argument("--at", required=True, help="z.B. 2026-04-27 09:30 oder 27.04.2026 09:30")
+        alarm_add.add_argument("--repeat", default="none", help="none/daily/weekly/monthly/yearly oder deutsch: einmal/tage/wochen/monate/jahre")
+        alarm_add.add_argument("--interval", type=int, default=1)
+        alarm_add.add_argument("--weekday", action="append", help="für weekly: mo,di,mi,do,fr,sa,so; mehrfach oder kommagetrennt")
+        alarm_add.add_argument("--message", default="")
+        alarm_add.add_argument("--note-title", default="")
+        alarm_add.add_argument("--inactive", action="store_true")
+
+        sub.add_parser("alarm-list", help="gespeicherte Wecker anzeigen")
+        sub.add_parser("alarm-next", help="nächsten aktiven Wecker anzeigen")
+        alarm_remove = sub.add_parser("alarm-remove", help="Wecker entfernen")
+        alarm_remove.add_argument("--name", required=True)
+
+        alarm_due = sub.add_parser("alarm-due", help="fällige Wecker im aktuellen Zeitfenster prüfen")
+        alarm_due.add_argument("--now", help="Test-/Vergleichszeit, z.B. 2026-04-27 09:30")
+        alarm_due.add_argument("--grace-seconds", type=int, default=60, help="Rückblickfenster für fällige Termine")
+        alarm_due.add_argument("--notify", action="store_true", help="Desktop-Benachrichtigung auslösen")
+        alarm_due.add_argument("--dry-run", action="store_true", help="Benachrichtigung nur simulieren")
+
+        alarm_watch = sub.add_parser("alarm-watch", help="Wecker-Schleife starten und bei Fälligkeit melden")
+        alarm_watch.add_argument("--poll-seconds", type=float, default=30)
+        alarm_watch.add_argument("--grace-seconds", type=int, default=60)
+        alarm_watch.add_argument("--once", action="store_true", help="nur einmal prüfen und beenden")
+        alarm_watch.add_argument("--no-notify", action="store_true", help="nur in stdout ausgeben")
+        alarm_watch.add_argument("--dry-run", action="store_true", help="Benachrichtigung nur simulieren")
+
+        _CACHED_PARSER = parser
+    else:
+        parser = _CACHED_PARSER
+
+    args = parser.parse_args(argv_list)
     try:
         if args.cmd == "tree":
             _print_tree(args.file, args.password, include_collapsed=not args.visible_only)
@@ -2235,6 +2392,12 @@ def main(argv: list[str] | None = None) -> int:
             _init_file(args.output, args.title, args.text, args.password, args.overwrite)
         elif args.cmd == "compat-report":
             _compat_report(args.file, args.password, args.json)
+        elif args.cmd == "repair":
+            _repair(args.file, args.output, args.password, args.new_password, args.dry_run, args.json, args.no_empty_titles, args.no_plain_to_rtf, args.no_transparent_colors, args.no_sticky, args.no_argb)
+        elif args.cmd == "password-info":
+            _password_info(args.password, args.reveal, args.json)
+        elif args.cmd == "password-normalize":
+            _password_normalize(args.password, args.reveal, args.json)
         elif args.cmd == "backup-list":
             _backup_list(args.file, args.json)
         elif args.cmd == "backup-restore":
@@ -2243,6 +2406,8 @@ def main(argv: list[str] | None = None) -> int:
             _config_show()
         elif args.cmd == "config-path":
             _config_path()
+        elif args.cmd == "toolstrips":
+            _toolstrips(args.set, args.json)
         elif args.cmd == "config-set":
             _config_set(
                 backup_count=args.backup_count,
@@ -2258,6 +2423,7 @@ def main(argv: list[str] | None = None) -> int:
                 clear_recent=args.clear_recent,
                 window=args.window,
                 window_state=args.window_state,
+                toolstrip=args.toolstrip,
                 as_json=args.json,
             )
         elif args.cmd == "lang-list":

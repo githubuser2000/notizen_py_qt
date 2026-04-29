@@ -192,7 +192,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Im Erstellungscontainer wurden die Kern-Tests mit CPython ausgeführt. Slint selbst war dort nicht installiert, daher wurde die GUI nicht gestartet, aber Kern, CLI und Dateiformatpfade wurden geprüft:
 
 ```text
-Ran 71 tests
+Ran 81 tests
 OK
 ```
 
@@ -212,7 +212,7 @@ Getestet wurden:
 - alte Konfigurationsmigration inklusive FTP-Feldern
 - Wecker-Wiederholungen, Wecker-Store, fällige Wecker, Benachrichtigungs-Dry-Run und CLI-Weckerpfade
 - CLI-Integrationspfade inklusive XML-Dump/Pack, `style-note`, `insert-text`, `delete-range`, `style-range`, `search --occurrences`, `search-occurrences`, `export-alx`, `export-opml`, `import-opml`, `expand-state`, `font-list`, `context-menus`, portable TreeView-Zwischenablage, Font-Size, Sticky-Bearbeitung und FTP/FTPS-URL-Parsing
-- Sprach-/Übersetzungstabelle aus `languages.vb`, Tastenkürzelmanifest, `config-set`/`config-path`, OPML-Roundtrip, Teilbaum-ALX-Export, Systemfont-Scanner, About-Ausgabe und lokaler Feedback-Draft
+- Sprach-/Übersetzungstabelle aus `languages.vb`, Tastenkürzelmanifest, `config-set`/`config-path`, ToolStrip-Positionsmigration, OPML-Roundtrip, Teilbaum-ALX-Export, Systemfont-Scanner, Passwort-Kompatibilitätsdiagnose, Reparaturlauf, About-Ausgabe und lokaler Feedback-Draft
 
 ## Projektstruktur
 
@@ -224,6 +224,8 @@ src/notizen_py_slint/
   storage.py          .alx/.xml Laden, Speichern, Export, Import
   remote.py           FTP/FTPS-Transport
   legacy_config.py    alte notizen.config.xml migrieren
+  passwords.py        alte 24-Zeichen-Passwortnormalisierung und DES-Key-Segmente
+  repair.py           Migrations-/Reparaturlauf für alte/metadatenfehlerhafte Dateien
   autostart.py        portable Autostart-Einträge
   alarm.py            Wecker-/Erinnerungsregeln
   notify.py           native Best-Effort-Benachrichtigungen ohne externe Pakete
@@ -258,3 +260,14 @@ Dieser Schritt zieht drei alte Randbereiche nach, die im Alltag wichtig sind:
 
 In der Slint-Oberfläche sind dafür die Hooks `NotesDoc`, `Compat` und `Pfade` ergänzt.
 
+
+
+## Neu in v14 / 0.14.0
+
+Dieser Schritt zieht weitere alte Dialog- und Migrationsdetails nach:
+
+- `password-info` und `password-normalize` bilden die alte Passwortdialog-Logik nach: Passwörter werden wie im Original auf 24 Zeichen gebracht, zu lange Werte werden abgeschnitten, zu kurze mit Leerzeichen gefüllt, und die drei alten DES-Schlüsselbereiche werden diagnostisch angezeigt. Standardmäßig werden sensible Werte maskiert; `--reveal` zeigt sie bewusst an.
+- `repair` normalisiert alte oder malformierte Dateien: leere Titel werden ersetzt, Plain-Text-Inhalte werden als RTF gespeichert, transparente Farben werden bereinigt, Sticky-Größen und Deckkraft werden geklemmt und ARGB-Werte werden wieder WinForms-kompatibel als signed Integer geschrieben.
+- Die alten `xml_kram.vb`-ToolStrip-Positionen werden aus `notizen.config.xml` migriert und mit `toolstrips` beziehungsweise `config-set --toolstrip NAME X Y` bearbeitbar.
+- Die Slint-Oberfläche hat dafür neue Hooks `PwInfo`, `Reparieren` und `ToolStrips`.
+- Der große CLI-Parser wird nun pro Prozess gecacht; dadurch bleiben wiederholte In-Process-Aufrufe wie in Tests, Skripten oder eingebetteten Workflows stabil und schneller. Der Sticky-Befehl hat zusätzlich einen kleinen Direktparser für den alten Desktop-Notiz-Hotpath.

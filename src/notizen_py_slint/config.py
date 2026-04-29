@@ -37,6 +37,12 @@ class AppConfig:
     ftp_password: str = ""
     ftp_path: str = ""
     ftp_use_tls: bool = False
+    toolstrip_positions: dict[str, list[int]] = field(default_factory=lambda: {
+        "haupt": [0, 0],
+        "elements": [0, 0],
+        "font": [0, 0],
+        "cutpastecopy": [0, 0],
+    })
 
     @classmethod
     def load(cls) -> "AppConfig":
@@ -61,6 +67,19 @@ class AppConfig:
         self.recent_files = [p for p in self.recent_files if p != text]
         self.recent_files.insert(0, text)
         self.recent_files = self.recent_files[:4]
+
+    def set_toolstrip_position(self, name: str, x: int, y: int) -> None:
+        key = (name or "").strip().lower()
+        if key not in {"haupt", "elements", "font", "cutpastecopy"}:
+            raise ValueError("Toolstrip muss haupt, elements, font oder cutpastecopy sein")
+        self.toolstrip_positions[key] = [int(x), int(y)]
+
+    def toolstrip_position(self, name: str) -> tuple[int, int]:
+        value = self.toolstrip_positions.get((name or "").strip().lower(), [0, 0])
+        try:
+            return int(value[0]), int(value[1])
+        except Exception:
+            return 0, 0
 
     def default_remote_url(self) -> str:
         if not self.ftp_host:

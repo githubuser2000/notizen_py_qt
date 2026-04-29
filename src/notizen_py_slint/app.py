@@ -14,6 +14,8 @@ from .legacy_config import import_legacy_config
 from .legacy_colors import legacy_light_color
 from .fonts import format_font_list, list_system_fonts
 from .paths import default_paths
+from .passwords import legacy_password_info
+from .repair import format_repair_report, repair_document
 from .dialogs import ask_directory, ask_open_file, ask_password, ask_save_file, ask_text
 from .model import Note, NoteDocument, StickyWindow, argb_to_hex, parse_int_or_hex
 from .remote import RemoteFileError, is_remote_uri, load_uri, save_uri
@@ -222,6 +224,9 @@ class NotizenSlintApp:
         self.window.show_fonts = self.show_fonts
         self.window.show_compat_report = self.show_compat_report
         self.window.show_default_paths = self.show_default_paths
+        self.window.show_password_info = self.show_password_info
+        self.window.repair_document = self.repair_document
+        self.window.show_toolstrips = self.show_toolstrips
 
     # File actions ---------------------------------------------------------
     def new_document(self) -> None:
@@ -1039,6 +1044,35 @@ class NotizenSlintApp:
         info = default_paths(create=False)
         self.window.meta_text = f"Documents: {info.documents_dir} | Notizen: {info.notes_dir} | Datei: {info.default_file}"
         self._set_status("Alte Datei.vb-Standardpfade berechnet; CLI: notizen-alx default-paths --create")
+
+
+    def show_password_info(self) -> None:
+        info = legacy_password_info(self._current_password or "")
+        compact = info.format(reveal=False).replace("\n", " | ")
+        if len(compact) > 300:
+            compact = compact[:297].rstrip() + "…"
+        self.window.meta_text = compact
+        self._set_status("Passwort-Kompatibilität nach altem 24-Zeichen-Dialog berechnet; CLI: notizen-alx password-info --reveal")
+
+    def repair_document(self) -> None:
+        report = repair_document(self.document)
+        self._refresh_all()
+        compact = format_repair_report(report).replace("\n", " | ")
+        if len(compact) > 300:
+            compact = compact[:297].rstrip() + "…"
+        self.window.meta_text = compact
+        self._set_status(f"Reparatur angewendet: {report.total_changes} Änderung(en); danach manuell speichern.")
+
+    def show_toolstrips(self) -> None:
+        parts = []
+        for name in ("haupt", "elements", "font", "cutpastecopy"):
+            try:
+                x, y = self.config.toolstrip_position(name)
+            except Exception:
+                x, y = 0, 0
+            parts.append(f"{name}={x},{y}")
+        self.window.meta_text = " | ".join(parts)
+        self._set_status("Alte ToolStrip-Positionen aus notizen.config.xml/JSON; CLI: notizen-alx toolstrips")
 
 
     # Alarm actions --------------------------------------------------------

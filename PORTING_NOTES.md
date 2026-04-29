@@ -163,3 +163,14 @@ Die alte Intellibit-Struktur wurde bisher gelesen, aber nicht wieder geschrieben
 Neu ist außerdem `compat.py`: `notizen-alx compat-report` analysiert lokale `.alx`- und `.xml`-Dateien und meldet Format, vermutete Verschlüsselung, Strukturgrößen, RTF-/Plain-Anteile, Bilder, Farben, Sticky-Metadaten, zugeklappte Knoten und konkrete Warnungen. Dadurch lassen sich Migrationen gezielter prüfen, bevor Dateien im neuen Port weiterbearbeitet werden.
 
 In der Slint-Datei wurden passende Hooks ergänzt: `NotesDoc` exportiert den aktuellen Teilbaum in das alte XML-Format, `Compat` zeigt die Diagnose im Infofeld, und `Pfade` zeigt die alten Standardpfade. Nebenbei wurde die doppelte `Import OPML`-Schaltfläche bereinigt.
+
+
+## v14: Passwortdialog, ToolStrip-Positionen und Reparaturlauf
+
+Die alte Verschlüsselung hatte eine leicht ungewöhnliche Passwortaufbereitung: der Dialog arbeitete effektiv mit 24 Zeichen, füllte kürzere Eingaben mit Leerzeichen auf und schnitt längere Werte ab. Zusätzlich entstehen die drei DES-Schlüsselbereiche nicht als saubere 8/8/8-Aufteilung, sondern mit dem historischen Überlappungsversatz aus dem Originalcode. `passwords.py` macht diese Regeln explizit und prüfbar, ohne Passwörter versehentlich im Klartext auszugeben.
+
+`xml_kram.vb` speicherte neben Fenster- und FTP-Daten auch ToolStrip-Koordinaten. Diese Werte haben in Slint keine direkte Layoutwirkung, werden aber jetzt migriert, im neuen JSON erhalten und über `toolstrips` beziehungsweise `config-set --toolstrip` bearbeitbar gemacht. Damit gehen alte Layoutdaten bei Migrationen nicht verloren.
+
+`repair.py` ergänzt eine vorsichtige Normalisierungsschicht für reale Altdateien: Plain-Text-Knoten werden in RTF gewandelt, leere Titel markiert, vollständig transparente Farben entfernt, Sticky-Fenster auf sinnvolle Mindestgrößen gebracht und ARGB-Werte in das alte signed-WinForms-Format gebracht. Der Reparaturlauf ist als Bericht testbar und kann per CLI als Dry-Run ausgeführt werden.
+
+Weil die CLI inzwischen sehr viele alte Menü- und Dialogpfade abbildet, wird der große Argumentparser pro Prozess gecacht. Das ändert die Kommandozeilenoberfläche nicht, macht aber wiederholte Aufrufe aus Tests, Skripten und der Slint-Schicht deutlich robuster.

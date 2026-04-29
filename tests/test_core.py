@@ -16,6 +16,8 @@ from notizen_py_slint.fonts import list_system_fonts
 from notizen_py_slint.intellibit import document_to_notes_doc_xml
 from notizen_py_slint.opml import document_to_opml, opml_to_note
 from notizen_py_slint.paths import default_file_path, default_paths
+from notizen_py_slint.passwords import legacy_password_info, normalize_legacy_password
+from notizen_py_slint.repair import repair_document
 from notizen_py_slint.app import NotizenSlintApp, _normalize_legacy_argv
 from notizen_py_slint.cli import main as cli_main
 from notizen_py_slint.config import AppConfig
@@ -1142,6 +1144,75 @@ class NotesDocCompatPathTests(unittest.TestCase):
 
 
 
+class PasswordRepairAndConfigTests(unittest.TestCase):
+    def test_legacy_password_info_matches_old_dialog_segments(self) -> None:
+        info = legacy_password_info("abcdefghijklmnopqrstuvwx")
+        self.assertEqual(info.normalized_length, 24)
+        self.assertEqual(info.key1, "abcdefgh")
+        self.assertEqual(info.key2, "hijklmno")
+        self.assertEqual(info.key3, "pqrstuvw")
+        self.assertEqual(info.unused_char, "x")
+        self.assertFalse(info.padded)
+        self.assertFalse(info.truncated)
+        self.assertEqual(normalize_legacy_password("abc"), "abc" + " " * 21)
+        self.assertTrue(legacy_password_info("" ).blank)
+        self.assertTrue(legacy_password_info("x" * 30).truncated)
+        self.assertFalse(legacy_password_info("ä").ascii_only)
+
+    def test_repair_document_normalizes_migration_edge_cases(self) -> None:
+        root = Note("", "plain body", bg_color=0x00112233, fg_color=0xFF112233)
+        root.sticky = StickyWindow(True, 0, 0, 10, 2, 2.0, 0x00112233)
+        doc = NoteDocument(root=root, selected_id=root.note_id)
+        report = repair_document(doc)
+        self.assertGreaterEqual(report.total_changes, 6)
+        self.assertEqual(root.title, "...")
+        self.assertTrue(is_rtf(root.rtf))
+        self.assertIsNone(root.bg_color)
+        self.assertEqual(root.sticky.width, 80)  # type: ignore[union-attr]
+        self.assertEqual(root.sticky.height, 60)  # type: ignore[union-attr]
+        self.assertEqual(root.sticky.opacity, 1.0)  # type: ignore[union-attr]
+        self.assertIsNone(root.sticky.argb)  # type: ignore[union-attr]
+
+    def test_legacy_config_toolstrip_positions_roundtrip(self) -> None:
+        config = AppConfig()
+        config.set_toolstrip_position("haupt", 11, 22)
+        config.set_toolstrip_position("font", 33, 44)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "notizen.config.xml"
+            write_legacy_like_config(config, path)
+            legacy = load_legacy_config(path)
+        self.assertEqual(legacy.toolstrip_positions["haupt"], [11, 22])
+        self.assertEqual(legacy.toolstrip_positions["font"], [33, 44])
+        migrated = legacy.to_app_config(AppConfig())
+        self.assertEqual(migrated.toolstrip_position("haupt"), (11, 22))
+
+    def test_cli_password_repair_and_toolstrips(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_home = Path(tmp) / "cfg"
+            old_xdg = os.environ.get("XDG_CONFIG_HOME")
+            os.environ["XDG_CONFIG_HOME"] = str(cfg_home)
+            try:
+                with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                    self.assertEqual(cli_main(["password-info", "abcdefghijklmnopqrstuvwx", "--json", "--reveal"]), 0)
+                self.assertEqual(json.loads(out.getvalue())["key2"], "hijklmno")
+                with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                    self.assertEqual(cli_main(["toolstrips", "--set", "haupt", "5", "6", "--json"]), 0)
+                self.assertEqual(json.loads(out.getvalue())["haupt"], [5, 6])
+                source = Path(tmp) / "broken.alx"
+                output = Path(tmp) / "fixed.alx"
+                doc = NoteDocument(root=Note("", "plain", bg_color=0x00112233), selected_id=None)
+                save_document(doc, path=source, backup_count=0)
+                with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+                    self.assertEqual(cli_main(["repair", str(source), str(output), "--json"]), 0)
+                self.assertGreater(json.loads(out.getvalue())["total_changes"], 0)
+                self.assertEqual(load_document(output).root.title, "...")
+            finally:
+                if old_xdg is None:
+                    os.environ.pop("XDG_CONFIG_HOME", None)
+                else:
+                    os.environ["XDG_CONFIG_HOME"] = old_xdg
+
+
 class AppCompatTests(unittest.TestCase):
     def test_about_and_shortcut_ui_hooks(self) -> None:
         class DummyWindow:
@@ -1151,6 +1222,8 @@ class AppCompatTests(unittest.TestCase):
         app = object.__new__(NotizenSlintApp)
         app.config = AppConfig(language="en")
         app.window = DummyWindow()
+        app._current_password = "abcdefghijklmnopqrstuvwx"
+        app.document = NoteDocument(root=Note("Root", text_to_rtf("Text")))
         NotizenSlintApp.show_about(app)
         self.assertIn("Info", app.window.status_text)
         self.assertIn("desknote", app.window.meta_text)
@@ -1160,6 +1233,10 @@ class AppCompatTests(unittest.TestCase):
         NotizenSlintApp.show_context_menus(app)
         self.assertIn("Kontext", app.window.status_text)
         self.assertIn("content", app.window.meta_text)
+        NotizenSlintApp.show_password_info(app)
+        self.assertIn("Passwort", app.window.status_text)
+        NotizenSlintApp.show_toolstrips(app)
+        self.assertIn("ToolStrip", app.window.status_text)
 
     def test_legacy_argv_normalization(self) -> None:
         self.assertEqual(_normalize_legacy_argv(["/min", "datei.alx"]), ["--minimized", "datei.alx"])

@@ -32,6 +32,7 @@ class LegacyConfig:
     ftp_password: str = ""
     ftp_host: str = ""
     ftp_path: str = ""
+    toolstrip_positions: dict[str, list[int]] | None = None
 
     def to_app_config(self, base: AppConfig | None = None) -> AppConfig:
         config = base or AppConfig.load()
@@ -52,6 +53,8 @@ class LegacyConfig:
         config.ftp_password = self.ftp_password
         config.ftp_host = self.ftp_host
         config.ftp_path = self.ftp_path
+        if self.toolstrip_positions:
+            config.toolstrip_positions = {name: [int(pos[0]), int(pos[1])] for name, pos in self.toolstrip_positions.items()}
         if self.last_file:
             config.add_recent(self.last_file)
         for item in reversed(self.recent_files or []):
@@ -118,6 +121,7 @@ def load_legacy_config(path: str | Path | None = None) -> LegacyConfig:
 
     ftp = attrs("ftp")
     main = attrs("main-form")
+    toolstrips = _parse_toolstrip_positions(root)
     return LegacyConfig(
         backup_count=_int(attrs("saftycopies").get("amount"), 30),
         autosave_seconds=_int(attrs("x").get("a"), 0),
@@ -138,6 +142,7 @@ def load_legacy_config(path: str | Path | None = None) -> LegacyConfig:
         ftp_password=ftp.get("pass", ""),
         ftp_host=ftp.get("host", ""),
         ftp_path=ftp.get("path", ""),
+        toolstrip_positions=toolstrips,
     )
 
 
@@ -184,11 +189,28 @@ def write_legacy_like_config(config: AppConfig, path: str | Path) -> Path:
     ET.SubElement(root, "desknotes", {"show_desknote_borders": _yesno(config.show_desknote_borders)})
     strips = ET.SubElement(root, "tool-stripes")
     for name in ("haupt", "elements", "font", "cutpastecopy"):
-        ET.SubElement(strips, name, {"x": "0", "y": "0"})
+        try:
+            x, y = config.toolstrip_position(name)
+        except Exception:
+            x, y = 0, 0
+        ET.SubElement(strips, name, {"x": str(x), "y": str(y)})
     ET.SubElement(root, "x", {"y": "0", "z": "0", "a": str(config.autosave_seconds)})
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(ET.tostring(root, encoding="utf-16", xml_declaration=True, short_empty_elements=False))
     return path
+
+
+def _parse_toolstrip_positions(root: ET.Element) -> dict[str, list[int]]:
+    positions: dict[str, list[int]] = {}
+    strips = root.find("tool-stripes")
+    if strips is None:
+        return positions
+    for name in ("haupt", "elements", "font", "cutpastecopy"):
+        el = strips.find(name)
+        if el is None:
+            continue
+        positions[name] = [_int(el.attrib.get("x"), 0), _int(el.attrib.get("y"), 0)]
+    return positions
 
 
 def _looks_utf16(path: Path) -> bool:
