@@ -73,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         Step("old framework scanner", ["bash", str(SCRIPT_DIR / "check_no_slint.sh"), str(project_root)], fatal=False),
     ])
     if args.probe:
+        steps.append(Step("repair QML engine errors", [py, str(SCRIPT_DIR / "repair_qml_engine_errors.py"), str(project_root), *apply_flag, "--run-smoke", "--static-padding-pass", "--max-rounds", "12", "--python", py], fatal=False))
         steps.append(Step("Python/Qt runtime probe", [py, str(SCRIPT_DIR / "probe_python_qt_runtime.py"), str(project_root)], fatal=False))
 
     results: list[Result] = []

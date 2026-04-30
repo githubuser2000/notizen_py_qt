@@ -74,7 +74,7 @@ ApplicationWindow {
     signal showStats()
 
     ColumnLayout {
-        property real padding: 8
+        padding: 8
         spacing: 8
 
         Rectangle {
@@ -83,7 +83,7 @@ ApplicationWindow {
             border.color: "#dadada"
             border.width: 1
             ColumnLayout {
-                property real padding: 6
+                padding: 6
                 spacing: 5
                 RowLayout {
                     spacing: 6
@@ -280,7 +280,7 @@ ApplicationWindow {
                 border.color: "#d0d0d0"
                 border.width: 1
                 ColumnLayout {
-                    property real padding: 6
+                    padding: 6
                     spacing: 6
                     Text {
                         text: "Baum"
@@ -303,8 +303,8 @@ ApplicationWindow {
                         }
                     }
                     ScrollView {
-                        property var viewportWidth: parent.width
-                        property var viewportHeight: parent.height - 72
+                        viewportWidth: parent.width
+                        viewportHeight: parent.height - 72
                         ColumnLayout {
                             spacing: 1
                             Repeater {
@@ -323,7 +323,7 @@ ApplicationWindow {
                                         height: parent.height
                                         text: row.label
                                         verticalAlignment: Text.AlignHCenter
-                                        property var overflow: elide
+                                        overflow: elide
                                     }
                                     MouseArea {
                                         onClicked: { root.selectRow(i); }
@@ -340,7 +340,7 @@ ApplicationWindow {
                 border.color: "#d0d0d0"
                 border.width: 1
                 ColumnLayout {
-                    property real padding: 8
+                    padding: 8
                     spacing: 8
                     RowLayout {
                         spacing: 6
@@ -414,7 +414,7 @@ ApplicationWindow {
                             height: parent.height
                             text: root.metaText
                             verticalAlignment: Text.AlignHCenter
-                            property var overflow: elide
+                            overflow: elide
                         }
                     }
                 }
@@ -432,7 +432,7 @@ ApplicationWindow {
                 height: parent.height
                 text: root.statusText
                 verticalAlignment: Text.AlignHCenter
-                property var overflow: elide
+                overflow: elide
             }
         }
     }

@@ -1,31 +1,32 @@
-# Qt 6.11 / no-Slint migration kit v7
+# Qt 6.11 / no-Slint migration kit v8
 
-v7 fixes the parent-folder mis-run seen in the real Notizen repository.
+v8 continues after a successful PySide6 install and clean static QML syntax check.
+It repairs first-order QML engine errors reported by `QQmlApplicationEngine`, especially generated assignments such as `padding: 8` on `Item` or `Rectangle`, which Qt rejects because those types do not own a `padding` property.
 
-Key changes:
-
-- auto-detects the real Python project root via `pyproject.toml`
-- quarantines accidental artifacts generated in the parent folder
-- ignores `.qt611*` backups during scans and QML hardening
-- prevents the migration tools from rewriting themselves into `check_no_qt.sh`
-- repairs generated QML TODO callback blocks that left unmatched `}` braces
-- runs the Python/Qt runtime hardening in the detected project root
-
-Recommended command from the freshly extracted v7 kit directory:
+## Recommended command
 
 ```bash
-python3 scripts/continue_qt611_transpile.py /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint --apply --probe
+python3 scripts/repair_qml_engine_errors.py /path/to/Notizen_Py_Slint --apply --run-smoke --max-rounds 12 --static-padding-pass
+bash scripts/build_python_qt.sh /path/to/Notizen_Py_Slint
 ```
 
-Then:
+`build_python_qt.sh` in v8 automatically runs the engine repair once if the first runtime probe fails.
 
-```bash
-bash scripts/check_no_slint.sh /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint
-bash scripts/build_python_qt.sh /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint
+## What gets changed
+
+A line such as:
+
+```qml
+padding: 8
 ```
 
-If you know the real project root, passing it directly is also fine:
+is preserved as a custom property when Qt says the target object has no such built-in property:
 
-```bash
-python3 scripts/continue_qt611_transpile.py /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint --apply --probe
+```qml
+property real padding: 8
 ```
+
+This is a pragmatic transpilation continuation step: the component loads again, and the numeric value remains available for later layout refinement.
+
+Backups are written under `.qt611_qml_engine_repair_backup/<timestamp>/`.
+A report is written to `QT611_QML_ENGINE_REPAIR.md`.
