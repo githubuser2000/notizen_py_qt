@@ -1,3 +1,29 @@
+# Notizen Python/Qt Port
+
+Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
+
+## Start
+
+```bash
+python -m pip install -e ".[crypto]"
+notizen-py-qt /pfad/zur/datei.alx
+```
+
+PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer ebenfalls akzeptiert, falls PySide6 nicht installiert ist.
+
+## Enthalten
+
+- ALX-Dateiformat mit GZip, UTF-16-XML und Legacy-DES-Passwortmodus.
+- Baumansicht, Editor, Knotenoperationen, Suche, Export, Backups.
+- Desktop-Notizen, System-Tray, Grundeinstellungen und zuletzt geöffnete Dateien.
+- FTP-Öffnen/Speichern wie im alten `ftpkram.vb`.
+- Einfacher Weckerdialog per `Ctrl+Space`.
+- Importiertes Notizen-Icon als Paketressource plus `.qrc`.
+
+Details stehen in [`TRANSPILE_NET_TO_PYQT_REPORT.md`](TRANSPILE_NET_TO_PYQT_REPORT.md). Validierung steht in [`VALIDATION_NET_PORT.md`](VALIDATION_NET_PORT.md).
+
+---
+
 # Qt 6.11 / no-Slint migration kit v8
 
 v8 continues after a successful PySide6 install and clean static QML syntax check.

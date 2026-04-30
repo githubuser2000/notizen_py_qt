@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/notizen">
+    <file alias="notizen.png">notizen.png</file>
+  </qresource>
+</RCC>
