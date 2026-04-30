@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probe the migrated Python/Qt package without modifying the repository."""
+"""Probe the active Notizen Python/Qt package without modifying the repository."""
 from __future__ import annotations
 
 import argparse
@@ -8,15 +8,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-from qt611_project_utils import find_project_root
-
 try:
     import tomllib  # type: ignore[import-not-found]
 except Exception:  # pragma: no cover
     tomllib = None  # type: ignore[assignment]
+
+
+def find_project_root(start: Path) -> Path:
+    start = start.expanduser().resolve()
+    if start.name == "pyproject.toml" and start.is_file():
+        return start.parent
+    if start.is_file():
+        start = start.parent
+    cur = start
+    while True:
+        if (cur / "pyproject.toml").is_file() and (cur / "src" / "notizen_py_qt").is_dir():
+            return cur
+        if cur.parent == cur:
+            return start
+        cur = cur.parent
 
 
 def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
@@ -29,10 +39,7 @@ def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> tuple[i
 
 def print_block(title: str, body: str) -> None:
     print(f"\n## {title}")
-    if body.strip():
-        print(body.rstrip())
-    else:
-        print("OK")
+    print(body.rstrip() if body.strip() else "OK")
 
 
 def py_snippet(root: Path, code: str) -> tuple[int, str]:
@@ -40,11 +47,13 @@ def py_snippet(root: Path, code: str) -> tuple[int, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Probe migrated Python/Qt runtime")
+    parser = argparse.ArgumentParser(description="Probe Notizen Python/Qt runtime")
     parser.add_argument("root", nargs="?", default=".")
-    parser.add_argument("--skip-smoke", action="store_true")
+    parser.add_argument("--skip-smoke", action="store_true", help="do not start the Qt smoke test")
+    parser.add_argument("--skip-qt", action="store_true", help="skip Qt binding import checks for headless validation hosts")
     args = parser.parse_args(argv)
-    root = find_project_root(Path(args.root).resolve())
+
+    root = find_project_root(Path(args.root))
     print(f"Python: {sys.executable}")
     print(f"Version: {sys.version.split()[0]}")
     print(f"Root: {root}")
@@ -53,7 +62,10 @@ def main(argv: list[str] | None = None) -> int:
     pyproject = root / "pyproject.toml"
     if pyproject.exists() and tomllib is not None:
         try:
-            tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            project = data.get("project", {})
+            if project.get("name") != "notizen-py-qt":
+                raise ValueError(f"unexpected project name: {project.get('name')!r}")
             print_block("pyproject.toml", "parse OK")
         except Exception as exc:
             errors += 1
@@ -64,42 +76,42 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path('src').resolve()))
 import notizen_py_qt
-print('notizen_py_qt import OK')
+from notizen_py_qt.models import NoteDocument, NoteNode
+from notizen_py_qt.alx_io import dump_alx_bytes, load_alx_bytes
+from notizen_py_qt.rtf_utils import plain_text_to_rtf, rtf_to_plain_text
+node = NoteNode(title='probe', rtf=plain_text_to_rtf('äöü € 😀'))
+doc = NoteDocument(root=node)
+loaded = load_alx_bytes(dump_alx_bytes(doc))
+assert loaded.root is not None
+assert rtf_to_plain_text(loaded.root.rtf) == 'äöü € 😀'
+print('notizen_py_qt import, RTF and ALX roundtrip OK')
 """
     rc, out = py_snippet(root, code)
-    print_block("package import", out)
+    print_block("package import / data roundtrip", out)
     if rc != 0:
         errors += 1
 
-    code = """
+    if not args.skip_qt:
+        code = """
 try:
-    import PySide6
-    print('PySide6', getattr(PySide6, '__version__', 'unknown'))
-    from PySide6.QtCore import qVersion
-    print('Qt', qVersion())
+    from notizen_py_qt.qt_compat import load_qt
+    binding, QtCore, QtGui, QtWidgets = load_qt()
+    print(binding)
+    print('Qt', QtCore.qVersion())
 except Exception as exc:
-    raise SystemExit(f'PySide6 import failed: {exc}')
+    raise SystemExit(f'Qt binding import failed: {exc}')
 """
-    rc, out = py_snippet(root, code)
-    print_block("PySide6 import", out)
-    if rc != 0:
-        errors += 1
+        rc, out = py_snippet(root, code)
+        print_block("Qt binding import", out)
+        if rc != 0:
+            errors += 1
+    else:
+        print_block("Qt binding import", "SKIPPED (--skip-qt)")
 
-    qml_candidates = [root / "qml" / "Main.qml", root / "src" / "notizen_py_qt" / "ui" / "Main.qml", root / "qml" / "AppWindow.qml"]
-    found_qml = [p for p in qml_candidates if p.exists()]
-    print_block("QML candidates", "\n".join(str(p) for p in found_qml) if found_qml else "ERROR: no Main/AppWindow QML found")
-    if not found_qml:
-        errors += 1
-
-    if not args.skip_smoke:
-        env = {
-            "QT_QPA_PLATFORM": "offscreen",
-            "QT_QUICK_BACKEND": "software",
-            "QSG_RHI_BACKEND": "software",
-            "NOTIZEN_QT_SMOKE_TEST": "1",
-        }
+    if not args.skip_smoke and not args.skip_qt:
+        env = {"QT_QPA_PLATFORM": "offscreen", "NOTIZEN_QT_SMOKE_TEST": "1"}
         rc, out = run([sys.executable, "-m", "notizen_py_qt", "--smoke-test"], cwd=root, env=env)
-        print_block("Qt/QML smoke test", out)
+        print_block("Qt smoke test", out)
         if rc != 0:
             errors += 1
 

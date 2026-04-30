@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from .alx_io import AlxError, InvalidPassword, PasswordRequired, dump_alx_bytes, load_alx, load_alx_bytes, save_alx
+from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf
 from .ftp_sync import FtpSyncError, FtpTarget
 from .models import DesktopNoteState, NoteDocument, NoteNode
-from .rtf_utils import plain_text_to_rtf, rtf_to_plain_text
+from .rtf_utils import html_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
 from .settings import AppSettings
 
@@ -107,8 +108,8 @@ if QtWidgets is not None:
             self.title_label = QtWidgets.QLabel(node.title)
             self.title_label.setTextInteractionFlags(_enum(QtCore.Qt, "TextInteractionFlag", "TextSelectableByMouse"))
             self.editor = QtWidgets.QTextEdit()
-            self.editor.setAcceptRichText(False)
-            self.editor.setPlainText(rtf_to_plain_text(node.rtf))
+            self.editor.setAcceptRichText(True)
+            self.editor.setHtml(rtf_to_html(node.rtf))
             close_button = QtWidgets.QPushButton("Schließen")
             close_button.clicked.connect(self.close)
             layout.addWidget(self.title_label)
@@ -145,13 +146,13 @@ if QtWidgets is not None:
             self._loading = True
             self.setWindowTitle(self.node.title)
             self.title_label.setText(self.node.title)
-            self.editor.setPlainText(rtf_to_plain_text(self.node.rtf))
+            self.editor.setHtml(rtf_to_html(self.node.rtf))
             self._loading = False
 
         def _editor_changed(self) -> None:
             if self._loading:
                 return
-            self.node.rtf = plain_text_to_rtf(self.editor.toPlainText())
+            self.node.rtf = html_to_rtf(self.editor.toHtml())
             self.main_window.document.mark_changed()
             self.main_window.update_title()
             if self.main_window.current_node_ref is self.node:
@@ -312,13 +313,15 @@ if QtWidgets is not None:
             self.tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
             self.tree.itemChanged.connect(self.on_item_changed)
             try:
-                self.tree.model().rowsMoved.connect(lambda *_: self.sync_model_from_tree())
+                self.tree.model().rowsMoved.connect(lambda *_: self.on_tree_rows_moved())
             except Exception:
                 pass
 
             self.editor = QtWidgets.QTextEdit()
-            self.editor.setAcceptRichText(False)
+            self.editor.setAcceptRichText(True)
+            self._apply_scrollbar_settings()
             self.editor.textChanged.connect(self.on_editor_changed)
+            self.editor.setContextMenuPolicy(_enum(QtCore.Qt, "ContextMenuPolicy", "ActionsContextMenu"))
 
             splitter = QtWidgets.QSplitter()
             splitter.addWidget(self.tree)
@@ -353,25 +356,31 @@ if QtWidgets is not None:
             self.export_rtf_action = self._act("Export als RTF", lambda: self.export_current("rtf"))
             self.export_txt_action = self._act("Export als TXT", lambda: self.export_current("txt"))
 
-            self.add_child_action = self._act("Neu darunter", self.add_child_node, "Insert")
-            self.add_sibling_action = self._act("Neu daneben", self.add_sibling_node, "Return")
+            self.add_child_action = self._act("Neu darunter", self.add_child_node)
+            self.add_sibling_action = self._act("Neu daneben", self.add_sibling_node)
             self.rename_action = self._act("Umbenennen", self.rename_node, "Ctrl+U")
-            self.delete_action = self._act("Löschen", self.delete_node, "Del")
+            self.delete_action = self._act("Löschen", self.delete_anything)
+            self.unify_action = self._act("Teilbaum zusammenfassen", self.unify_current_subtree)
             self.desk_note_action = self._act("Desktop-Notiz", self.show_desktop_note)
-            self.bg_color_action = self._act("Hintergrundfarbe", lambda: self.choose_node_color("bg"))
-            self.fg_color_action = self._act("Schriftfarbe", lambda: self.choose_node_color("fg"))
+            self.bg_color_action = self._act("Knoten-Hintergrundfarbe", lambda: self.choose_node_color("bg"))
+            self.fg_color_action = self._act("Knoten-Schriftfarbe", lambda: self.choose_node_color("fg"))
 
-            self.cut_action = self._act("Ausschneiden", self.cut_node, "Ctrl+X")
-            self.copy_action = self._act("Kopieren", self.copy_node, "Ctrl+C")
-            self.paste_action = self._act("Einfügen", self.paste_node, "Ctrl+V")
+            self.cut_action = self._act("Ausschneiden", self.cut_anything, "Ctrl+X")
+            self.copy_action = self._act("Kopieren", self.copy_anything, "Ctrl+C")
+            self.paste_action = self._act("Einfügen", self.paste_anything, "Ctrl+V")
             self.search_action = self._act("Suchen", self.show_search, "Ctrl+F")
             self.alarm_action = self._act("Wecker", self.show_alarm_dialog, "Ctrl+Space")
 
-            self.bold_action = self._act("Fett", lambda: self.editor.setFontWeight(QtGui.QFont.Weight.Bold), "Ctrl+B")
+            self.bold_action = self._act("Fett", self.toggle_bold, "Ctrl+B")
             self.italic_action = self._act("Kursiv", self.toggle_italic, "Ctrl+I")
-            self.underline_action = self._act("Unterstrichen", self.toggle_underline, "Ctrl+U")
+            self.underline_action = self._act("Unterstrichen", self.toggle_underline)
+            self.strike_action = self._act("Durchgestrichen", self.toggle_strike)
+            self.regular_action = self._act("Normal", self.reset_char_format)
             self.bigger_action = self._act("Schrift größer", lambda: self.change_font_size(+1), "Ctrl++")
             self.smaller_action = self._act("Schrift kleiner", lambda: self.change_font_size(-1), "Ctrl+-")
+            self.text_color_action = self._act("Textfarbe", self.choose_text_color)
+            self.highlight_color_action = self._act("Texthintergrund", self.choose_text_background)
+            self.bullet_action = self._act("Aufzählungspunkt", self.insert_bullet)
 
             self.about_action = self._act("Info", self.show_about)
             self.settings_action = self._act("Einstellungen", self.show_settings_dialog)
@@ -406,6 +415,7 @@ if QtWidgets is not None:
             node.addAction(self.rename_action)
             node.addAction(self.delete_action)
             node.addSeparator()
+            node.addAction(self.unify_action)
             node.addAction(self.desk_note_action)
             node.addAction(self.bg_color_action)
             node.addAction(self.fg_color_action)
@@ -426,11 +436,26 @@ if QtWidgets is not None:
                 self.add_child_action,
                 self.rename_action,
                 self.delete_action,
+                self.unify_action,
                 self.desk_note_action,
                 self.bg_color_action,
                 self.fg_color_action,
             ):
                 self.tree.addAction(action)
+
+            for action in (
+                self.bold_action,
+                self.italic_action,
+                self.underline_action,
+                self.strike_action,
+                self.regular_action,
+                self.bigger_action,
+                self.smaller_action,
+                self.text_color_action,
+                self.highlight_color_action,
+                self.bullet_action,
+            ):
+                self.editor.addAction(action)
 
         def _create_toolbars(self) -> None:
             file_bar = self.addToolBar("Datei")
@@ -443,7 +468,18 @@ if QtWidgets is not None:
             for action in (self.cut_action, self.copy_action, self.paste_action, self.search_action):
                 edit_bar.addAction(action)
             font_bar = self.addToolBar("Schrift")
-            for action in (self.bold_action, self.italic_action, self.underline_action, self.bigger_action, self.smaller_action):
+            for action in (
+                self.bold_action,
+                self.italic_action,
+                self.underline_action,
+                self.strike_action,
+                self.regular_action,
+                self.bigger_action,
+                self.smaller_action,
+                self.text_color_action,
+                self.highlight_color_action,
+                self.bullet_action,
+            ):
                 font_bar.addAction(action)
 
         def _create_tray_icon(self) -> None:
@@ -507,6 +543,13 @@ if QtWidgets is not None:
             else:
                 self.autosave_timer.stop()
 
+        def _apply_scrollbar_settings(self) -> None:
+            choice = int(getattr(self.settings, "scrollbars_choice", 3))
+            as_needed = _enum(QtCore.Qt, "ScrollBarPolicy", "ScrollBarAsNeeded")
+            off = _enum(QtCore.Qt, "ScrollBarPolicy", "ScrollBarAlwaysOff")
+            self.editor.setHorizontalScrollBarPolicy(as_needed if (choice & 1) else off)
+            self.editor.setVerticalScrollBarPolicy(as_needed if (choice & 2) else off)
+
         def update_recent_menu(self) -> None:
             if not hasattr(self, "recent_menu"):
                 return
@@ -541,6 +584,7 @@ if QtWidgets is not None:
                 self.add_sibling_action,
                 self.rename_action,
                 self.delete_action,
+                self.unify_action,
                 self.desk_note_action,
                 self.bg_color_action,
                 self.fg_color_action,
@@ -548,7 +592,7 @@ if QtWidgets is not None:
                 self.cut_action,
             ):
                 action.setEnabled(has_current)
-            self.paste_action.setEnabled(self.clipboard_node is not None)
+            self.paste_action.setEnabled(has_current and (self.clipboard_node is not None or self.editor.hasFocus()))
 
         def current_node(self) -> NoteNode | None:
             item = self.tree.currentItem()
@@ -608,6 +652,13 @@ if QtWidgets is not None:
             if self.tree.topLevelItemCount() > 0:
                 self.document.root = sync_item(self.tree.topLevelItem(0), None)
 
+        def on_tree_rows_moved(self) -> None:
+            if self._loading_tree:
+                return
+            self.sync_model_from_tree()
+            self.document.mark_changed()
+            self.update_title()
+
         def sync_expansion_from_tree(self) -> None:
             def update(item: Any) -> None:
                 node = item.data(0, USER_ROLE)
@@ -650,10 +701,11 @@ if QtWidgets is not None:
             else:
                 self.editor.setEnabled(True)
                 cursor_pos = self.editor.textCursor().position() if preserve_focus else 0
-                self.editor.setPlainText(rtf_to_plain_text(node.rtf))
+                self.editor.setHtml(rtf_to_html(node.rtf))
+                self.editor.document().setModified(False)
                 if preserve_focus:
                     cursor = self.editor.textCursor()
-                    cursor.setPosition(min(cursor_pos, len(self.editor.toPlainText())))
+                    cursor.setPosition(min(cursor_pos, max(0, self.editor.document().characterCount() - 1)))
                     self.editor.setTextCursor(cursor)
             self._loading_editor = False
 
@@ -661,7 +713,7 @@ if QtWidgets is not None:
             if self._loading_editor or self.current_node_ref is None:
                 return
             if self.editor.document().isModified():
-                self.current_node_ref.rtf = plain_text_to_rtf(self.editor.toPlainText())
+                self.current_node_ref.rtf = html_to_rtf(self.editor.toHtml())
                 self.editor.document().setModified(False)
                 self.document.mark_changed()
                 self.update_title()
@@ -672,7 +724,7 @@ if QtWidgets is not None:
         def on_editor_changed(self) -> None:
             if self._loading_editor or self.current_node_ref is None:
                 return
-            self.current_node_ref.rtf = plain_text_to_rtf(self.editor.toPlainText())
+            self.current_node_ref.rtf = html_to_rtf(self.editor.toHtml())
             self.document.mark_changed()
             self.update_title()
 
@@ -1008,6 +1060,53 @@ if QtWidgets is not None:
             self.document.mark_changed()
             self.update_title()
 
+        def _editor_active(self) -> bool:
+            return self.editor.hasFocus() or self.editor.viewport().hasFocus()
+
+        def cut_anything(self) -> None:
+            if self._editor_active():
+                self.editor.cut()
+                self.save_current_editor_to_node()
+            else:
+                self.cut_node()
+
+        def copy_anything(self) -> None:
+            if self._editor_active():
+                self.editor.copy()
+            else:
+                self.copy_node()
+
+        def paste_anything(self) -> None:
+            if self._editor_active():
+                self.editor.paste()
+                self.save_current_editor_to_node()
+            else:
+                self.paste_node()
+
+        def delete_anything(self) -> None:
+            if self._editor_active():
+                cursor = self.editor.textCursor()
+                if cursor.hasSelection():
+                    cursor.removeSelectedText()
+                else:
+                    cursor.deleteChar()
+                self.editor.setTextCursor(cursor)
+                self.save_current_editor_to_node()
+            else:
+                self.delete_node()
+
+        def unify_current_subtree(self) -> None:
+            source = self.current_node()
+            if source is None:
+                return
+            title = f"Zusammenfassung - {source.title}"
+            unified = create_unified_note(source, title=title)
+            source.add_child(unified)
+            self.build_tree()
+            self.select_node(unified)
+            self.document.mark_changed()
+            self.update_title()
+
         def select_node(self, node: NoteNode) -> None:
             item = self.item_for_node(node)
             if item is not None:
@@ -1106,20 +1205,9 @@ if QtWidgets is not None:
                 return
             path = Path(file_name)
             if kind == "rtf":
-                path.write_text(node.rtf, encoding="utf-8", errors="replace")
+                path.write_text(tree_to_rtf(node), encoding="utf-8", errors="replace")
             else:
-                lines: list[str] = []
-
-                def add(n: NoteNode, depth: int = 0) -> None:
-                    lines.append("  " * depth + n.title)
-                    text = rtf_to_plain_text(n.rtf).strip()
-                    if text:
-                        lines.extend("  " * (depth + 1) + line for line in text.splitlines())
-                    for child in n.children:
-                        add(child, depth + 1)
-
-                add(node)
-                path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                path.write_text(tree_to_plain_text(node), encoding="utf-8")
             self.statusBar().showMessage(f"Exportiert: {path}")
 
         def change_password(self) -> None:
@@ -1132,6 +1220,22 @@ if QtWidgets is not None:
             msg = "Passwort gesetzt." if pw else "Passwort entfernt; die nächste Speicherung ist unverschlüsselt."
             self.statusBar().showMessage(msg)
 
+        def toggle_bold(self) -> None:
+            fmt = self.editor.currentCharFormat()
+            current = fmt.fontWeight()
+
+            def _weight_value(value: Any) -> int:
+                return int(getattr(value, "value", value))
+
+            try:
+                bold_weight = QtGui.QFont.Weight.Bold
+                normal_weight = QtGui.QFont.Weight.Normal
+            except Exception:
+                bold_weight = 75
+                normal_weight = 50
+            fmt.setFontWeight(normal_weight if _weight_value(current) >= _weight_value(bold_weight) else bold_weight)
+            self.editor.mergeCurrentCharFormat(fmt)
+
         def toggle_italic(self) -> None:
             fmt = self.editor.currentCharFormat()
             fmt.setFontItalic(not fmt.fontItalic())
@@ -1141,6 +1245,39 @@ if QtWidgets is not None:
             fmt = self.editor.currentCharFormat()
             fmt.setFontUnderline(not fmt.fontUnderline())
             self.editor.mergeCurrentCharFormat(fmt)
+
+        def toggle_strike(self) -> None:
+            fmt = self.editor.currentCharFormat()
+            fmt.setFontStrikeOut(not fmt.fontStrikeOut())
+            self.editor.mergeCurrentCharFormat(fmt)
+
+        def reset_char_format(self) -> None:
+            fmt = QtGui.QTextCharFormat()
+            fmt.setFontWeight(QtGui.QFont.Weight.Normal)
+            fmt.setFontItalic(False)
+            fmt.setFontUnderline(False)
+            fmt.setFontStrikeOut(False)
+            self.editor.mergeCurrentCharFormat(fmt)
+
+        def choose_text_color(self) -> None:
+            color = QtWidgets.QColorDialog.getColor(parent=self)
+            if color.isValid():
+                fmt = QtGui.QTextCharFormat()
+                fmt.setForeground(QtGui.QBrush(color))
+                self.editor.mergeCurrentCharFormat(fmt)
+
+        def choose_text_background(self) -> None:
+            color = QtWidgets.QColorDialog.getColor(parent=self)
+            if color.isValid():
+                fmt = QtGui.QTextCharFormat()
+                fmt.setBackground(QtGui.QBrush(color))
+                self.editor.mergeCurrentCharFormat(fmt)
+
+        def insert_bullet(self) -> None:
+            cursor = self.editor.textCursor()
+            prefix = "" if cursor.position() == 0 else "\n"
+            cursor.insertText(prefix + "•   ")
+            self.editor.setTextCursor(cursor)
 
         def change_font_size(self, delta: int) -> None:
             fmt = self.editor.currentCharFormat()
@@ -1152,17 +1289,52 @@ if QtWidgets is not None:
             dialog = QtWidgets.QDialog(self)
             dialog.setWindowTitle("Einstellungen")
             layout = QtWidgets.QFormLayout(dialog)
+
             backup_spin = QtWidgets.QSpinBox()
             backup_spin.setRange(0, 999)
             backup_spin.setValue(self.settings.backup_keep)
+
             autosave_spin = QtWidgets.QSpinBox()
             autosave_spin.setRange(0, 24 * 60 * 60)
             autosave_spin.setValue(self.settings.autosave_seconds)
+
+            language_combo = QtWidgets.QComboBox()
+            language_combo.addItems(["Auto", "Deutsch", "English", "Français", "Español", "Русский", "中文"])
+            lang_index = language_combo.findText(self.settings.language)
+            if lang_index >= 0:
+                language_combo.setCurrentIndex(lang_index)
+
+            scroll_combo = QtWidgets.QComboBox()
+            for label, value in (
+                ("Keine", 0),
+                ("Horizontal", 1),
+                ("Vertikal", 2),
+                ("Horizontal + Vertikal", 3),
+            ):
+                scroll_combo.addItem(label, value)
+            for index in range(scroll_combo.count()):
+                if int(scroll_combo.itemData(index)) == int(self.settings.scrollbars_choice):
+                    scroll_combo.setCurrentIndex(index)
+                    break
+
             border_check = QtWidgets.QCheckBox()
             border_check.setChecked(self.settings.show_desknote_borders)
+            taskbar_check = QtWidgets.QCheckBox()
+            taskbar_check.setChecked(self.settings.show_in_taskbar_when_minimized)
+            autorun_check = QtWidgets.QCheckBox()
+            autorun_check.setChecked(self.settings.autorun_enabled)
+            autorun_minimized_check = QtWidgets.QCheckBox()
+            autorun_minimized_check.setChecked(self.settings.autorun_minimized)
+
             layout.addRow("Sicherungen behalten", backup_spin)
             layout.addRow("Autosave alle Sekunden (0 = aus)", autosave_spin)
+            layout.addRow("Sprache", language_combo)
+            layout.addRow("Scrollleisten im Editor", scroll_combo)
             layout.addRow("Desktop-Notiz-Ränder zeigen", border_check)
+            layout.addRow("Minimiert in Taskleiste zeigen", taskbar_check)
+            layout.addRow("Autostart vormerken", autorun_check)
+            layout.addRow("Autostart minimiert", autorun_minimized_check)
+
             buttons = QtWidgets.QDialogButtonBox(
                 _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Ok")
                 | _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Cancel")
@@ -1173,9 +1345,15 @@ if QtWidgets is not None:
             if dialog.exec() == ACCEPTED:
                 self.settings.backup_keep = backup_spin.value()
                 self.settings.autosave_seconds = autosave_spin.value()
+                self.settings.language = language_combo.currentText()
+                self.settings.scrollbars_choice = int(scroll_combo.currentData())
                 self.settings.show_desknote_borders = border_check.isChecked()
+                self.settings.show_in_taskbar_when_minimized = taskbar_check.isChecked()
+                self.settings.autorun_enabled = autorun_check.isChecked()
+                self.settings.autorun_minimized = autorun_minimized_check.isChecked()
                 self.settings.save()
                 self._configure_autosave()
+                self._apply_scrollbar_settings()
 
         def show_about(self) -> None:
             QtWidgets.QMessageBox.information(
@@ -1184,19 +1362,36 @@ if QtWidgets is not None:
                 (
                     "Notizen.NET Weitertranspilierung nach Python/Qt\n\n"
                     "Portiert: ALX-Dateiformat, Notizbaum, lokale Speicherung, Suche, "
-                    "Knotenoperationen, Desktop-Notizen und Grundkonfiguration.\n\n"
+                    "Knotenoperationen, Desktop-Notizen, RichText-Brücke, Teilbaum-Export, "
+                    "alte Tastaturbedienung und erweiterte Grundkonfiguration.\n\n"
                     f"Qt-Binding: {BINDING}"
                 ),
             )
 
         def keyPressEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
-            # Keep a few legacy shortcuts from Notizen.vb/tastendruck alive.
+            # Keep legacy shortcuts from Notizen.vb/tastendruck focus-aware.
+            key = event.key()
             if event.modifiers() & CTRL:
-                key = event.key()
                 if key == _enum(QtCore.Qt, "Key", "Key_Space"):
                     self.show_alarm_dialog()
                     return
+            if self.tree.hasFocus() and not (event.modifiers() & CTRL):
+                if key == _enum(QtCore.Qt, "Key", "Key_Insert"):
+                    self.add_child_node()
+                    return
+                if key == _enum(QtCore.Qt, "Key", "Key_Delete"):
+                    self.delete_node()
+                    return
+                if key in {_enum(QtCore.Qt, "Key", "Key_Return"), _enum(QtCore.Qt, "Key", "Key_Enter")}:
+                    self.add_sibling_node()
+                    return
             super().keyPressEvent(event)
+
+        def changeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            super().changeEvent(event)
+            if event.type() == _enum(QtCore.QEvent, "Type", "WindowStateChange"):
+                if self.isMinimized() and getattr(self, "tray_icon", None) and not self.settings.show_in_taskbar_when_minimized:
+                    QtCore.QTimer.singleShot(0, self.hide)
 
         def closeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             if not self.maybe_save_changes():

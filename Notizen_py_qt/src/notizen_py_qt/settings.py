@@ -13,6 +13,12 @@ def default_config_dir() -> Path:
     return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "notizen-py-qt"
 
 
+def _as_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"yes", "true", "1", "on", "ja"}
+
+
 @dataclass(slots=True)
 class AppSettings:
     config_dir: Path = field(default_factory=default_config_dir)
@@ -22,6 +28,9 @@ class AppSettings:
     recent_files: list[str] = field(default_factory=list)
     backup_keep: int = 30
     autosave_seconds: int = 0
+    scrollbars_choice: int = 3
+    autorun_enabled: bool = False
+    autorun_minimized: bool = True
     show_desknote_borders: bool = True
     show_in_taskbar_when_minimized: bool = False
     ftp_host: str = ""
@@ -38,19 +47,46 @@ class AppSettings:
     def path(self) -> Path:
         return self.config_dir / "notizen.config.xml"
 
+    def _candidate_paths(self) -> list[Path]:
+        """Return legacy and current configuration file names in lookup order."""
+        names = [
+            "notizen.config.xml",
+            "Notizen.config.xml",
+            "notizen.xml",
+            "Notizen.xml",
+        ]
+        candidates = [self.config_dir / name for name in names]
+        candidates.extend(Path.cwd() / name for name in names)
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for candidate in candidates:
+            resolved = candidate.resolve() if candidate.exists() else candidate.absolute()
+            if resolved not in seen:
+                seen.add(resolved)
+                unique.append(candidate)
+        return unique
+
     @classmethod
     def load(cls, config_dir: Path | None = None) -> "AppSettings":
         settings = cls(config_dir=config_dir or default_config_dir())
-        if not settings.path.exists():
+        config_path = next((candidate for candidate in settings._candidate_paths() if candidate.exists()), None)
+        if config_path is None:
             settings.save()
             return settings
         try:
-            root = ET.parse(settings.path).getroot()
+            root = ET.parse(config_path).getroot()
         except Exception:
             return settings
 
         def child(name: str):
             return root.find(name)
+
+        scrolls = child("scrolls")
+        if scrolls is not None:
+            try:
+                settings.scrollbars_choice = int(scrolls.get("choice", settings.scrollbars_choice))
+            except (TypeError, ValueError):
+                pass
 
         language = child("language")
         if language is not None:
@@ -86,13 +122,22 @@ class AppSettings:
             except (TypeError, ValueError):
                 pass
 
+        autorun = child("autorun")
+        if autorun is not None:
+            settings.autorun_enabled = _as_bool(autorun.get("if"), settings.autorun_enabled)
+            settings.autorun_minimized = _as_bool(autorun.get("minimized"), settings.autorun_minimized)
+
         desknotes = child("desknotes")
         if desknotes is not None:
-            settings.show_desknote_borders = desknotes.get("show_desknote_borders", "yes").lower() in {"yes", "true", "1"}
+            settings.show_desknote_borders = _as_bool(
+                desknotes.get("show_desknote_borders"), settings.show_desknote_borders
+            )
 
         minimized = child("minimized-show-in")
         if minimized is not None:
-            settings.show_in_taskbar_when_minimized = minimized.get("taskbar", "no").lower() in {"yes", "true", "1"}
+            settings.show_in_taskbar_when_minimized = _as_bool(
+                minimized.get("taskbar"), settings.show_in_taskbar_when_minimized
+            )
 
         main_form = child("main-form")
         if main_form is not None:
@@ -120,9 +165,16 @@ class AppSettings:
     def save(self) -> None:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         root = ET.Element("notizen-alx")
-        ET.SubElement(root, "scrolls", {"choice": "3"})
+        ET.SubElement(root, "scrolls", {"choice": str(self.scrollbars_choice)})
         ET.SubElement(root, "saftycopies", {"amount": str(self.backup_keep)})
-        ET.SubElement(root, "autorun", {"if": "no", "minimized": "yes"})
+        ET.SubElement(
+            root,
+            "autorun",
+            {
+                "if": "yes" if self.autorun_enabled else "no",
+                "minimized": "yes" if self.autorun_minimized else "no",
+            },
+        )
         ET.SubElement(
             root,
             "ftp",

@@ -1,70 +1,116 @@
 # Notizen.NET → Python/Qt Weitertranspilierung
 
-Stand: 2026-04-30
+Stand: 2026-04-30  
+Version: 0.9.2
 
 ## Importierter Kontext
 
-- Die beiden gelieferten Archive wurden entpackt und verglichen:
-  - `notizen.net.tar.bz2`: VB.NET/WinForms-Originalprojekt.
-  - `notizen_py_qt.tar.bz2`: vorhandener Qt-/QML-Migrationsstand mit Hilfsskripten.
-- Aus dem abrufbaren Projektgedächtnis war nur wenig konkreter Notizen.NET-Kontext verfügbar. Verwertbar war vor allem die frühere Entscheidung, Qt for Python mit PySide6 zu bevorzugen und Ressourcen über Qt-/Paketressourcen zu führen. Deshalb nutzt der neue Port PySide6 als Standard, lässt aber PyQt6 als Fallback zu.
+- Ausgangspunkt war der vorhandene Port `notizen_py_qt_net_port_0.9.1.tar.bz2` plus das originale VB.NET/WinForms-Archiv `notizen.net.tar.bz2`.
+- Der aktive Zielpfad ist weiterhin ein Python-Paket unter `src/notizen_py_qt/`.
+- Frühere Projektentscheidung bleibt erhalten: PySide6 ist das bevorzugte Qt-for-Python-Ziel; PyQt6 bleibt als Fallback im Kompatibilitätslayer.
 
-## Analysierte .NET-Quelle
+## In dieser Runde weiter transpilierte .NET-Funktionen
 
-Wichtige VB.NET-Dateien im Original:
+### RichTextBox-Verhalten
 
-- `Notizen.vb` – Hauptfenster, Menülogik, Laden/Speichern, Passwort-/DES-Kette, Export, Tastenkürzel, Desktop-Notizen.
-- `Baum.vb` – TreeView-Operationen, Einfügen, Löschen, Kopieren, Rekursion über alle Knoten.
-- `inhalt.vb` – RichTextBox ↔ TreeNode.Tag/CText-Synchronisation.
-- `CText.vb` – RTF-Inhalt plus Verweis auf Desktop-Notiz.
-- `xml_kram.vb` – Konfigurationsdatei `notizen.config.xml`.
-- `suche.vb` – Suche im aktuellen oder gesamten Baum.
-- `desknote.vb` – schwebende Desktop-Notizen.
-- `ftpkram.vb` – FTP-Öffnen/Speichern.
-- `wecker.vb` – Wecker-Dialogansatz.
+Der größte offene Block aus 0.9.1 war der RichText-Roundtrip. `rtf_utils.py` wurde deshalb deutlich erweitert:
 
-## Neu transpilierte Python/Qt-Struktur
+- RTF → HTML für den Qt-Editor statt nur RTF → Plaintext.
+- HTML/Qt-Editorinhalt → RTF für gespeicherte ALX-Inhalte.
+- Unterstützung für typische WinForms-`RichTextBox`-Formatierung:
+  - fett,
+  - kursiv,
+  - unterstrichen,
+  - durchgestrichen,
+  - Schriftgröße,
+  - Textfarbe,
+  - Texthintergrund/Highlight,
+  - Tabs, Absätze, Bullet-Zeichen und Windows-RTF-Sonderzeichen.
+- Unicode-Roundtrip inklusive Nicht-BMP-Zeichen wie Emoji über korrekte UTF-16-Surrogates in RTF.
+- RTF-Metadaten, Fonttabellen, Farbtabellen, Bilder/Object-Gruppen und andere nicht-textuelle Ziele werden beim Lesen sauber übersprungen.
+- HTML-Bilder aus dem Qt-Editor werden bewusst als sichtbarer Marker `[Bild]` gespeichert, statt einen unvollständigen RTF-Bildblock vorzutäuschen.
 
-Ein echtes Python-Paket wurde in `src/notizen_py_qt/` angelegt:
+### Editor- und Tastaturverhalten
 
-- `app.py` – Qt-Hauptfenster, Baum, Editor, Menüs, Tray, Desktop-Notizen, FTP-Dialog, Wecker.
-- `models.py` – `NoteDocument`, `NoteNode`, `DesktopNoteState`.
-- `alx_io.py` – Notizen-ALX-Dateiformat, GZip, UTF-16-XML, Legacy-DES-Passwortmodus, Backups.
-- `rtf_utils.py` – einfache RTF↔Plaintext-Brücke, damit alte RTF-Inhalte lesbar bleiben.
-- `settings.py` – kompatible `notizen.config.xml`-Konfiguration mit Fensterdaten, Dateien, FTP-Daten, Backups.
-- `search_logic.py` – Suchlogik mit Ganzwort- und Groß-/Kleinschreibung.
-- `ftp_sync.py` – FTP-Zielnormalisierung, Download und Upload per stdlib-`ftplib`.
-- `qt_compat.py` – PySide6 bevorzugt, PyQt6 als Fallback.
-- `resources/` – importiertes Notizen-Icon plus `.qrc`-Datei.
+`app.py` wurde näher an `Notizen.vb/tastendruck` gebracht:
 
-## Portierte Funktionen
+- Ausschneiden/Kopieren/Einfügen/Löschen ist jetzt fokusabhängig:
+  - Editor-Fokus: Textoperation.
+  - Baum-Fokus: Knotenoperation.
+- `Insert`, `Delete` und `Return` wirken nur noch bei Baum-Fokus als Knotenbefehle.
+- `Ctrl+Space` bleibt Wecker.
+- `Ctrl+U` bleibt wie im Original für Umbenennen reserviert; Unterstreichen ist weiterhin über Menü/Toolbar erreichbar.
+- Drag-and-drop-Verschiebungen im Baum markieren das Dokument jetzt als geändert.
 
-- Öffnen und Speichern von `.alx`-Dateien.
-- Kompatibles ALX-v2-XML mit `<notizen-alx2>` und verschachtelten `<Notiz>`-Elementen.
-- Legacy-Import von `<notes_doc>`-Dokumenten.
-- GZip-komprimierte UTF-16-XML-Dateien wie im Original.
-- Passwortmodus mit der dreifachen DES-Kette des VB.NET-Codes.
-- Sicherungskopien im Dateistamm-Unterordner, begrenzt nach Einstellung.
-- Notizbaum mit Hinzufügen, Umbenennen, Löschen, Kopieren, Ausschneiden und Einfügen.
-- Synchronisation zwischen Baumknoten und Editor.
-- Suche im aktuellen Knoten oder im gesamten Baum.
-- Export als RTF oder TXT.
-- Desktop-Notizen als schwebende Qt-Fenster mit gespeicherter Position/Größe/Deckkraft.
-- System-Tray-Menü mit Anzeigen/Ausblenden und Desktop-Notiz-Einträgen.
-- Grundkonfiguration und zuletzt geöffnete Dateien.
-- FTP-Dialog zum Öffnen/Speichern, angelehnt an `ftpkram.vb`.
-- Wecker-Dialog mit Qt-Timer, aufrufbar per `Ctrl+Space`.
-- Importiertes 64x64-Notizen-Icon als Paketressource und `.qrc`.
+### Format-Menü und Toolbar
+
+Neu ergänzt oder stabilisiert:
+
+- Fett, Kursiv, Unterstrichen, Durchgestrichen.
+- Format zurücksetzen.
+- Schrift größer/kleiner.
+- Textfarbe und Texthintergrund.
+- Bullet-Einfügung nach altem `ToolStrip_dot_Click`-Muster.
+- RichText-Kontextaktionen im Editor.
+
+### Teilbaum-Export und Zusammenfassung
+
+Das alte `fasse_zusammen`-/Export-Verhalten aus `Notizen.vb` wurde in `exporters.py` nachgebaut:
+
+- RTF-Export des ganzen aktuellen Teilbaums statt nur des aktuellen Knotens.
+- TXT-Export des ganzen aktuellen Teilbaums.
+- RTF-Export erhält jetzt die unterstützte Body-Formatierung der einzelnen Notizen: Fett, Kursiv, Unterstrichen, Durchgestrichen, Schriftgröße, Textfarbe und Highlight.
+- Nummerierung im alten Stil:
+  - Root-Titel unnummeriert,
+  - Kinder als `1.` / `2.` / …,
+  - Enkel als `1.1.` / `1.2.` / ….
+- Neue Aktion **Teilbaum zusammenfassen**, die unter dem aktuellen Knoten eine neue zusammengeführte Notiz erzeugt.
+
+Hinweis: Der Export erzeugt bewusst ein robustes, interoperables RTF-Snapshot-Dokument. Er verschmilzt nicht bytegenau mehrere fremde RTF-Dokumente per Raw-RTF-Inline-Merge; das wäre ohne RichTextBox/Qt-Document-Engine fragil. Die vom Port sicher gelesene Formatierungsmenge wird aber in den kombinierten Export übernommen.
+
+### Konfiguration
+
+`settings.py` wurde erweitert, um mehr Felder aus `xml_kram.vb` zu übernehmen:
+
+- `scrolls choice` wird gelesen und geschrieben.
+- `autorun if` und `autorun minimized` werden gelesen und geschrieben.
+- Spracheinstellung wird im Einstellungsdialog bearbeitbar gespeichert.
+- Einstellung „minimiert in Taskleiste zeigen“ ist im Dialog verfügbar.
+- Editor-Scrollleisten folgen der gespeicherten `scrolls`-Einstellung.
+- Beim Minimieren kann das Fenster wie im alten Programm aus der Taskleiste verschwinden, wenn Tray verfügbar ist und die Einstellung so gesetzt ist.
+
+Autostart wird derzeit nur kompatibel in der Konfigurationsdatei gespeichert; es wird noch kein OS-spezifischer Autostart-Eintrag geschrieben.
+
+### Projektbereinigung
+
+Die aktiven Projektdateien wurden von alten Slint-/QML-Zwischenschritten bereinigt:
+
+- Historische Qt-/QML-/Slint-Migrationsskripte und zugehörige Tests liegen jetzt unter `legacy_build_metadata/qt611_migration_kit/`.
+- Der aktive Python/Qt-Port enthält im Hauptpfad nur noch die Notizen-Python/Qt-App, ihre Tests, Ressourcen und schlanke Hilfsskripte.
+- `scripts/check_no_slint.sh` meldet für den aktiven Projektpfad jetzt sauber: keine alten UI-Framework-Referenzen.
+
+## Aktive Python/Qt-Struktur
+
+- `src/notizen_py_qt/app.py` – Qt-Hauptfenster, Baum, Editor, Menüs, Tray, Desktop-Notizen, FTP-Dialog, Wecker.
+- `src/notizen_py_qt/models.py` – `NoteDocument`, `NoteNode`, `DesktopNoteState`.
+- `src/notizen_py_qt/alx_io.py` – ALX-Dateiformat, GZip, UTF-16-XML, Legacy-DES-Passwortmodus, Backups.
+- `src/notizen_py_qt/rtf_utils.py` – RTF↔HTML↔Plaintext-Brücke.
+- `src/notizen_py_qt/exporters.py` – Teilbaum-Export und Zusammenfassung.
+- `src/notizen_py_qt/settings.py` – kompatible `notizen.config.xml`-Konfiguration.
+- `src/notizen_py_qt/search_logic.py` – Suchlogik.
+- `src/notizen_py_qt/ftp_sync.py` – FTP-Zielnormalisierung, Download und Upload per `ftplib`.
+- `src/notizen_py_qt/qt_compat.py` – PySide6 bevorzugt, PyQt6 als Fallback.
+- `src/notizen_py_qt/resources/` – Notizen-Icon und `.qrc`.
 
 ## Bekannte Grenzen
 
-- Der Editor zeigt alte RTF-Inhalte lesbar als Text an. Formatierung wird beim bloßen Öffnen/Speichern erhalten, aber nach Bearbeitung noch nicht vollständig als RichText-Roundtrip rekonstruiert.
-- Die WinForms-Oberfläche ist funktional nachgebaut, nicht pixelgenau kopiert.
-- Die vollständigen Spracharrays aus `languages.vb` wurden noch nicht 1:1 portiert; die aktuelle Oberfläche ist überwiegend deutsch.
-- FTP ist aus Kompatibilitätsgründen enthalten, bleibt aber wie im Original unverschlüsselt. Für vertrauliche Notizen sollte die ALX-Datei selbst mit Passwort gespeichert werden.
-- Die GUI konnte in dieser Umgebung nicht gestartet werden, weil weder PySide6 noch PyQt6 installiert ist. Die nicht-GUI-seitigen Parser-, Format- und Migrationstests laufen durch.
+- RichText ist jetzt deutlich besser, aber nicht vollständig WinForms-byteidentisch. Komplexe RTF-Features wie eingebettete OLE-Objekte, Tabellen oder echte RTF-Bild-Roundtrips sind noch nicht vollständig portiert.
+- Die Oberfläche ist funktional nachgebaut, nicht pixelgenau WinForms-identisch.
+- Die Spracharrays aus `languages.vb` sind weiterhin nicht vollständig 1:1 als Lokalisierungssystem portiert.
+- FTP ist wie im Original unverschlüsselt. Für vertrauliche Notizen sollte die ALX-Datei selbst mit Passwort gespeichert werden.
+- In dieser Container-Umgebung ist kein PySide6/PyQt6 installiert; GUI-Smoke-Test kann deshalb nur bis zur sauberen Fehlermeldung geprüft werden.
 
-## Installation und Start
+## Start
 
 ```bash
 python -m pip install -e ".[crypto]"
@@ -82,13 +128,3 @@ Smoke-Test auf einem Rechner mit Qt-Binding:
 ```bash
 python -m notizen_py_qt --smoke-test
 ```
-
-## Ressourcen
-
-Das Icon liegt als Paketdatei unter `src/notizen_py_qt/resources/notizen.png`. Zusätzlich liegt `notizen.qrc` bereit. Auf einem Rechner mit PySide6 kann daraus bei Bedarf ein Python-Resource-Modul erzeugt werden:
-
-```bash
-pyside6-rcc src/notizen_py_qt/resources/notizen.qrc -o src/notizen_py_qt/resources_rc.py
-```
-
-Der Code funktioniert auch ohne kompiliertes `.qrc`, weil er auf die Paketressource zurückfällt.
