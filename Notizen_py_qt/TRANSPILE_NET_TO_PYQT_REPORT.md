@@ -1,100 +1,96 @@
 # Notizen.NET → Python/Qt Weitertranspilierung
 
 Stand: 2026-04-30  
-Version: 0.9.2
+Version: 0.9.3
 
-## Importierter Kontext
+## Ausgangspunkt
 
-- Ausgangspunkt war der vorhandene Port `notizen_py_qt_net_port_0.9.1.tar.bz2` plus das originale VB.NET/WinForms-Archiv `notizen.net.tar.bz2`.
-- Der aktive Zielpfad ist weiterhin ein Python-Paket unter `src/notizen_py_qt/`.
+- Weitergeführt wurde der vorhandene Python/Qt-Port **0.9.2**.
+- Als Referenz diente weiterhin das originale VB.NET/WinForms-Projekt aus `notizen.net.tar.bz2`.
+- Der aktive Zielpfad bleibt ein Python-Paket unter `src/notizen_py_qt/`.
 - Frühere Projektentscheidung bleibt erhalten: PySide6 ist das bevorzugte Qt-for-Python-Ziel; PyQt6 bleibt als Fallback im Kompatibilitätslayer.
 
 ## In dieser Runde weiter transpilierte .NET-Funktionen
 
-### RichTextBox-Verhalten
+### Editor-Kontextmenü aus `kontext_inhalt.vb`
 
-Der größte offene Block aus 0.9.1 war der RichText-Roundtrip. `rtf_utils.py` wurde deshalb deutlich erweitert:
+Der Qt-Editor hat jetzt die im alten RichTextBox-Kontextmenü fehlenden Aktionen:
 
-- RTF → HTML für den Qt-Editor statt nur RTF → Plaintext.
-- HTML/Qt-Editorinhalt → RTF für gespeicherte ALX-Inhalte.
-- Unterstützung für typische WinForms-`RichTextBox`-Formatierung:
-  - fett,
-  - kursiv,
-  - unterstrichen,
-  - durchgestrichen,
-  - Schriftgröße,
-  - Textfarbe,
-  - Texthintergrund/Highlight,
-  - Tabs, Absätze, Bullet-Zeichen und Windows-RTF-Sonderzeichen.
-- Unicode-Roundtrip inklusive Nicht-BMP-Zeichen wie Emoji über korrekte UTF-16-Surrogates in RTF.
-- RTF-Metadaten, Fonttabellen, Farbtabellen, Bilder/Object-Gruppen und andere nicht-textuelle Ziele werden beim Lesen sauber übersprungen.
-- HTML-Bilder aus dem Qt-Editor werden bewusst als sichtbarer Marker `[Bild]` gespeichert, statt einen unvollständigen RTF-Bildblock vorzutäuschen.
+- Ausschneiden,
+- Kopieren,
+- Einfügen,
+- Text löschen,
+- Bild einfügen,
+- Datum einfügen,
+- Suchen,
+- Formatierungsaktionen im Editor-Kontextbereich.
 
-### Editor- und Tastaturverhalten
+`Datum einfügen` verwendet bewusst das alte Notizen.NET-Schema mit Leerzeichen davor/danach und der einfachen deutschen Punktnotation: `Tag.Monat.Jahr Stunde:Minute`.
 
-`app.py` wurde näher an `Notizen.vb/tastendruck` gebracht:
+`Bild einfügen` lädt ein Bild über den Qt-Dateidialog. Das Bild wird über `QImage` normalisiert und als PNG-Data-URI in den Qt-Editor eingefügt, damit es beim Speichern vollständig in den ALX-/RTF-Inhalt gelangt und nicht nur als lokaler Dateipfad erhalten bleibt.
 
-- Ausschneiden/Kopieren/Einfügen/Löschen ist jetzt fokusabhängig:
-  - Editor-Fokus: Textoperation.
-  - Baum-Fokus: Knotenoperation.
-- `Insert`, `Delete` und `Return` wirken nur noch bei Baum-Fokus als Knotenbefehle.
-- `Ctrl+Space` bleibt Wecker.
-- `Ctrl+U` bleibt wie im Original für Umbenennen reserviert; Unterstreichen ist weiterhin über Menü/Toolbar erreichbar.
-- Drag-and-drop-Verschiebungen im Baum markieren das Dokument jetzt als geändert.
+### Echter RTF-Bild-Roundtrip
 
-### Format-Menü und Toolbar
+Der größte technische Fortschritt gegenüber 0.9.2 ist der Bildpfad in `rtf_utils.py`:
 
-Neu ergänzt oder stabilisiert:
+- HTML-`img` mit Data-URI oder lokalem Datei-`src` wird zu RTF-`{\pict ...}`.
+- PNG wird als `\pngblip` gespeichert.
+- JPEG wird als `\jpegblip` gespeichert.
+- Bildbreite/-höhe werden aus HTML-Attributen oder CSS gelesen und als `\picwgoal`/`\pichgoal` geschrieben.
+- RTF-`\pict`-Gruppen werden beim Laden wieder zu HTML-`img src="data:image/...;base64,..."`.
+- Plaintext-Extraktion überspringt Bilder weiterhin sauber, statt Rohdaten oder Hexblöcke in Notiztext zu leaken.
+- Eingebettete Bildgruppen in `\shppict`/`\nonshppict` werden praktisch erkannt, wenn sie einen inneren `\pict`-Block enthalten.
 
-- Fett, Kursiv, Unterstrichen, Durchgestrichen.
-- Format zurücksetzen.
-- Schrift größer/kleiner.
-- Textfarbe und Texthintergrund.
-- Bullet-Einfügung nach altem `ToolStrip_dot_Click`-Muster.
-- RichText-Kontextaktionen im Editor.
+Damit ist der frühere 0.9.2-Kompromiss entfernt, bei dem HTML-Bilder nur als `[Bild]`-Marker gespeichert wurden.
 
-### Teilbaum-Export und Zusammenfassung
+### Schriftfamilie und Schriftgröße näher an `ToolStrip_fonts`/`fontsize.vb`
 
-Das alte `fasse_zusammen`-/Export-Verhalten aus `Notizen.vb` wurde in `exporters.py` nachgebaut:
+Der Port hat jetzt eine Qt-Schriftleiste mit:
 
-- RTF-Export des ganzen aktuellen Teilbaums statt nur des aktuellen Knotens.
-- TXT-Export des ganzen aktuellen Teilbaums.
-- RTF-Export erhält jetzt die unterstützte Body-Formatierung der einzelnen Notizen: Fett, Kursiv, Unterstrichen, Durchgestrichen, Schriftgröße, Textfarbe und Highlight.
-- Nummerierung im alten Stil:
-  - Root-Titel unnummeriert,
-  - Kinder als `1.` / `2.` / …,
-  - Enkel als `1.1.` / `1.2.` / ….
-- Neue Aktion **Teilbaum zusammenfassen**, die unter dem aktuellen Knoten eine neue zusammengeführte Notiz erzeugt.
+- `QFontComboBox` für Schriftfamilien,
+- direkter Schriftgrößen-Eingabe per `QSpinBox`,
+- Synchronisation der Anzeige beim Bewegen des Cursors im Editor,
+- Speicherung von Schriftfamilien über RTF-Fonttables,
+- Rücklesen von RTF-`\fonttbl` und `\fN` in Qt-HTML-`font-family`.
 
-Hinweis: Der Export erzeugt bewusst ein robustes, interoperables RTF-Snapshot-Dokument. Er verschmilzt nicht bytegenau mehrere fremde RTF-Dokumente per Raw-RTF-Inline-Merge; das wäre ohne RichTextBox/Qt-Document-Engine fragil. Die vom Port sicher gelesene Formatierungsmenge wird aber in den kombinierten Export übernommen.
+Die Formatierungslogik wurde außerdem an das alte RichTextBox-Verhalten angepasst: Wenn keine Textauswahl existiert, wird bei Formatierungsbefehlen die ganze aktuelle Notiz formatiert. Das entspricht dem alten `font_set`-Pfad, der bei leerer Auswahl `SelectAll()` verwendete.
 
-### Konfiguration
+### RTF-Fonttable im Export
 
-`settings.py` wurde erweitert, um mehr Felder aus `xml_kram.vb` zu übernehmen:
+Der Teilbaum-RTF-Export bewahrt jetzt zusätzlich zu Fett/Kursiv/Unterstrichen/Durchgestrichen, Schriftgröße, Textfarbe und Highlight auch die Schriftfamilie der unterstützten Textsegmente.
 
-- `scrolls choice` wird gelesen und geschrieben.
-- `autorun if` und `autorun minimized` werden gelesen und geschrieben.
-- Spracheinstellung wird im Einstellungsdialog bearbeitbar gespeichert.
-- Einstellung „minimiert in Taskleiste zeigen“ ist im Dialog verfügbar.
-- Editor-Scrollleisten folgen der gespeicherten `scrolls`-Einstellung.
-- Beim Minimieren kann das Fenster wie im alten Programm aus der Taskleiste verschwinden, wenn Tray verfügbar ist und die Einstellung so gesetzt ist.
+Dafür wurden ergänzt:
 
-Autostart wird derzeit nur kompatibel in der Konfigurationsdatei gespeichert; es wird noch kein OS-spezifischer Autostart-Eintrag geschrieben.
+- Font-Familien in `RtfTextStyle`,
+- Font-Familien-Sammlung im Export,
+- RTF-Fonttable-Erzeugung mit `\f0` als Standard und zusätzlichen `\fN`-Einträgen,
+- `\fN`-Präfixe in formatierten Segmenten.
 
-### Projektbereinigung
+### Desktop-Notizen näher an `desknote.vb` und Kontextklassen
 
-Die aktiven Projektdateien wurden von alten Slint-/QML-Zwischenschritten bereinigt:
+Desktop-Notizen wurden erweitert:
 
-- Historische Qt-/QML-/Slint-Migrationsskripte und zugehörige Tests liegen jetzt unter `legacy_build_metadata/qt611_migration_kit/`.
-- Der aktive Python/Qt-Port enthält im Hauptpfad nur noch die Notizen-Python/Qt-App, ihre Tests, Ressourcen und schlanke Hilfsskripte.
-- `scripts/check_no_slint.sh` meldet für den aktiven Projektpfad jetzt sauber: keine alten UI-Framework-Referenzen.
+- eigenes Kontextmenü im Desktop-Notizfenster und im darin liegenden Editor,
+- Ausschneiden/Kopieren/Einfügen im Desktop-Editor,
+- Hintergrundfarbe pro Desktop-Notiz,
+- Transparenzmenü von 10 % bis 100 %,
+- Ausblenden,
+- Desktop-Notiz schließen/entfernen,
+- Doppelklick öffnet den zugehörigen Knoten im Hauptfenster,
+- gespeicherte Rand-Einstellung wird beim Erzeugen des Fensters berücksichtigt; ohne Rand wird ein frameless Qt-Fenster verwendet.
+
+### Kleinere Stabilisierung
+
+- `insert_image` verwendet jetzt die Qt6-kompatible `QStandardPaths.StandardLocation.PicturesLocation`-Auflösung über den vorhandenen Enum-Kompatibilitätshelfer.
+- Version wurde in `pyproject.toml` und `src/notizen_py_qt/__init__.py` auf **0.9.3** gesetzt.
+- Tests wurden um RTF-Bild-Roundtrip und Schriftfamilien-Roundtrip erweitert.
 
 ## Aktive Python/Qt-Struktur
 
-- `src/notizen_py_qt/app.py` – Qt-Hauptfenster, Baum, Editor, Menüs, Tray, Desktop-Notizen, FTP-Dialog, Wecker.
+- `src/notizen_py_qt/app.py` – Qt-Hauptfenster, Baum, Editor, Menüs, Toolbars, Tray, Desktop-Notizen, FTP-Dialog, Wecker.
 - `src/notizen_py_qt/models.py` – `NoteDocument`, `NoteNode`, `DesktopNoteState`.
 - `src/notizen_py_qt/alx_io.py` – ALX-Dateiformat, GZip, UTF-16-XML, Legacy-DES-Passwortmodus, Backups.
-- `src/notizen_py_qt/rtf_utils.py` – RTF↔HTML↔Plaintext-Brücke.
+- `src/notizen_py_qt/rtf_utils.py` – RTF↔HTML↔Plaintext-Brücke inklusive Fonttable und PNG/JPEG-`\pict`-Bildern.
 - `src/notizen_py_qt/exporters.py` – Teilbaum-Export und Zusammenfassung.
 - `src/notizen_py_qt/settings.py` – kompatible `notizen.config.xml`-Konfiguration.
 - `src/notizen_py_qt/search_logic.py` – Suchlogik.
@@ -104,7 +100,8 @@ Die aktiven Projektdateien wurden von alten Slint-/QML-Zwischenschritten bereini
 
 ## Bekannte Grenzen
 
-- RichText ist jetzt deutlich besser, aber nicht vollständig WinForms-byteidentisch. Komplexe RTF-Features wie eingebettete OLE-Objekte, Tabellen oder echte RTF-Bild-Roundtrips sind noch nicht vollständig portiert.
+- Der RTF-Bildpfad unterstützt jetzt praxisrelevante PNG/JPEG-`\pict`-Blöcke. Exotische RTF-Bildarten wie WMF/EMF, OLE-Objekte, `\bin`-Payloads oder Tabellen sind weiterhin nicht vollständig portiert.
+- RichText ist funktional deutlich näher am Original, aber nicht bytegenau WinForms-identisch.
 - Die Oberfläche ist funktional nachgebaut, nicht pixelgenau WinForms-identisch.
 - Die Spracharrays aus `languages.vb` sind weiterhin nicht vollständig 1:1 als Lokalisierungssystem portiert.
 - FTP ist wie im Original unverschlüsselt. Für vertrauliche Notizen sollte die ALX-Datei selbst mit Passwort gespeichert werden.

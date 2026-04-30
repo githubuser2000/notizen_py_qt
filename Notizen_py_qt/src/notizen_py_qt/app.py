@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import sys
 from pathlib import Path
 from typing import Any
@@ -49,7 +50,9 @@ if QtWidgets is not None:
     ITEM_DROP = _enum(QtCore.Qt, "ItemFlag", "ItemIsDropEnabled")
     WINDOW = _enum(QtCore.Qt, "WindowType", "Window")
     TOOL = _enum(QtCore.Qt, "WindowType", "Tool")
+    FRAMELESS = _enum(QtCore.Qt, "WindowType", "FramelessWindowHint")
     CTRL = _enum(QtCore.Qt, "KeyboardModifier", "ControlModifier")
+    CUSTOM_CONTEXT_MENU = _enum(QtCore.Qt, "ContextMenuPolicy", "CustomContextMenu")
 
     def color_from_argb(argb: int) -> Any:
         value = argb & 0xFFFFFFFF
@@ -94,7 +97,10 @@ if QtWidgets is not None:
 
     class DesktopNoteWindow(QtWidgets.QWidget):
         def __init__(self, main_window: "MainWindow", node: NoteNode) -> None:
-            super().__init__(main_window, TOOL | WINDOW)
+            flags = TOOL | WINDOW
+            if not main_window.settings.show_desknote_borders:
+                flags |= FRAMELESS
+            super().__init__(main_window, flags)
             self.main_window = main_window
             self.node = node
             if self.node.desktop_note is None:
@@ -110,6 +116,12 @@ if QtWidgets is not None:
             self.editor = QtWidgets.QTextEdit()
             self.editor.setAcceptRichText(True)
             self.editor.setHtml(rtf_to_html(node.rtf))
+            self.editor.setContextMenuPolicy(CUSTOM_CONTEXT_MENU)
+            self.editor.customContextMenuRequested.connect(
+                lambda pos: self._show_context_menu(self.editor.mapToGlobal(pos))
+            )
+            self.setContextMenuPolicy(CUSTOM_CONTEXT_MENU)
+            self.customContextMenuRequested.connect(lambda pos: self._show_context_menu(self.mapToGlobal(pos)))
             close_button = QtWidgets.QPushButton("Schließen")
             close_button.clicked.connect(self.close)
             layout.addWidget(self.title_label)
@@ -118,6 +130,13 @@ if QtWidgets is not None:
             self.editor.textChanged.connect(self._editor_changed)
             self._restore_geometry()
 
+        def _apply_background(self) -> None:
+            state = self.node.desktop_note or DesktopNoteState()
+            if state.argb:
+                self.editor.setStyleSheet(f"background-color: {color_from_argb(state.argb).name()};")
+            else:
+                self.editor.setStyleSheet("")
+
         def _restore_geometry(self) -> None:
             state = self.node.desktop_note or DesktopNoteState()
             self.setGeometry(state.x, state.y, max(120, state.width), max(100, state.height))
@@ -125,8 +144,7 @@ if QtWidgets is not None:
                 self.setWindowOpacity(float(state.opacity))
             except Exception:
                 pass
-            if state.argb:
-                self.editor.setStyleSheet(f"background-color: {color_from_argb(state.argb).name()};")
+            self._apply_background()
 
         def _store_geometry(self) -> None:
             geo = self.geometry()
@@ -147,7 +165,63 @@ if QtWidgets is not None:
             self.setWindowTitle(self.node.title)
             self.title_label.setText(self.node.title)
             self.editor.setHtml(rtf_to_html(self.node.rtf))
+            self._apply_background()
             self._loading = False
+
+        def _show_context_menu(self, global_pos: Any) -> None:
+            menu = QtWidgets.QMenu(self)
+            menu.addAction("Ausschneiden", self.editor.cut)
+            menu.addAction("Kopieren", self.editor.copy)
+            menu.addAction("Einfügen", self.editor.paste)
+            menu.addSeparator()
+            menu.addAction("Hintergrundfarbe", self._choose_background_color)
+            opacity_menu = menu.addMenu("Transparenz")
+            for value in range(10, 101, 10):
+                action = opacity_menu.addAction(f"{value} %")
+                action.triggered.connect(lambda checked=False, v=value: self._set_opacity_percent(v))
+            menu.addSeparator()
+            menu.addAction("Im Hauptfenster öffnen", self._activate_main_window_node)
+            menu.addAction("Ausblenden", self.close)
+            menu.addAction("Desktop-Notiz schließen", self._remove_desktop_note)
+            menu.exec(global_pos)
+
+        def _choose_background_color(self) -> None:
+            color = QtWidgets.QColorDialog.getColor(parent=self)
+            if not color.isValid():
+                return
+            if self.node.desktop_note is None:
+                self.node.desktop_note = DesktopNoteState()
+            self.node.desktop_note.argb = argb_from_color(color)
+            self._apply_background()
+            self.main_window.document.mark_changed()
+            self.main_window.update_title()
+
+        def _set_opacity_percent(self, value: int) -> None:
+            if self.node.desktop_note is None:
+                self.node.desktop_note = DesktopNoteState()
+            opacity = max(0.1, min(1.0, value / 100.0))
+            self.node.desktop_note.opacity = opacity
+            try:
+                self.setWindowOpacity(opacity)
+            except Exception:
+                pass
+            self.main_window.document.mark_changed()
+            self.main_window.update_title()
+
+        def _activate_main_window_node(self) -> None:
+            self.main_window.show()
+            self.main_window.raise_()
+            self.main_window.activateWindow()
+            self.main_window.select_node(self.node)
+
+        def _remove_desktop_note(self) -> None:
+            self.main_window.close_desktop_note(self.node)
+            self.main_window.document.mark_changed()
+            self.main_window.update_title()
+
+        def mouseDoubleClickEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            self._activate_main_window_node()
+            super().mouseDoubleClickEvent(event)
 
         def _editor_changed(self) -> None:
             if self._loading:
@@ -284,6 +358,7 @@ if QtWidgets is not None:
             self.desktop_windows: dict[int, DesktopNoteWindow] = {}
             self.last_search = ""
             self.alarms: list[Any] = []
+            self._updating_format_controls = False
             self.autosave_timer = QtCore.QTimer(self)
             self.autosave_timer.timeout.connect(self.autosave)
             self._build_ui()
@@ -333,6 +408,7 @@ if QtWidgets is not None:
             self._create_actions()
             self._create_menus()
             self._create_toolbars()
+            self.editor.cursorPositionChanged.connect(self.update_format_controls)
             self.statusBar().showMessage("Bereit")
             self._create_tray_icon()
 
@@ -368,6 +444,9 @@ if QtWidgets is not None:
             self.cut_action = self._act("Ausschneiden", self.cut_anything, "Ctrl+X")
             self.copy_action = self._act("Kopieren", self.copy_anything, "Ctrl+C")
             self.paste_action = self._act("Einfügen", self.paste_anything, "Ctrl+V")
+            self.delete_text_action = self._act("Text löschen", self.delete_selection_text)
+            self.insert_image_action = self._act("Bild einfügen", self.insert_image)
+            self.insert_date_action = self._act("Datum einfügen", self.insert_current_date_time)
             self.search_action = self._act("Suchen", self.show_search, "Ctrl+F")
             self.alarm_action = self._act("Wecker", self.show_alarm_dialog, "Ctrl+Space")
 
@@ -444,6 +523,19 @@ if QtWidgets is not None:
                 self.tree.addAction(action)
 
             for action in (
+                self.cut_action,
+                self.copy_action,
+                self.paste_action,
+                self.delete_text_action,
+                self.insert_image_action,
+                self.insert_date_action,
+                self.search_action,
+            ):
+                self.editor.addAction(action)
+            separator = QtGui.QAction(self.editor)
+            separator.setSeparator(True)
+            self.editor.addAction(separator)
+            for action in (
                 self.bold_action,
                 self.italic_action,
                 self.underline_action,
@@ -465,9 +557,26 @@ if QtWidgets is not None:
             for action in (self.add_sibling_action, self.add_child_action, self.delete_action):
                 node_bar.addAction(action)
             edit_bar = self.addToolBar("Ausschneiden/Kopieren/Einfügen")
-            for action in (self.cut_action, self.copy_action, self.paste_action, self.search_action):
+            for action in (
+                self.cut_action,
+                self.copy_action,
+                self.paste_action,
+                self.insert_image_action,
+                self.insert_date_action,
+                self.search_action,
+            ):
                 edit_bar.addAction(action)
             font_bar = self.addToolBar("Schrift")
+            self.font_family_combo = QtWidgets.QFontComboBox()
+            self.font_family_combo.setToolTip("Schriftart")
+            self.font_family_combo.currentFontChanged.connect(self.apply_font_family)
+            font_bar.addWidget(self.font_family_combo)
+            self.font_size_spin = QtWidgets.QSpinBox()
+            self.font_size_spin.setRange(6, 99)
+            self.font_size_spin.setValue(10)
+            self.font_size_spin.setToolTip("Schriftgröße")
+            self.font_size_spin.valueChanged.connect(self.apply_font_size)
+            font_bar.addWidget(self.font_size_spin)
             for action in (
                 self.bold_action,
                 self.italic_action,
@@ -1085,15 +1194,69 @@ if QtWidgets is not None:
 
         def delete_anything(self) -> None:
             if self._editor_active():
-                cursor = self.editor.textCursor()
-                if cursor.hasSelection():
-                    cursor.removeSelectedText()
-                else:
-                    cursor.deleteChar()
-                self.editor.setTextCursor(cursor)
-                self.save_current_editor_to_node()
+                self.delete_selection_text()
             else:
                 self.delete_node()
+
+        def delete_selection_text(self) -> None:
+            cursor = self.editor.textCursor()
+            if cursor.hasSelection():
+                cursor.removeSelectedText()
+            else:
+                cursor.deleteChar()
+            self.editor.setTextCursor(cursor)
+            self.save_current_editor_to_node()
+
+        def insert_current_date_time(self) -> None:
+            now = QtCore.QDateTime.currentDateTime()
+            date = now.date()
+            time = now.time()
+            text = f" {date.day()}.{date.month()}.{date.year()} {time.hour()}:{time.minute()} "
+            self.editor.textCursor().insertText(text)
+            self.save_current_editor_to_node()
+
+        def _image_file_to_data_uri(self, file_name: str) -> str | None:
+            image = QtGui.QImage(file_name)
+            if image.isNull():
+                return None
+            byte_array = QtCore.QByteArray()
+            buffer = QtCore.QBuffer(byte_array)
+            write_only = _enum(QtCore.QIODevice, "OpenModeFlag", "WriteOnly")
+            if not buffer.open(write_only):
+                return None
+            try:
+                if not image.save(buffer, "PNG"):
+                    return None
+            finally:
+                buffer.close()
+            payload = bytes(byte_array)
+            return "data:image/png;base64," + base64.b64encode(payload).decode("ascii")
+
+        def insert_image(self) -> None:
+            start_dir = str(Path.home())
+            try:
+                pictures = _enum(QtCore.QStandardPaths, "StandardLocation", "PicturesLocation")
+                paths = QtCore.QStandardPaths.standardLocations(pictures)
+                if paths:
+                    start_dir = paths[0]
+            except Exception:
+                pass
+            file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Bild einfügen",
+                start_dir,
+                "Bild-Dateien (*.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff);;Alle Dateien (*)",
+            )
+            if not file_name:
+                return
+            data_uri = self._image_file_to_data_uri(file_name)
+            if data_uri is None:
+                QtWidgets.QMessageBox.warning(self, "Bild einfügen", "Dieses Bild konnte nicht geladen werden.")
+                return
+            cursor = self.editor.textCursor()
+            cursor.insertHtml(f'<img src="{data_uri}"/>')
+            self.editor.setTextCursor(cursor)
+            self.save_current_editor_to_node()
 
         def unify_current_subtree(self) -> None:
             source = self.current_node()
@@ -1220,6 +1383,67 @@ if QtWidgets is not None:
             msg = "Passwort gesetzt." if pw else "Passwort entfernt; die nächste Speicherung ist unverschlüsselt."
             self.statusBar().showMessage(msg)
 
+        def merge_editor_format(self, fmt: Any) -> None:
+            cursor = self.editor.textCursor()
+            had_selection = cursor.hasSelection()
+            original_position = cursor.position()
+            if not had_selection and not self.editor.document().isEmpty():
+                # Notizen.NET's RichTextBox formatter selected the whole note
+                # when no text was selected. Keep that legacy behavior for font
+                # family, size and style actions instead of only changing the
+                # future typing format.
+                cursor.select(_enum(QtGui.QTextCursor, "SelectionType", "Document"))
+            cursor.mergeCharFormat(fmt)
+            if not had_selection:
+                self.editor.mergeCurrentCharFormat(fmt)
+                try:
+                    cursor.setPosition(max(0, min(original_position, self.editor.document().characterCount() - 1)))
+                except Exception:
+                    pass
+            self.editor.setTextCursor(cursor)
+            self.save_current_editor_to_node()
+            self.update_format_controls()
+
+        def apply_font_family(self, font: Any) -> None:
+            if self._updating_format_controls:
+                return
+            family = font.family() if hasattr(font, "family") else str(font)
+            if not family:
+                return
+            fmt = QtGui.QTextCharFormat()
+            try:
+                fmt.setFontFamilies([family])
+            except Exception:
+                fmt.setFontFamily(family)
+            self.merge_editor_format(fmt)
+
+        def apply_font_size(self, size: int) -> None:
+            if self._updating_format_controls:
+                return
+            fmt = QtGui.QTextCharFormat()
+            fmt.setFontPointSize(float(max(6, min(99, size))))
+            self.merge_editor_format(fmt)
+
+        def update_format_controls(self) -> None:
+            if not hasattr(self, "font_family_combo") or not hasattr(self, "font_size_spin"):
+                return
+            fmt = self.editor.currentCharFormat()
+            self._updating_format_controls = True
+            try:
+                family = ""
+                try:
+                    families = fmt.fontFamilies()
+                    if families:
+                        family = families[0]
+                except Exception:
+                    family = fmt.fontFamily()
+                if family:
+                    self.font_family_combo.setCurrentFont(QtGui.QFont(family))
+                size = fmt.fontPointSize() or self.editor.font().pointSizeF() or 10
+                self.font_size_spin.setValue(max(6, min(99, int(round(size)))))
+            finally:
+                self._updating_format_controls = False
+
         def toggle_bold(self) -> None:
             fmt = self.editor.currentCharFormat()
             current = fmt.fontWeight()
@@ -1234,22 +1458,22 @@ if QtWidgets is not None:
                 bold_weight = 75
                 normal_weight = 50
             fmt.setFontWeight(normal_weight if _weight_value(current) >= _weight_value(bold_weight) else bold_weight)
-            self.editor.mergeCurrentCharFormat(fmt)
+            self.merge_editor_format(fmt)
 
         def toggle_italic(self) -> None:
             fmt = self.editor.currentCharFormat()
             fmt.setFontItalic(not fmt.fontItalic())
-            self.editor.mergeCurrentCharFormat(fmt)
+            self.merge_editor_format(fmt)
 
         def toggle_underline(self) -> None:
             fmt = self.editor.currentCharFormat()
             fmt.setFontUnderline(not fmt.fontUnderline())
-            self.editor.mergeCurrentCharFormat(fmt)
+            self.merge_editor_format(fmt)
 
         def toggle_strike(self) -> None:
             fmt = self.editor.currentCharFormat()
             fmt.setFontStrikeOut(not fmt.fontStrikeOut())
-            self.editor.mergeCurrentCharFormat(fmt)
+            self.merge_editor_format(fmt)
 
         def reset_char_format(self) -> None:
             fmt = QtGui.QTextCharFormat()
@@ -1257,21 +1481,21 @@ if QtWidgets is not None:
             fmt.setFontItalic(False)
             fmt.setFontUnderline(False)
             fmt.setFontStrikeOut(False)
-            self.editor.mergeCurrentCharFormat(fmt)
+            self.merge_editor_format(fmt)
 
         def choose_text_color(self) -> None:
             color = QtWidgets.QColorDialog.getColor(parent=self)
             if color.isValid():
                 fmt = QtGui.QTextCharFormat()
                 fmt.setForeground(QtGui.QBrush(color))
-                self.editor.mergeCurrentCharFormat(fmt)
+                self.merge_editor_format(fmt)
 
         def choose_text_background(self) -> None:
             color = QtWidgets.QColorDialog.getColor(parent=self)
             if color.isValid():
                 fmt = QtGui.QTextCharFormat()
                 fmt.setBackground(QtGui.QBrush(color))
-                self.editor.mergeCurrentCharFormat(fmt)
+                self.merge_editor_format(fmt)
 
         def insert_bullet(self) -> None:
             cursor = self.editor.textCursor()
@@ -1283,7 +1507,7 @@ if QtWidgets is not None:
             fmt = self.editor.currentCharFormat()
             size = fmt.fontPointSize() or self.editor.font().pointSizeF() or 10
             fmt.setFontPointSize(max(6, min(99, size + delta)))
-            self.editor.mergeCurrentCharFormat(fmt)
+            self.merge_editor_format(fmt)
 
         def show_settings_dialog(self) -> None:
             dialog = QtWidgets.QDialog(self)

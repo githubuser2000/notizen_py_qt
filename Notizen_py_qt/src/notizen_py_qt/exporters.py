@@ -76,6 +76,26 @@ def _collect_body_segments(root: NoteNode, options: ExportOptions) -> list[tuple
     return entries
 
 
+def _collect_fonts(entries: list[tuple[str, list[RtfTextSegment]]]) -> dict[str, int]:
+    font_indexes: dict[str, int] = {}
+    for _heading, segments in entries:
+        for segment in segments:
+            family = segment.style.font_family
+            if family and family not in font_indexes:
+                font_indexes[family] = len(font_indexes) + 1
+    return font_indexes
+
+
+def _font_table(font_indexes: dict[str, int]) -> str:
+    def clean(name: str) -> str:
+        return name.replace("\\", " ").replace("{", " ").replace("}", " ").replace(";", " ").strip()
+
+    entries = [r"{\f0\fnil\fcharset0 Microsoft Sans Serif;}" ]
+    for family, index in sorted(font_indexes.items(), key=lambda item: item[1]):
+        entries.append(r"{\f" + str(index) + r"\fnil\fcharset0 " + (clean(family) or "Microsoft Sans Serif") + ";}")
+    return r"{\fonttbl" + "".join(entries) + "}" + "\n"
+
+
 def _collect_colors(entries: list[tuple[str, list[RtfTextSegment]]]) -> dict[str, int]:
     color_indexes: dict[str, int] = {}
     for _heading, segments in entries:
@@ -99,8 +119,10 @@ def _color_table(color_indexes: dict[str, int]) -> str:
     return r"{\colortbl " + ";".join(entries) + ";}" + "\n"
 
 
-def _style_prefix(style: RtfTextStyle, color_indexes: dict[str, int]) -> str:
+def _style_prefix(style: RtfTextStyle, color_indexes: dict[str, int], font_indexes: dict[str, int]) -> str:
     parts: list[str] = []
+    if style.font_family in font_indexes:
+        parts.append(rf"\f{font_indexes[style.font_family]}")
     if style.bold:
         parts.append(r"\b")
     if style.italic:
@@ -118,11 +140,11 @@ def _style_prefix(style: RtfTextStyle, color_indexes: dict[str, int]) -> str:
     return "".join(parts)
 
 
-def _emit_segment(segment: RtfTextSegment, color_indexes: dict[str, int]) -> str:
+def _emit_segment(segment: RtfTextSegment, color_indexes: dict[str, int], font_indexes: dict[str, int]) -> str:
     if not segment.text:
         return ""
     escaped_text = _rtf_escape_text(segment.text)
-    prefix = _style_prefix(segment.style, color_indexes)
+    prefix = _style_prefix(segment.style, color_indexes, font_indexes)
     if prefix:
         return "{" + prefix + " " + escaped_text + "}"
     return escaped_text
@@ -134,23 +156,23 @@ def tree_to_rtf(root: NoteNode, options: ExportOptions | None = None) -> str:
     The old application clipboard-pasted each RichTextBox body into a temporary
     RichTextBox. This implementation keeps that document structure and preserves
     the formatting subset the port can safely parse: bold, italic, underline,
-    strikeout, font size, foreground color and background highlight.
+    strikeout, font size, font family, foreground color and background highlight.
     """
     options = options or ExportOptions()
     entries = _collect_body_segments(root, options)
     color_indexes = _collect_colors(entries)
+    font_indexes = _collect_fonts(entries)
     body: list[str] = []
     for heading, segments in entries:
         body.append(r"{\b\fs28 " + _rtf_escape_text(heading) + r"}\par" + "\n")
         body.append(r"\par" + "\n" * max(1, options.title_separator_blank_lines - 1))
         if segments:
-            body.extend(_emit_segment(segment, color_indexes) for segment in segments)
+            body.extend(_emit_segment(segment, color_indexes, font_indexes) for segment in segments)
             body.append(r"\par" + "\n")
         body.append(r"\par" + "\n" * max(1, options.body_separator_blank_lines - 1))
     return (
         r"{\rtf1\ansi\ansicpg1252\deff0\deflang1031"
-        r"{\fonttbl{\f0\fnil\fcharset0 Microsoft Sans Serif;}}"
-        "\n"
+        + _font_table(font_indexes)
         + _color_table(color_indexes)
         + r"\viewkind4\uc1\pard\f0\fs17 "
         + "".join(body).rstrip()

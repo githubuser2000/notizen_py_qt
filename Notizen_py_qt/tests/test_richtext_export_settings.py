@@ -13,7 +13,7 @@ def test_html_to_rtf_preserves_basic_formatting_colors_and_unicode() -> None:
     rtf = html_to_rtf(
         '<p><b>Hallo</b> <i>Welt</i> '
         '<span style="color:#ff0000; background-color:#ffff00; font-size:14pt; '
-        'text-decoration: underline line-through">rot</span> 😀</p>'
+        'font-family: Arial; text-decoration: underline line-through">rot</span> 😀</p>'
     )
 
     assert r"\b" in rtf
@@ -22,6 +22,8 @@ def test_html_to_rtf_preserves_basic_formatting_colors_and_unicode() -> None:
     assert r"\strike" in rtf
     assert r"\cf1" in rtf
     assert r"\highlight2" in rtf
+    assert r"\f1" in rtf
+    assert "Arial" in rtf
     assert rtf_to_plain_text(rtf) == "Hallo Welt rot 😀"
 
     html = rtf_to_html(rtf)
@@ -30,6 +32,7 @@ def test_html_to_rtf_preserves_basic_formatting_colors_and_unicode() -> None:
     assert "text-decoration:underline line-through" in html
     assert "color:#ff0000" in html
     assert "background-color:#ffff00" in html
+    assert 'font-family:&quot;Arial&quot;' in html
 
 
 def test_rtf_parser_skips_metadata_and_pictures() -> None:
@@ -44,6 +47,25 @@ def test_rtf_parser_skips_metadata_and_pictures() -> None:
     assert "abcdef" not in rtf_to_html(rtf)
 
 
+
+def test_rtf_picture_roundtrips_between_html_and_rtf() -> None:
+    png = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0l"
+        "EQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    )
+    rtf = html_to_rtf(f'<p>A<img width="1" height="1" src="data:image/png;base64,{png}"/>B</p>')
+
+    assert r"\pict\pngblip" in rtf
+    assert "[Bild]" not in rtf
+    assert rtf_to_plain_text(rtf) == "AB"
+
+    html = rtf_to_html(rtf)
+    assert '<img ' in html
+    assert "data:image/png;base64" in html
+    assert "A" in html
+    assert "B" in html
+
+
 def test_plain_text_rtf_roundtrips_non_bmp_unicode() -> None:
     text = "äöü € 😀"
     assert rtf_to_plain_text(plain_text_to_rtf(text)) == text
@@ -55,7 +77,7 @@ def test_tree_export_numbering_and_unified_note() -> None:
         NoteNode(
             title="child",
             rtf=html_to_rtf(
-                '<p><i>child body</i> <span style="color:#ff0000; background-color:#ffff00">red</span></p>'
+                '<p><i>child body</i> <span style="color:#ff0000; background-color:#ffff00; font-family: Courier New">red</span></p>'
             ),
         )
     )
@@ -72,9 +94,11 @@ def test_tree_export_numbering_and_unified_note() -> None:
     assert r"\i" in rtf
     assert r"\cf1" in rtf
     assert r"\highlight2" in rtf
+    assert "Courier New" in rtf
     html = rtf_to_html(rtf)
     assert "font-style:italic" in html
     assert "color:#ff0000" in html
+    assert "Courier New" in html
     plain = rtf_to_plain_text(rtf)
     assert "1. child" in plain
     assert "1.1. grand" in plain

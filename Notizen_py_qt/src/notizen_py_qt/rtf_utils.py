@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from html import escape
 from html.parser import HTMLParser
+from pathlib import Path
 import re
 from typing import Iterable
 from urllib.parse import unquote, urlparse
 
 _HEX_RE = re.compile(r"\\'([0-9a-fA-F]{2})")
 _COLOR_RE = re.compile(r"\\red(-?\d+)\\green(-?\d+)\\blue(-?\d+)")
+_DATA_IMAGE_RE = re.compile(r"^data:(image/[a-zA-Z0-9.+-]+)(?:;[^,]*)?;base64,(.*)$", re.DOTALL)
 _SKIP_DESTINATIONS = {
     "fonttbl",
     "colortbl",
@@ -23,6 +26,16 @@ _SKIP_DESTINATIONS = {
     "themedata",
     "colorschememapping",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class RtfImage:
+    r"""Embedded image extracted from an RTF ``\pict`` group."""
+
+    mime_type: str
+    data: bytes
+    width_twips: int | None = None
+    height_twips: int | None = None
 _TEXT_CONTROLS = {
     "par": "\n",
     "line": "\n",
@@ -95,6 +108,7 @@ class _RtfStyle:
     fs_half_points: int | None = None
     fg_index: int = 0
     bg_index: int = 0
+    font_family: str = ""
 
     def copy(self) -> "_RtfStyle":
         return _RtfStyle(
@@ -105,6 +119,7 @@ class _RtfStyle:
             fs_half_points=self.fs_half_points,
             fg_index=self.fg_index,
             bg_index=self.bg_index,
+            font_family=self.font_family,
         )
 
 
@@ -121,6 +136,7 @@ class RtfTextStyle:
     fs_half_points: int | None = None
     fg_color: str = ""
     bg_color: str = ""
+    font_family: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +185,138 @@ def _find_group(text: str, control_word: str) -> str | None:
             if depth == 0:
                 return text[start : index + 1]
     return None
+
+
+def _find_group_end(text: str, start: int) -> int:
+    """Return the inclusive end index of a balanced RTF group."""
+    depth = 0
+    escaped = False
+    for index in range(start, len(text)):
+        ch = text[index]
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
+
+
+def _control_number(group: str, name: str) -> int | None:
+    match = re.search(rf"\\{re.escape(name)}(-?\d+)", group)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _parse_pict_group(group: str) -> RtfImage | None:
+    r"""Parse a practical WinForms/Qt-compatible RTF picture group.
+
+    Notizen.NET inserted clipboard images into a WinForms RichTextBox, which
+    serializes them as ``{\pict\pngblip ...}`` or ``{\pict\jpegblip ...}``
+    in the common cases. The parser deliberately ignores exotic binary ``\bin``
+    payloads, but keeps the ordinary hex payloads used by RichTextBox and by the
+    Python/Qt export path in this port.
+    """
+    mime_type = ""
+    if "\\pngblip" in group:
+        mime_type = "image/png"
+    elif "\\jpegblip" in group or "\\jpgblip" in group:
+        mime_type = "image/jpeg"
+    else:
+        return None
+
+    scrubbed = re.sub(r"\\'[0-9a-fA-F]{2}", " ", group)
+    scrubbed = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", scrubbed)
+    hex_text = re.sub(r"[^0-9a-fA-F]", "", scrubbed)
+    if len(hex_text) % 2:
+        hex_text = hex_text[:-1]
+    if not hex_text:
+        return None
+    try:
+        data = bytes.fromhex(hex_text)
+    except ValueError:
+        return None
+    return RtfImage(
+        mime_type=mime_type,
+        data=data,
+        width_twips=_control_number(group, "picwgoal"),
+        height_twips=_control_number(group, "pichgoal"),
+    )
+
+
+def _extract_pict_at(rtf: str, index: int) -> tuple[RtfImage, int] | None:
+    """Return ``(image, next_index)`` if an RTF image group starts here."""
+    if not (
+        rtf.startswith(r"{\pict", index)
+        or rtf.startswith(r"{\*\shppict", index)
+        or rtf.startswith(r"{\nonshppict", index)
+    ):
+        return None
+    end = _find_group_end(rtf, index)
+    if end < 0:
+        return None
+    group = rtf[index : end + 1]
+    pict_group = group
+    if not group.startswith(r"{\pict"):
+        inner_start = group.find(r"{\pict")
+        if inner_start < 0:
+            return None
+        inner_end = _find_group_end(group, inner_start)
+        if inner_end < 0:
+            return None
+        pict_group = group[inner_start : inner_end + 1]
+    image = _parse_pict_group(pict_group)
+    if image is None:
+        return None
+    return image, end + 1
+
+
+def _image_to_html(image: RtfImage) -> str:
+    data = base64.b64encode(image.data).decode("ascii")
+    attrs = [f'src="data:{image.mime_type};base64,{data}"']
+    if image.width_twips and image.width_twips > 0:
+        attrs.append(f'width="{max(1, round(image.width_twips / 15))}"')
+    if image.height_twips and image.height_twips > 0:
+        attrs.append(f'height="{max(1, round(image.height_twips / 15))}"')
+    return "<img " + " ".join(attrs) + "/>"
+
+
+def _clean_font_name(raw: str) -> str:
+    raw = _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1)), raw)
+    raw = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", raw)
+    raw = re.sub(r"\\.", " ", raw)
+    raw = raw.replace(";", " ").replace("{", " ").replace("}", " ")
+    return " ".join(raw.split())
+
+
+def extract_font_table(rtf: str) -> list[str]:
+    r"""Return RTF font-table names by ``\fN`` index."""
+    group = _find_group(rtf, "fonttbl")
+    fonts = [""]
+    if not group:
+        return fonts
+    for match in re.finditer(r"\{\\f(\d+)([^{};]*);\}", group):
+        try:
+            index = int(match.group(1))
+        except ValueError:
+            continue
+        name = _clean_font_name(match.group(2))
+        if not name:
+            continue
+        while len(fonts) <= index:
+            fonts.append("")
+        fonts[index] = name
+    return fonts
 
 
 def extract_color_table(rtf: str) -> list[str]:
@@ -320,6 +468,9 @@ def _style_to_css(style: _RtfStyle, colors: list[str]) -> str:
         rules.append("text-decoration:" + " ".join(decorations))
     if style.fs_half_points and style.fs_half_points > 0:
         rules.append(f"font-size:{style.fs_half_points / 2:g}pt")
+    if style.font_family:
+        family = style.font_family.replace("\\", "\\\\").replace('"', r'\"')
+        rules.append(f'font-family:"{family}"')
     if 0 <= style.fg_index < len(colors) and colors[style.fg_index]:
         rules.append(f"color:{colors[style.fg_index]}")
     if 0 <= style.bg_index < len(colors) and colors[style.bg_index]:
@@ -327,13 +478,19 @@ def _style_to_css(style: _RtfStyle, colors: list[str]) -> str:
     return "; ".join(rules)
 
 
-def _rtf_iter_html(rtf: str) -> Iterable[tuple[str, _RtfStyle]]:
+def _rtf_iter_html_tokens(rtf: str) -> Iterable[tuple[str | RtfImage, _RtfStyle]]:
+    fonts = extract_font_table(rtf)
     stack: list[_RtfState] = [_RtfState(skip=False, uc=1, style=_RtfStyle())]
     i = 0
     while i < len(rtf):
         state = stack[-1]
         ch = rtf[i]
         if ch == "{":
+            image_result = _extract_pict_at(rtf, i)
+            if image_result is not None and not state.skip and state.style is not None:
+                image, i = image_result
+                yield image, state.style.copy()
+                continue
             stack.append(state.copy())
             i += 1
             continue
@@ -406,6 +563,8 @@ def _rtf_iter_html(rtf: str) -> Iterable[tuple[str, _RtfStyle]]:
                 style.strike = number != 0
             elif word == "fs" and number is not None:
                 style.fs_half_points = max(1, number)
+            elif word == "f" and number is not None:
+                style.font_family = fonts[number] if 0 <= number < len(fonts) else ""
             elif word == "cf" and number is not None:
                 style.fg_index = max(0, number)
             elif word in {"highlight", "cb"} and number is not None:
@@ -428,6 +587,12 @@ def _rtf_iter_html(rtf: str) -> Iterable[tuple[str, _RtfStyle]]:
         yield ch, state.style.copy()
 
 
+def _rtf_iter_html(rtf: str) -> Iterable[tuple[str, _RtfStyle]]:
+    for token, style in _rtf_iter_html_tokens(rtf):
+        if isinstance(token, str):
+            yield token, style
+
+
 def _resolve_style(style: _RtfStyle, colors: list[str]) -> RtfTextStyle:
     fg = colors[style.fg_index] if 0 <= style.fg_index < len(colors) else ""
     bg = colors[style.bg_index] if 0 <= style.bg_index < len(colors) else ""
@@ -439,6 +604,7 @@ def _resolve_style(style: _RtfStyle, colors: list[str]) -> RtfTextStyle:
         fs_half_points=style.fs_half_points,
         fg_color=fg,
         bg_color=bg,
+        font_family=style.font_family,
     )
 
 
@@ -514,7 +680,13 @@ def rtf_to_html(rtf: str) -> str:
         else:
             out.append(text)
 
-    for ch, style in _rtf_iter_html(rtf):
+    for token, style in _rtf_iter_html_tokens(rtf):
+        if isinstance(token, RtfImage):
+            flush()
+            out.append(_image_to_html(token))
+            current_css = None
+            continue
+        ch = token
         css = _style_to_css(style, colors)
         if css != current_css:
             flush()
@@ -604,35 +776,130 @@ def _css_color(value: str) -> str | None:
     return names.get(value)
 
 
+def _css_font_family(value: str) -> str:
+    if not value:
+        return ""
+    # Qt HTML usually writes a comma-separated CSS family list. Notizen.NET
+    # stored one selected FontFamily at a time, so the first usable entry is the
+    # closest representation.
+    first = value.split(",", 1)[0].strip().strip('"\'')
+    first = re.sub(r"\s+", " ", first)
+    return first[:128]
+
+
 def _parse_style_attribute(style_attr: str, style: _RtfStyle, color_names: dict[str, int]) -> None:
     for chunk in style_attr.split(";"):
         if ":" not in chunk:
             continue
-        key, value = chunk.split(":", 1)
+        key, raw_value = chunk.split(":", 1)
         key = key.strip().lower()
-        value = value.strip().lower()
+        raw_value = raw_value.strip()
+        value_lower = raw_value.lower()
         if key == "font-weight":
-            style.bold = value == "bold" or (value.isdigit() and int(value) >= 600)
+            style.bold = value_lower == "bold" or (value_lower.isdigit() and int(value_lower) >= 600)
         elif key == "font-style":
-            style.italic = "italic" in value
+            style.italic = "italic" in value_lower
         elif key == "text-decoration":
-            style.underline = "underline" in value
-            style.strike = "line-through" in value
+            style.underline = "underline" in value_lower
+            style.strike = "line-through" in value_lower
         elif key == "font-size":
-            match = re.search(r"([0-9]+(?:\.[0-9]+)?)", value)
+            match = re.search(r"([0-9]+(?:\.[0-9]+)?)", raw_value)
             if match:
                 points = float(match.group(1))
-                if "px" in value:
+                if "px" in value_lower:
                     points = points * 72.0 / 96.0
                 style.fs_half_points = max(1, int(round(points * 2)))
+        elif key == "font-family":
+            style.font_family = _css_font_family(raw_value)
         elif key in {"color", "-qt-user-state"}:
-            color = _css_color(value)
+            color = _css_color(raw_value)
             if color:
                 style.fg_index = color_names.setdefault(color, len(color_names) + 1)
         elif key in {"background-color", "background"}:
-            color = _css_color(value)
+            color = _css_color(raw_value)
             if color:
                 style.bg_index = color_names.setdefault(color, len(color_names) + 1)
+
+
+def _dimension_to_px(value: str) -> int | None:
+    value = value.strip().lower()
+    match = re.search(r"([0-9]+(?:\.[0-9]+)?)", value)
+    if not match:
+        return None
+    number = float(match.group(1))
+    if "pt" in value:
+        number = number * 96.0 / 72.0
+    elif "cm" in value:
+        number = number * 96.0 / 2.54
+    elif "mm" in value:
+        number = number * 96.0 / 25.4
+    elif "in" in value:
+        number = number * 96.0
+    return max(1, int(round(number)))
+
+
+def _image_type_from_bytes(data: bytes, fallback: str = "") -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    return fallback.lower()
+
+
+def _image_data_from_src(src: str) -> tuple[str, bytes] | None:
+    src = src.strip()
+    if not src:
+        return None
+    match = _DATA_IMAGE_RE.match(src)
+    if match:
+        mime_type = match.group(1).lower()
+        try:
+            return mime_type, base64.b64decode(match.group(2), validate=False)
+        except Exception:
+            return None
+    parsed = urlparse(src)
+    if parsed.scheme and parsed.scheme not in {"file"}:
+        return None
+    if parsed.scheme == "file":
+        path_text = unquote(parsed.path)
+        if parsed.netloc and not path_text.startswith("/"):
+            path_text = f"//{parsed.netloc}/{path_text}"
+    else:
+        path_text = unquote(src)
+    try:
+        data = Path(path_text).expanduser().read_bytes()
+    except OSError:
+        return None
+    mime_type = _image_type_from_bytes(data)
+    if not mime_type:
+        suffix = Path(path_text).suffix.lower()
+        if suffix in {".jpg", ".jpeg"}:
+            mime_type = "image/jpeg"
+        elif suffix == ".png":
+            mime_type = "image/png"
+    return (mime_type, data) if mime_type else None
+
+
+def _rtf_picture_from_source(src: str, width_px: int | None = None, height_px: int | None = None) -> str | None:
+    image = _image_data_from_src(src)
+    if image is None:
+        return None
+    mime_type, data = image
+    mime_type = _image_type_from_bytes(data, mime_type)
+    if mime_type == "image/png":
+        blip = "pngblip"
+    elif mime_type == "image/jpeg":
+        blip = "jpegblip"
+    else:
+        return None
+    controls = [rf"\pict\{blip}"]
+    if width_px:
+        controls.append(rf"\picwgoal{max(1, int(round(width_px * 15)))}")
+    if height_px:
+        controls.append(rf"\pichgoal{max(1, int(round(height_px * 15)))}")
+    hex_data = data.hex()
+    lines = [hex_data[i : i + 64] for i in range(0, len(hex_data), 64)]
+    return "{" + "".join(controls) + "\n" + "\n".join(lines) + "}"
 
 
 @dataclass(slots=True)
@@ -641,12 +908,20 @@ class _HtmlSegment:
     style: _RtfStyle
 
 
+@dataclass(slots=True)
+class _HtmlImage:
+    src: str
+    width_px: int | None = None
+    height_px: int | None = None
+
+
 class _HtmlToSegments(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.color_names: dict[str, int] = {}
+        self.font_names: dict[str, int] = {}
         self.stack: list[_RtfStyle] = [_RtfStyle()]
-        self.segments: list[_HtmlSegment] = []
+        self.segments: list[_HtmlSegment | _HtmlImage] = []
         self.skip_depth = 0
 
     def _push(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -664,12 +939,17 @@ class _HtmlToSegments(HTMLParser):
             color = _css_color(attr.get("color", ""))
             if color:
                 style.fg_index = self.color_names.setdefault(color, len(self.color_names) + 1)
+            face = _css_font_family(attr.get("face", ""))
+            if face:
+                style.font_family = face
             size = attr.get("size")
             if size and size.isdigit():
                 # HTML font size 3 ~= 12pt; keep it conservative.
                 style.fs_half_points = max(1, int(size) * 8)
         if "style" in attr:
             _parse_style_attribute(attr["style"], style, self.color_names)
+        if style.font_family:
+            self.font_names.setdefault(style.font_family, len(self.font_names) + 1)
         self.stack.append(style)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -681,9 +961,23 @@ class _HtmlToSegments(HTMLParser):
             self._append("\n")
             return
         if tag == "img":
-            # Full RTF picture roundtripping is deliberately not faked. Keeping a
-            # visible marker is safer than silently swallowing user data.
-            self._append("[Bild]")
+            attr = {k.lower(): v or "" for k, v in attrs}
+            width = _dimension_to_px(attr.get("width", ""))
+            height = _dimension_to_px(attr.get("height", ""))
+            if "style" in attr:
+                for chunk in attr["style"].split(";"):
+                    if ":" not in chunk:
+                        continue
+                    key, value = chunk.split(":", 1)
+                    if key.strip().lower() == "width" and width is None:
+                        width = _dimension_to_px(value)
+                    elif key.strip().lower() == "height" and height is None:
+                        height = _dimension_to_px(value)
+            src = attr.get("src", "")
+            if src:
+                self.segments.append(_HtmlImage(src=src, width_px=width, height_px=height))
+            else:
+                self._append("[Bild]")
             return
         if tag == "li":
             self._append("• ")
@@ -709,20 +1003,23 @@ class _HtmlToSegments(HTMLParser):
         self._append(data)
 
     def _needs_paragraph_break(self) -> bool:
-        return bool(self.segments and not self.segments[-1].text.endswith("\n"))
+        last = self.segments[-1] if self.segments else None
+        return bool(last and (isinstance(last, _HtmlImage) or not last.text.endswith("\n")))
 
     def _append(self, text: str) -> None:
         if not text:
             return
         style = self.stack[-1].copy()
-        if self.segments and self.segments[-1].style == style:
+        if self.segments and isinstance(self.segments[-1], _HtmlSegment) and self.segments[-1].style == style:
             self.segments[-1].text += text
         else:
             self.segments.append(_HtmlSegment(text, style))
 
 
-def _style_prefix(style: _RtfStyle) -> str:
+def _style_prefix(style: _RtfStyle, font_names: dict[str, int] | None = None) -> str:
     parts: list[str] = []
+    if style.font_family and font_names and style.font_family in font_names:
+        parts.append(rf"\f{font_names[style.font_family]}")
     if style.bold:
         parts.append(r"\b")
     if style.italic:
@@ -753,6 +1050,17 @@ def _color_table_from_indexes(color_names: dict[str, int]) -> str:
     return r"{\colortbl " + ";".join(entries) + ";}" + "\n"
 
 
+def _escape_font_table_name(name: str) -> str:
+    return re.sub(r"[{};\\]", " ", name).strip() or "Microsoft Sans Serif"
+
+
+def _font_table(font_names: dict[str, int]) -> str:
+    entries = [r"{\f0\fnil\fcharset0 Microsoft Sans Serif;}" ]
+    for family, _index in sorted(font_names.items(), key=lambda item: item[1]):
+        entries.append(r"{\f" + str(_index) + r"\fnil\fcharset0 " + _escape_font_table_name(family) + ";}")
+    return r"{\fonttbl" + "".join(entries) + "}" + "\n"
+
+
 def html_to_rtf(html_text: str) -> str:
     """Convert Qt/HTML editor output back to a WinForms-compatible RTF subset."""
     if not html_text:
@@ -764,12 +1072,17 @@ def html_to_rtf(html_text: str) -> str:
         # Accept raw plain text passed by tests or future CLI helpers.
         return plain_text_to_rtf(html_text)
     color_table = _color_table_from_indexes(parser.color_names)
+    font_table = _font_table(parser.font_names)
     body_parts: list[str] = []
     for segment in parser.segments:
+        if isinstance(segment, _HtmlImage):
+            pict = _rtf_picture_from_source(segment.src, segment.width_px, segment.height_px)
+            body_parts.append(pict if pict is not None else _rtf_escape_text("[Bild]"))
+            continue
         text = segment.text.replace("\r\n", "\n").replace("\r", "\n")
         if not text:
             continue
-        prefix = _style_prefix(segment.style)
+        prefix = _style_prefix(segment.style, parser.font_names)
         escaped_text = _rtf_escape_text(text)
         if prefix:
             body_parts.append("{" + prefix + " " + escaped_text + "}")
@@ -780,8 +1093,7 @@ def html_to_rtf(html_text: str) -> str:
         body += r"\par" + "\n"
     return (
         r"{\rtf1\ansi\ansicpg1252\deff0\deflang1031"
-        r"{\fonttbl{\f0\fnil\fcharset0 Microsoft Sans Serif;}}"
-        "\n"
+        + font_table
         + color_table
         + r"\viewkind4\uc1\pard\f0\fs17 "
         + body

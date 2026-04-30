@@ -1,63 +1,73 @@
-# Validierung: Notizen.NET-Python/Qt-Port 0.9.2
+# Validierung: Notizen.NET-Python/Qt-Port 0.9.3
 
 Stand: 2026-04-30
 
 ## Ausgeführt
 
 ```bash
-python3 -m py_compile src/notizen_py_qt/*.py scripts/*.py tests/*.py
+PYTHONPATH=src /usr/bin/python3 -m compileall -q src tests scripts
 bash -n scripts/*.sh
-bash scripts/check_no_slint.sh .
-python3 scripts/probe_python_qt_runtime.py . --skip-smoke --skip-qt
+PYTHON=/usr/bin/python3 bash scripts/check_no_slint.sh .
+PYTHON=/usr/bin/python3 bash scripts/check_no_slint_strict.sh .
+PYTHONPATH=src /usr/bin/python3 scripts/probe_python_qt_runtime.py --skip-qt --skip-smoke
 ```
 
 Ergebnis:
 
 ```text
-py_compile: OK
+py_compile/compileall: OK
 shell syntax: OK
-check_no_slint: OK: no old UI-framework references found in active source/build files under /mnt/data/next_work/py_next.
-probe_python_qt_runtime: RESULT: Python/Qt runtime probe passed.
+check_no_slint: OK
+check_no_slint_strict: OK
+probe_python_qt_runtime --skip-qt --skip-smoke: RESULT: Python/Qt runtime probe passed.
 ```
 
-## Manuelle Assertions ohne GUI
+## Testfunktionen
 
-Zusätzlich wurde ein pytest-unabhängiger Validierungslauf mit echten Python-Assertions ausgeführt. Geprüft wurden:
+Zusätzlich wurde die aktive Testsammlung direkt über Python-Testfunktionen ausgeführt. Das ist in dieser Sandbox zuverlässiger als der normale `pytest`-Prozess, weil der installierte virtuelle Python-Runner hier nach `pytest`-Importen nicht zuverlässig zur Shell zurückkehrt. Die Testfunktionen selbst laufen mit echten Assertions.
+
+Ergebnis:
+
+```text
+SUMMARY passed=13 skipped=2 failed=0
+```
+
+Geprüft wurden unter anderem:
 
 - ALX-Byte-Roundtrip über `dump_alx_bytes`/`load_alx_bytes`.
-- ALX-Datei-Roundtrip über `save_alx`/`load_alx`.
-- Desktop-Notiz-Zustand in ALX-Struktur.
-- RTF→HTML→RTF-/Plaintext-Verhalten mit Fett, Kursiv, Unterstrichen, Durchgestrichen, Textfarbe, Highlight und Emoji.
-- Teilbaum-Export nach TXT/RTF mit Nummerierung `1.` und `1.1.`.
-- Formatierter Teilbaum-RTF-Export mit Kursiv, Textfarbe und Highlight.
-- Erzeugen einer zusammengefassten Notiz.
-- Suche über einen kompletten Knotenbaum.
+- UTF-16/GZip-Kompatibilität der gespeicherten Dokument-XML-Struktur.
+- Legacy-Passwortnormalisierung.
+- Legacy-Notiz-XML-Parsing.
+- V2-Nested-XML-Roundtrip.
+- Suche über einen Knotenbaum.
 - FTP-Zielnormalisierung.
+- RTF→HTML→RTF-/Plaintext-Verhalten mit Fett, Kursiv, Unterstrichen, Durchgestrichen, Schriftgröße, Schriftfamilie, Textfarbe, Highlight und Emoji.
+- RTF-Bild-Roundtrip für HTML-Data-URI → RTF-`\pict\pngblip` → HTML-Data-URI.
+- Teilbaum-Export nach TXT/RTF mit Nummerierung `1.` und `1.1.`.
+- Formatierter Teilbaum-RTF-Export mit Kursiv, Schriftfamilie, Textfarbe und Highlight.
+- Erzeugen einer zusammengefassten Notiz.
 - Lesen und Schreiben erweiterter Legacy-Konfiguration (`scrolls`, `autorun`, Sprache, Taskleisten- und Desktop-Notiz-Optionen).
 
-Ergebnis:
+Übersprungene Tests:
 
 ```text
-manual validation OK
+pycryptodome not installed
+legacy fixture not included
 ```
 
 ## GUI-Smoke-Test in dieser Umgebung
 
-```bash
-PYTHONPATH=src python3 -m notizen_py_qt --smoke-test
-```
-
-Ergebnis:
+Ohne `--skip-qt` ergibt der Runtime-Probe erwartungsgemäß:
 
 ```text
-No Qt binding is installed. Install one of:
+Qt binding import failed: No Qt binding is installed. Install one of:
   python -m pip install 'PySide6>=6.6,<7'
   python -m pip install 'PyQt6>=6.6,<7'
-status: 2
+RESULT: 1 problem(s) found.
 ```
 
-Das ist für diesen Container erwartbar, weil weder PySide6 noch PyQt6 installiert ist. Der Code bricht dabei sauber mit Installationshinweis ab.
+Das ist für diesen Container erwartbar, weil weder PySide6 noch PyQt6 installiert ist. Der Code bricht dabei sauber mit Installationshinweis ab. Auf einem Rechner mit installiertem PySide6 oder PyQt6 sollte zusätzlich ausgeführt werden:
 
-## pytest-Hinweis
-
-Die aktive Testsammlung besteht jetzt aus den Notizen-Port-Tests unter `tests/`. In dieser Sandbox meldete `pytest` für die neue RichText-/Export-/Settings-Testdatei zwar `5 passed`, der Python-Prozess kehrte nach dem Import von `pytest` hier aber nicht zuverlässig zur Shell zurück. Deshalb wird die Validierung in diesem Paketbericht nicht als vollständiger `pytest`-Lauf behauptet, sondern über `py_compile`, Shell-Prüfung, den Runtime-Probe und explizite Python-Assertions dokumentiert.
+```bash
+python -m notizen_py_qt --smoke-test
+```
