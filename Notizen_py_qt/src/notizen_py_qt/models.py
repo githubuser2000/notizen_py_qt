@@ -57,16 +57,10 @@ class NoteNode:
         self.parent.children.remove(self)
         self.parent = None
 
-    def clone_deep(self) -> "NoteNode":
-        copied = NoteNode(
-            title=self.title,
-            rtf=self.rtf,
-            expanded=self.expanded,
-            bg_argb=self.bg_argb,
-            fg_argb=self.fg_argb,
-            desktop_note=None
-            if self.desktop_note is None
-            else DesktopNoteState(
+    def clone_deep(self, *, include_desktop_note: bool = True) -> "NoteNode":
+        desktop_note = None
+        if include_desktop_note and self.desktop_note is not None:
+            desktop_note = DesktopNoteState(
                 x=self.desktop_note.x,
                 y=self.desktop_note.y,
                 width=self.desktop_note.width,
@@ -74,10 +68,17 @@ class NoteNode:
                 visible=self.desktop_note.visible,
                 opacity=self.desktop_note.opacity,
                 argb=self.desktop_note.argb,
-            ),
+            )
+        copied = NoteNode(
+            title=self.title,
+            rtf=self.rtf,
+            expanded=self.expanded,
+            bg_argb=self.bg_argb,
+            fg_argb=self.fg_argb,
+            desktop_note=desktop_note,
         )
         for child in self.children:
-            copied.add_child(child.clone_deep())
+            copied.add_child(child.clone_deep(include_desktop_note=include_desktop_note))
         return copied
 
     def walk(self) -> Generator["NoteNode", None, None]:
@@ -110,7 +111,7 @@ def legacy_paste_clone(source: NoteNode, selected: NoteNode) -> NoteNode:
     child of the root. Otherwise it was inserted as a sibling directly before the
     selected node.
     """
-    pasted = source.clone_deep()
+    pasted = source.clone_deep(include_desktop_note=False)
     if selected.parent is None:
         selected.insert_child(0, pasted)
     else:

@@ -3,15 +3,18 @@ from __future__ import annotations
 import argparse
 import base64
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .alarms import AlarmSpec, describe_recurrence, next_occurrence
 from .alx_io import AlxError, InvalidPassword, PasswordRequired, dump_alx_bytes, load_alx, load_alx_bytes, save_alx, normalize_password
 from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf, tree_to_text_bytes
 from .ftp_sync import FtpSyncError, FtpTarget
 from .i18n import available_languages, tr
 from .legacy_colors import legacy_light_color_argb
 from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_paste_clone
+from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
 from .startup import parse_legacy_startup_args
 from .rtf_utils import html_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
@@ -26,6 +29,19 @@ except Exception as exc:  # pragma: no cover - exercised on systems without Qt
     BINDING = ""
     QtCore = QtGui = QtWidgets = None  # type: ignore[assignment]
     QT_IMPORT_ERROR = exc
+
+
+def _load_qt_print_support() -> Any:
+    """Load QtPrintSupport from the active binding only when printing is used."""
+    if BINDING == "PySide6":
+        from PySide6 import QtPrintSupport  # type: ignore
+
+        return QtPrintSupport
+    if BINDING == "PyQt6":
+        from PyQt6 import QtPrintSupport  # type: ignore
+
+        return QtPrintSupport
+    raise RuntimeError("QtPrintSupport is unavailable because no Qt binding is loaded.")
 
 
 def _enum(parent: Any, enum_name: str, value_name: str) -> Any:
@@ -55,6 +71,7 @@ if QtWidgets is not None:
     TOOL = _enum(QtCore.Qt, "WindowType", "Tool")
     FRAMELESS = _enum(QtCore.Qt, "WindowType", "FramelessWindowHint")
     CTRL = _enum(QtCore.Qt, "KeyboardModifier", "ControlModifier")
+    SHIFT = _enum(QtCore.Qt, "KeyboardModifier", "ShiftModifier")
     CUSTOM_CONTEXT_MENU = _enum(QtCore.Qt, "ContextMenuPolicy", "CustomContextMenu")
 
     def color_from_argb(argb: int) -> Any:
@@ -332,8 +349,35 @@ if QtWidgets is not None:
             self.when = QtWidgets.QDateTimeEdit(QtCore.QDateTime.currentDateTime().addSecs(5 * 60))
             self.when.setCalendarPopup(True)
             self.message = QtWidgets.QLineEdit("Notizen-Wecker")
+            self.repeat = QtWidgets.QComboBox()
+            self.repeat.addItem("Einmalig", "none")
+            self.repeat.addItem("Täglich", "daily")
+            self.repeat.addItem("Wöchentlich", "weekly")
+            self.repeat.addItem("Monatlich", "monthly")
+            self.repeat.addItem("Jährlich", "yearly")
+            self.interval = QtWidgets.QSpinBox()
+            self.interval.setRange(1, 999)
+            self.interval.setValue(1)
+            self.weekday_container = QtWidgets.QWidget()
+            weekday_layout = QtWidgets.QHBoxLayout(self.weekday_container)
+            weekday_layout.setContentsMargins(0, 0, 0, 0)
+            self.weekday_checks: list[Any] = []
+            current_day = QtCore.QDate.currentDate().dayOfWeek() - 1
+            for index, label in enumerate(("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")):
+                box = QtWidgets.QCheckBox(label)
+                box.setChecked(index == current_day)
+                self.weekday_checks.append(box)
+                weekday_layout.addWidget(box)
+            weekday_layout.addStretch(1)
+
             layout.addRow("Zeitpunkt", self.when)
             layout.addRow("Meldung", self.message)
+            layout.addRow("Wiederholung", self.repeat)
+            layout.addRow("Intervall", self.interval)
+            layout.addRow("Wochentage", self.weekday_container)
+            hint = QtWidgets.QLabel("Portiert nach wecker.vb: einmalig, täglich, wöchentlich, monatlich oder jährlich.")
+            hint.setWordWrap(True)
+            layout.addRow(hint)
             buttons = QtWidgets.QDialogButtonBox(
                 _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Ok")
                 | _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Cancel")
@@ -341,9 +385,30 @@ if QtWidgets is not None:
             buttons.accepted.connect(self.accept)
             buttons.rejected.connect(self.reject)
             layout.addRow(buttons)
+            self.repeat.currentIndexChanged.connect(self._update_repeat_controls)
+            self._update_repeat_controls()
+
+        def _update_repeat_controls(self) -> None:
+            kind = self.repeat.currentData()
+            self.interval.setEnabled(kind != "none")
+            self.weekday_container.setVisible(kind == "weekly")
 
         def accept(self) -> None:  # noqa: N802 - Qt override
-            self.main_window.schedule_alarm(self.when.dateTime(), self.message.text())
+            when = self.when.dateTime()
+            try:
+                start = datetime.fromtimestamp(int(when.toSecsSinceEpoch()))
+            except Exception:
+                start = datetime.now()
+            kind = str(self.repeat.currentData() or "none")
+            weekdays = tuple(index for index, box in enumerate(self.weekday_checks) if box.isChecked())
+            spec = AlarmSpec(
+                start=start,
+                message=self.message.text(),
+                recurrence=kind,  # type: ignore[arg-type]
+                interval=self.interval.value(),
+                weekdays=weekdays,
+            ).normalized()
+            self.main_window.schedule_alarm_spec(spec)
             super().accept()
 
 
@@ -420,10 +485,15 @@ if QtWidgets is not None:
             self.node_items: dict[int, Any] = {}
             self.clipboard_node: NoteNode | None = None
             self.cut_source_node: NoteNode | None = None
+            self.cut_clipboard_xml: str | None = None
             self.desktop_windows: dict[int, DesktopNoteWindow] = {}
             self.last_search = ""
+            self._quick_search_results: list[SearchResult] = []
+            self._quick_search_index = 0
+            self._quick_search_signature: tuple[str, bool] | None = None
             self.alarms: list[Any] = []
             self._updating_format_controls = False
+            self._updating_title_boxes = False
             self.autosave_timer = QtCore.QTimer(self)
             self.autosave_timer.timeout.connect(self.autosave)
             self._build_ui()
@@ -451,11 +521,14 @@ if QtWidgets is not None:
                 self.setWindowIcon(icon)
 
             self.tree = QtWidgets.QTreeWidget()
+            self.tree.setObjectName("Baum")
             self.tree.setHeaderLabel("Notizen")
             self.tree.setSelectionBehavior(SELECT_ROWS)
             self.tree.setSelectionMode(EXTENDED_SELECTION)
             self.tree.setDragDropMode(INTERNAL_MOVE)
             self.tree.setDefaultDropAction(MOVE_ACTION)
+            self.tree.setAlternatingRowColors(True)
+            self.tree.setMinimumSize(240, 260)
             self.tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
             self.tree.itemChanged.connect(self.on_item_changed)
             self.tree.itemExpanded.connect(lambda item: self.on_tree_expansion_changed(item, True))
@@ -466,17 +539,103 @@ if QtWidgets is not None:
                 pass
 
             self.editor = QtWidgets.QTextEdit()
+            self.editor.setObjectName("Inhalt")
             self.editor.setAcceptRichText(True)
+            self.editor.setMinimumSize(420, 300)
+            self.editor.setPlaceholderText("Notiztext")
             self._apply_scrollbar_settings()
             self.editor.textChanged.connect(self.on_editor_changed)
             self.editor.setContextMenuPolicy(_enum(QtCore.Qt, "ContextMenuPolicy", "ActionsContextMenu"))
 
+            self.tree_top_edit = QtWidgets.QLineEdit()
+            self.tree_top_edit.setObjectName("txt1")
+            self.tree_top_edit.setReadOnly(True)
+            self.tree_top_edit.setMinimumHeight(24)
+            self.tree_top_edit.setToolTip("Oberster Baumknoten wie im alten Notizen.NET-Feld txt1")
+            self.tree_top_edit.setStyleSheet("QLineEdit { background: rgb(255, 255, 192); border: 1px solid palette(mid); }")
+
+            self.node_title_edit = QtWidgets.QLineEdit()
+            self.node_title_edit.setObjectName("txt2")
+            self.node_title_edit.setMinimumHeight(24)
+            self.node_title_edit.setToolTip("Titel des aktuell markierten Knotens wie im alten Notizen.NET-Feld txt2")
+            self.node_title_edit.setStyleSheet("QLineEdit { background: rgb(255, 255, 192); border: 1px solid palette(mid); }")
+            self.node_title_edit.editingFinished.connect(self.commit_title_box)
+            self.node_title_edit.returnPressed.connect(self.commit_title_box)
+
+            self.title_apply_button = QtWidgets.QPushButton("Umbenennen")
+            self.title_apply_button.setObjectName("applyTxt2")
+            self.title_apply_button.clicked.connect(self.commit_title_box)
+
+            self.quick_search_edit = QtWidgets.QLineEdit()
+            self.quick_search_edit.setObjectName("treeQuickSearch")
+            self.quick_search_edit.setPlaceholderText("Suchen")
+            self.quick_search_edit.returnPressed.connect(self.quick_search_next)
+            self.quick_search_next_button = QtWidgets.QPushButton("Weiter")
+            self.quick_search_all_button = QtWidgets.QPushButton("Alle")
+            self.quick_search_next_button.clicked.connect(self.quick_search_next)
+            self.quick_search_all_button.clicked.connect(self.quick_search_all)
+
+            central = QtWidgets.QWidget()
+            central.setObjectName("legacySplitContent")
+            outer_layout = QtWidgets.QVBoxLayout(central)
+            outer_layout.setContentsMargins(6, 6, 6, 6)
+            outer_layout.setSpacing(6)
+
             splitter = QtWidgets.QSplitter()
-            splitter.addWidget(self.tree)
-            splitter.addWidget(self.editor)
+            splitter.setObjectName("SplitContainer1")
+            splitter.setChildrenCollapsible(False)
+
+            left_panel = QtWidgets.QWidget()
+            left_panel.setObjectName("SplitContainer3")
+            left_layout = QtWidgets.QVBoxLayout(left_panel)
+            left_layout.setContentsMargins(0, 0, 0, 0)
+            left_layout.setSpacing(4)
+            tree_label = QtWidgets.QLabel("Baum")
+            tree_label.setObjectName("treeCaption")
+            left_layout.addWidget(tree_label)
+            left_layout.addWidget(self.tree_top_edit)
+            left_layout.addWidget(self.tree, 1)
+
+            search_row = QtWidgets.QHBoxLayout()
+            search_row.setContentsMargins(0, 0, 0, 0)
+            search_row.setSpacing(4)
+            search_row.addWidget(self.quick_search_edit, 1)
+            search_row.addWidget(self.quick_search_next_button)
+            search_row.addWidget(self.quick_search_all_button)
+            left_layout.addLayout(search_row)
+
+            right_panel = QtWidgets.QWidget()
+            right_panel.setObjectName("SplitContainer2")
+            right_layout = QtWidgets.QVBoxLayout(right_panel)
+            right_layout.setContentsMargins(0, 0, 0, 0)
+            right_layout.setSpacing(4)
+
+            title_row = QtWidgets.QHBoxLayout()
+            title_row.setContentsMargins(0, 0, 0, 0)
+            title_row.setSpacing(6)
+            title_label = QtWidgets.QLabel("Titel:")
+            title_label.setObjectName("titleCaption")
+            title_label.setBuddy(self.node_title_edit)
+            self.editor_mode_label = QtWidgets.QLabel("Modus: RTF/Text")
+            self.editor_mode_label.setObjectName("modeCaption")
+            title_row.addWidget(title_label)
+            title_row.addWidget(self.node_title_edit, 1)
+            title_row.addWidget(self.title_apply_button)
+            title_row.addSpacing(8)
+            title_row.addWidget(self.editor_mode_label)
+            title_row.addStretch(0)
+
+            right_layout.addLayout(title_row)
+            right_layout.addWidget(self.editor, 1)
+
+            splitter.addWidget(left_panel)
+            splitter.addWidget(right_panel)
             splitter.setStretchFactor(0, 1)
             splitter.setStretchFactor(1, 3)
-            self.setCentralWidget(splitter)
+            splitter.setSizes([320, 960])
+
+            outer_layout.addWidget(splitter, 1)
+            self.setCentralWidget(central)
 
             self._create_actions()
             self._create_menus()
@@ -485,6 +644,8 @@ if QtWidgets is not None:
             self.statusBar().showMessage(self.tr("ready", "Bereit"))
             self._create_tray_icon()
             self.apply_language()
+            self.update_node_text_boxes()
+
 
         def _act(self, text: str, slot: Any, shortcut: str | None = None, checkable: bool = False) -> Any:
             action = QtGui.QAction(text, self)
@@ -500,6 +661,9 @@ if QtWidgets is not None:
             self.save_action = self._act("Speichern", self.save_file, "Ctrl+S")
             self.save_as_action = self._act("Speichern unter", self.save_file_as)
             self.close_doc_action = self._act("Schließen", self.close_document)
+            self.print_note_action = self._act("Aktuelle Notiz drucken", self.print_current_note, "Ctrl+P")
+            self.print_subtree_action = self._act("Aktuellen Teilbaum drucken", self.print_current_subtree)
+            self.print_all_action = self._act("Ganzen Baum drucken", self.print_root)
             self.exit_action = self._act("Beenden", self.close, "Ctrl+Q")
             self.password_action = self._act("Passwort setzen/ändern", self.change_password)
             self.ftp_action = self._act("FTP öffnen/speichern", self.show_ftp_dialog)
@@ -525,6 +689,7 @@ if QtWidgets is not None:
             self.cut_action = self._act("Ausschneiden", self.cut_anything, "Ctrl+X")
             self.copy_action = self._act("Kopieren", self.copy_anything, "Ctrl+C")
             self.paste_action = self._act("Einfügen", self.paste_anything, "Ctrl+V")
+            self.paste_child_action = self._act("Einfügen als Unterknoten", self.paste_node_as_child)
             self.delete_text_action = self._act("Text löschen", self.delete_selection_text)
             self.insert_image_action = self._act("Bild einfügen", self.insert_image)
             self.insert_date_action = self._act("Datum einfügen", self.insert_current_date_time)
@@ -553,6 +718,11 @@ if QtWidgets is not None:
             self.file_menu.addAction(self.save_as_action)
             self.file_menu.addAction(self.close_doc_action)
             self.file_menu.addSeparator()
+            self.print_menu = self.file_menu.addMenu("Drucken")
+            self.print_menu.addAction(self.print_note_action)
+            self.print_menu.addAction(self.print_subtree_action)
+            self.print_menu.addAction(self.print_all_action)
+            self.file_menu.addSeparator()
             self.recent_menu = self.file_menu.addMenu("Zuletzt geöffnet")
             self.update_recent_menu()
             self.file_menu.addSeparator()
@@ -574,6 +744,8 @@ if QtWidgets is not None:
             self.node_menu.addAction(self.add_child_action)
             self.node_menu.addAction(self.rename_action)
             self.node_menu.addAction(self.delete_action)
+            self.node_menu.addSeparator()
+            self.node_menu.addAction(self.paste_child_action)
             self.node_menu.addSeparator()
             self.node_menu.addAction(self.unify_action)
             self.node_menu.addAction(self.desk_note_action)
@@ -609,6 +781,7 @@ if QtWidgets is not None:
                 self.desk_note_action,
                 self.bg_color_action,
                 self.fg_color_action,
+                self.paste_child_action,
                 self.export_node_rtf_action,
             ):
                 self.tree.addAction(action)
@@ -642,7 +815,7 @@ if QtWidgets is not None:
 
         def _create_toolbars(self) -> None:
             file_bar = self.addToolBar("Datei")
-            for action in (self.new_action, self.open_action, self.save_action, self.close_doc_action):
+            for action in (self.new_action, self.open_action, self.save_action, self.close_doc_action, self.print_note_action):
                 file_bar.addAction(action)
             node_bar = self.addToolBar("Neu/Entf.")
             for action in (self.add_sibling_action, self.add_child_action, self.delete_action):
@@ -708,7 +881,14 @@ if QtWidgets is not None:
         def apply_language(self) -> None:
             """Apply the legacy language table to visible Qt menus and actions."""
             self.tree.setHeaderLabel(self.tr("Info1", "Notizen"))
+            if hasattr(self, "quick_search_edit"):
+                self.quick_search_edit.setPlaceholderText(self.tr("kontext5", "Suchen"))
+                self.quick_search_next_button.setText("Weiter")
+                self.quick_search_all_button.setText("Alle")
+                self.title_apply_button.setText(self.tr("kontext2_2", "Umbenennen"))
+                self.editor_mode_label.setText("Modus: RTF/Text")
             self.file_menu.setTitle(self.tr("Strip1_1", "&Menü"))
+            self.print_menu.setTitle(self.tr("Strip1_15", "Drucken"))
             self.edit_menu.setTitle(self.tr("Strip1_17", "Bearbeiten"))
             self.node_menu.setTitle("Knoten")
             self.export_menu.setTitle(self.tr("export", "Export"))
@@ -720,6 +900,9 @@ if QtWidgets is not None:
             self.save_action.setText(self.tr("Strip1_4", "Speichern"))
             self.save_as_action.setText(self.tr("Strip1_5", "Speichern unter"))
             self.close_doc_action.setText(self.tr("Strip1_6", "Schließen"))
+            self.print_note_action.setText(self.tr("Strip1_15", "Aktuelle Notiz drucken"))
+            self.print_subtree_action.setText("Aktuellen Teilbaum drucken")
+            self.print_all_action.setText("Ganzen Baum drucken")
             self.exit_action.setText(self.tr("Strip1_8", "Beenden"))
             self.password_action.setText(self.tr("strip1_21", "Passwort setzen/ändern"))
             self.settings_action.setText(self.tr("Strip1_7", "Einstellungen"))
@@ -736,6 +919,7 @@ if QtWidgets is not None:
             self.cut_action.setText(self.tr("Strip4_1", "Ausschneiden"))
             self.copy_action.setText(self.tr("Strip4_2", "Kopieren"))
             self.paste_action.setText(self.tr("Strip4_3", "Einfügen"))
+            self.paste_child_action.setText("Einfügen als Unterknoten")
             self.delete_text_action.setText(self.tr("kontext4", "Text löschen"))
             self.insert_image_action.setText(self.tr("kontext6", "Bild einfügen"))
             self.insert_date_action.setText(self.tr("kontext7", "Datum einfügen"))
@@ -817,6 +1001,15 @@ if QtWidgets is not None:
             marker = " *" if self.document.changed else ""
             self.setWindowTitle(f"{name}{marker} - Notizen Python/Qt")
 
+        def _clipboard_has_node(self) -> bool:
+            try:
+                mime = QtWidgets.QApplication.clipboard().mimeData()
+                if mime.hasFormat(NODE_MIME_TYPE):
+                    return True
+                return mime.hasText() and looks_like_node_clipboard_xml(mime.text())
+            except Exception:
+                return False
+
         def update_actions(self) -> None:
             has_root = self.document.root is not None
             has_current = self.current_node() is not None
@@ -824,6 +1017,9 @@ if QtWidgets is not None:
                 self.save_action,
                 self.save_as_action,
                 self.close_doc_action,
+                self.print_note_action,
+                self.print_subtree_action,
+                self.print_all_action,
                 self.export_rtf_action,
                 self.export_txt_action,
                 self.export_ansi_txt_action,
@@ -847,9 +1043,106 @@ if QtWidgets is not None:
                 self.fg_color_action,
                 self.copy_action,
                 self.cut_action,
+                self.paste_child_action,
             ):
                 action.setEnabled(has_current)
-            self.paste_action.setEnabled(has_current and (self.clipboard_node is not None or self.editor.hasFocus()))
+            has_node_clipboard = self.clipboard_node is not None or self._clipboard_has_node()
+            text_widget_active = self._editor_active() or self._active_line_edit() is not None
+            self.paste_action.setEnabled(has_current and (has_node_clipboard or text_widget_active))
+            self.paste_child_action.setEnabled(has_current and has_node_clipboard)
+
+        def update_node_text_boxes(self) -> None:
+            """Synchronize the WinForms txt1/txt2 header boxes with the selected node."""
+            if not hasattr(self, "tree_top_edit") or not hasattr(self, "node_title_edit"):
+                return
+            self._updating_title_boxes = True
+            try:
+                root = self.document.root
+                node = self.current_node()
+                self.tree_top_edit.setText(root.title if root is not None else "")
+                self.node_title_edit.setEnabled(node is not None)
+                self.title_apply_button.setEnabled(node is not None)
+                self.editor_mode_label.setEnabled(node is not None)
+                self.node_title_edit.setText(node.title if node is not None else "")
+            finally:
+                self._updating_title_boxes = False
+
+        def commit_title_box(self) -> None:
+            """Apply the txt2 title field to the selected tree node."""
+            if self._updating_title_boxes or not hasattr(self, "node_title_edit"):
+                return
+            node = self.current_node()
+            item = self.tree.currentItem()
+            if node is None or item is None:
+                return
+            title = self.node_title_edit.text().strip() or "..."
+            if title == node.title and item.text(0) == title:
+                return
+            node.title = title
+            if item.text(0) != title:
+                item.setText(0, title)
+            self.document.mark_changed()
+            self.update_title()
+            self.update_node_text_boxes()
+            self.update_tray_menu()
+            for win in self.desktop_windows.values():
+                if win.node is node:
+                    win.reload_from_node()
+
+        def _quick_search_collect(self, *, all_nodes: bool) -> None:
+            term = self.quick_search_edit.text() if hasattr(self, "quick_search_edit") else ""
+            signature = (term, all_nodes)
+            if signature == self._quick_search_signature:
+                return
+            self._quick_search_signature = signature
+            self.last_search = term
+            if not term:
+                self._quick_search_results = []
+                self._quick_search_index = 0
+                self.statusBar().showMessage("Keine Suche eingegeben")
+                return
+            if all_nodes:
+                nodes = list(self.document.walk())
+            else:
+                current = self.current_node()
+                nodes = [current] if current is not None else []
+            self._quick_search_results = search_nodes(nodes, term)
+            self._quick_search_index = 0
+            self.statusBar().showMessage(f"{len(self._quick_search_results)} Treffer")
+
+        def quick_search_next(self) -> None:
+            if not hasattr(self, "quick_search_edit"):
+                return
+            # The small button searches the current note by default; if there is
+            # no hit, fall back to the whole tree so the field remains useful.
+            self._quick_search_collect(all_nodes=False)
+            if not self._quick_search_results:
+                self._quick_search_collect(all_nodes=True)
+            self._activate_quick_search_result()
+
+        def quick_search_all(self) -> None:
+            if not hasattr(self, "quick_search_edit"):
+                return
+            self._quick_search_collect(all_nodes=True)
+            self._activate_quick_search_result()
+
+        def _activate_quick_search_result(self) -> None:
+            if not self._quick_search_results:
+                self.statusBar().showMessage("Keine Treffer")
+                return
+            result = self._quick_search_results[self._quick_search_index % len(self._quick_search_results)]
+            self._quick_search_index += 1
+            self.select_node(result.node)
+            cursor = self.editor.textCursor()
+            cursor.setPosition(result.start)
+            cursor.setPosition(result.start + result.length, QtGui.QTextCursor.MoveMode.KeepAnchor)
+            self.editor.setTextCursor(cursor)
+            self.editor.setFocus()
+            self.statusBar().showMessage(
+                f"Treffer {((self._quick_search_index - 1) % len(self._quick_search_results)) + 1}"
+                f"/{len(self._quick_search_results)}"
+            )
+
 
         def current_node(self) -> NoteNode | None:
             item = self.tree.currentItem()
@@ -885,6 +1178,7 @@ if QtWidgets is not None:
                 self.tree.setCurrentItem(root_item)
             self._loading_tree = False
             self.on_tree_selection_changed()
+            self.update_node_text_boxes()
             self.update_actions()
             self.update_tray_menu()
 
@@ -944,6 +1238,7 @@ if QtWidgets is not None:
             node = self.current_node()
             self.current_node_ref = node
             self.load_editor_from_node(node)
+            self.update_node_text_boxes()
             self.update_actions()
 
         def on_item_changed(self, item: Any, column: int) -> None:
@@ -957,6 +1252,7 @@ if QtWidgets is not None:
                         win.reload_from_node()
                 self.document.mark_changed()
                 self.update_title()
+                self.update_node_text_boxes()
                 self.update_tray_menu()
 
         def load_editor_from_node(self, node: NoteNode | None, preserve_focus: bool = False) -> None:
@@ -1334,27 +1630,74 @@ if QtWidgets is not None:
             self.document.mark_changed()
             self.update_title()
 
+        def _set_node_clipboard_payload(self, node: NoteNode) -> str | None:
+            try:
+                xml_text = node_to_clipboard_xml(node, include_desktop_note=False)
+                mime = QtCore.QMimeData()
+                mime.setData(NODE_MIME_TYPE, xml_text.encode("utf-8"))
+                mime.setText(xml_text)
+                QtWidgets.QApplication.clipboard().setMimeData(mime)
+                return xml_text
+            except Exception:
+                return None
+
+        def _node_from_system_clipboard(self) -> tuple[NoteNode | None, str | None]:
+            try:
+                mime = QtWidgets.QApplication.clipboard().mimeData()
+                xml_text = ""
+                if mime.hasFormat(NODE_MIME_TYPE):
+                    xml_text = bytes(mime.data(NODE_MIME_TYPE)).decode("utf-8", errors="replace")
+                elif mime.hasText() and looks_like_node_clipboard_xml(mime.text()):
+                    xml_text = mime.text()
+                if xml_text:
+                    return node_from_clipboard_xml(xml_text, include_desktop_note=False), xml_text
+            except Exception:
+                pass
+            return None, None
+
+        def _clipboard_node_for_paste(self) -> tuple[NoteNode | None, bool]:
+            system_node, xml_text = self._node_from_system_clipboard()
+            if system_node is not None:
+                if self.cut_source_node is not None and xml_text == self.cut_clipboard_xml:
+                    return self.clipboard_node or system_node, True
+                self.cut_source_node = None
+                self.cut_clipboard_xml = None
+                self.clipboard_node = system_node
+                return system_node, False
+            return self.clipboard_node, self.cut_source_node is not None
+
         def copy_node(self) -> None:
             node = self.current_node()
             if node is None:
                 return
-            self.clipboard_node = node.clone_deep()
+            self.clipboard_node = node.clone_deep(include_desktop_note=False)
             self.cut_source_node = None
+            self.cut_clipboard_xml = None
+            self._set_node_clipboard_payload(self.clipboard_node)
             self.update_actions()
 
         def cut_node(self) -> None:
             node = self.current_node()
             if node is None or node is self.document.root:
                 return
-            self.clipboard_node = node.clone_deep()
+            self.clipboard_node = node.clone_deep(include_desktop_note=False)
             self.cut_source_node = node
+            self.cut_clipboard_xml = self._set_node_clipboard_payload(self.clipboard_node)
             self.update_actions()
+
+        def _paste_node_model(self, source: NoteNode, target: NoteNode, *, as_child: bool = False) -> NoteNode:
+            if as_child:
+                pasted = source.clone_deep(include_desktop_note=False)
+                target.insert_child(0, pasted)
+                return pasted
+            return legacy_paste_clone(source, target)
 
         def paste_node(self) -> None:
             target = self.current_node()
-            if target is None or self.clipboard_node is None:
+            source, is_cut = self._clipboard_node_for_paste()
+            if target is None or source is None:
                 return
-            if self.cut_source_node is not None and (
+            if is_cut and self.cut_source_node is not None and (
                 self.cut_source_node is target or self.cut_source_node.is_ancestor_of(target)
             ):
                 QtWidgets.QMessageBox.warning(
@@ -1363,11 +1706,37 @@ if QtWidgets is not None:
                     "Ein ausgeschnittener Knoten kann nicht in sich selbst oder darunter eingefügt werden.",
                 )
                 return
-            pasted = legacy_paste_clone(self.clipboard_node, target)
-            if self.cut_source_node is not None:
+            pasted = self._paste_node_model(source, target, as_child=False)
+            if is_cut and self.cut_source_node is not None:
                 self.close_desktop_note(self.cut_source_node)
                 self.cut_source_node.remove_from_parent()
                 self.cut_source_node = None
+                self.cut_clipboard_xml = None
+            self.build_tree()
+            self.select_node(pasted)
+            self.document.mark_changed()
+            self.update_title()
+
+        def paste_node_as_child(self) -> None:
+            target = self.current_node()
+            source, is_cut = self._clipboard_node_for_paste()
+            if target is None or source is None:
+                return
+            if is_cut and self.cut_source_node is not None and (
+                self.cut_source_node is target or self.cut_source_node.is_ancestor_of(target)
+            ):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Einfügen",
+                    "Ein ausgeschnittener Knoten kann nicht in sich selbst oder darunter eingefügt werden.",
+                )
+                return
+            pasted = self._paste_node_model(source, target, as_child=True)
+            if is_cut and self.cut_source_node is not None:
+                self.close_desktop_note(self.cut_source_node)
+                self.cut_source_node.remove_from_parent()
+                self.cut_source_node = None
+                self.cut_clipboard_xml = None
             self.build_tree()
             self.select_node(pasted)
             self.document.mark_changed()
@@ -1376,28 +1745,51 @@ if QtWidgets is not None:
         def _editor_active(self) -> bool:
             return self.editor.hasFocus() or self.editor.viewport().hasFocus()
 
+        def _active_line_edit(self) -> Any | None:
+            widget = QtWidgets.QApplication.focusWidget()
+            if not isinstance(widget, QtWidgets.QLineEdit):
+                return None
+            if widget is getattr(self, "node_title_edit", None) or widget is getattr(self, "quick_search_edit", None):
+                return widget
+            return None
+
         def cut_anything(self) -> None:
-            if self._editor_active():
+            line_edit = self._active_line_edit()
+            if line_edit is not None:
+                line_edit.cut()
+            elif self._editor_active():
                 self.editor.cut()
                 self.save_current_editor_to_node()
             else:
                 self.cut_node()
 
         def copy_anything(self) -> None:
-            if self._editor_active():
+            line_edit = self._active_line_edit()
+            if line_edit is not None:
+                line_edit.copy()
+            elif self._editor_active():
                 self.editor.copy()
             else:
                 self.copy_node()
 
         def paste_anything(self) -> None:
-            if self._editor_active():
+            line_edit = self._active_line_edit()
+            if line_edit is not None:
+                line_edit.paste()
+            elif self._editor_active():
                 self.editor.paste()
                 self.save_current_editor_to_node()
             else:
                 self.paste_node()
 
         def delete_anything(self) -> None:
-            if self._editor_active():
+            line_edit = self._active_line_edit()
+            if line_edit is not None:
+                if line_edit.hasSelectedText():
+                    line_edit.insert("")
+                else:
+                    line_edit.del_()
+            elif self._editor_active():
                 self.delete_selection_text()
             else:
                 self.delete_node()
@@ -1541,26 +1933,92 @@ if QtWidgets is not None:
             dialog.exec()
 
         def schedule_alarm(self, when: Any, message: str) -> None:
-            msecs = QtCore.QDateTime.currentDateTime().msecsTo(when)
-            if msecs < 0:
+            """Compatibility entry point for the older simple Ctrl+Space alarm."""
+            try:
+                start = datetime.fromtimestamp(int(when.toSecsSinceEpoch()))
+            except Exception:
+                start = datetime.now()
+            self.schedule_alarm_spec(AlarmSpec(start=start, message=message or "Notizen-Wecker"))
+
+        def schedule_alarm_spec(self, spec: AlarmSpec) -> None:
+            spec = spec.normalized()
+            due = next_occurrence(spec, datetime.now())
+            if due is None:
                 QtWidgets.QMessageBox.warning(self, "Wecker", "Der Zeitpunkt liegt in der Vergangenheit.")
                 return
             timer = QtCore.QTimer(self)
             timer.setSingleShot(True)
-            timer.timeout.connect(lambda t=timer, msg=message: self._trigger_alarm(t, msg))
+            msecs = max(0, int((due - datetime.now()).total_seconds() * 1000))
+            # QTimer accepts a signed 32-bit millisecond interval. Re-arm in
+            # chunks for dates that are further away.
+            timer.timeout.connect(lambda t=timer, alarm=spec, target_due=due: self._trigger_alarm_spec(t, alarm, target_due))
             self.alarms.append(timer)
             timer.start(int(min(msecs, 2**31 - 1)))
-            self.statusBar().showMessage(f"Wecker gestellt: {when.toString()}")
+            self.statusBar().showMessage(
+                f"Wecker gestellt: {due.strftime('%d.%m.%Y %H:%M')} ({describe_recurrence(spec)})"
+            )
 
-        def _trigger_alarm(self, timer: Any, message: str) -> None:
+        def _trigger_alarm_spec(self, timer: Any, spec: AlarmSpec, due: datetime) -> None:
             try:
                 self.alarms.remove(timer)
             except ValueError:
                 pass
+            # For very distant reminders the timer wakes up early because of the
+            # 32-bit QTimer limit. Continue silently until the actual time is due.
+            if due > datetime.now():
+                self.schedule_alarm_spec(spec)
+                return
             self.show()
             self.raise_()
             self.activateWindow()
-            QtWidgets.QMessageBox.information(self, "Wecker", message or "Notizen-Wecker")
+            QtWidgets.QMessageBox.information(self, "Wecker", spec.message or "Notizen-Wecker")
+            if spec.recurrence != "none":
+                next_due = next_occurrence(spec, datetime.now())
+                if next_due is not None:
+                    self.schedule_alarm_spec(spec)
+
+        def _trigger_alarm(self, timer: Any, message: str) -> None:
+            self._trigger_alarm_spec(
+                timer,
+                AlarmSpec(start=datetime.now(), message=message or "Notizen-Wecker"),
+                datetime.now(),
+            )
+
+        def _print_html(self, html: str, title: str) -> None:
+            try:
+                QtPrintSupport = _load_qt_print_support()
+                printer = QtPrintSupport.QPrinter(QtPrintSupport.QPrinter.PrinterMode.HighResolution)
+                printer.setDocName(title or "Notizen")
+                dialog = QtPrintSupport.QPrintDialog(printer, self)
+                if dialog.exec() != ACCEPTED:
+                    return
+                document = QtGui.QTextDocument()
+                document.setDefaultFont(self.editor.font())
+                document.setHtml(html)
+                document.print(printer)
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "Drucken fehlgeschlagen", str(exc))
+
+        def print_current_note(self) -> None:
+            node = self.current_node()
+            if node is None:
+                return
+            self.save_current_editor_to_node()
+            html = self.editor.toHtml() if node is self.current_node_ref else rtf_to_html(node.rtf)
+            self._print_html(html, node.title)
+
+        def print_current_subtree(self) -> None:
+            node = self.current_node()
+            if node is None:
+                return
+            self.save_current_editor_to_node()
+            self._print_html(rtf_to_html(tree_to_rtf(node)), node.title)
+
+        def print_root(self) -> None:
+            if self.document.root is None:
+                return
+            self.save_current_editor_to_node()
+            self._print_html(rtf_to_html(tree_to_rtf(self.document.root)), self.document.root.title)
 
         def _safe_export_name(self, title: str, suffix: str) -> str:
             bad = '<>:"/\\|?*'
@@ -1829,7 +2287,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.9.4"
+                __version__ = "0.9.5"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
@@ -1837,8 +2295,9 @@ if QtWidgets is not None:
                     f"Notizen.NET Weitertranspilierung nach Python/Qt {__version__}\n\n"
                     "Portiert: ALX-Dateiformat, Notizbaum, lokale/FTP-Speicherung, Suche, "
                     "Knotenoperationen, Desktop-Notizen, RichText-Brücke, Teilbaum-Export, "
-                    "Sprachdateien, legacy Startparameter, alte Tastaturbedienung und "
-                    "erweiterte Grundkonfiguration.\n\n"
+                    "Sprachdateien, legacy Startparameter, alte Tastaturbedienung, "
+                    "systemweites Knoten-Clipboard, wiederholende Wecker und "
+                    "Qt-Druckpfade.\n\n"
                     f"Qt-Binding: {BINDING}"
                 ),
             )
@@ -1846,11 +2305,19 @@ if QtWidgets is not None:
         def keyPressEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             # Keep legacy shortcuts from Notizen.vb/tastendruck focus-aware.
             key = event.key()
-            if event.modifiers() & CTRL:
+            modifiers = event.modifiers()
+            if modifiers & CTRL:
                 if key == _enum(QtCore.Qt, "Key", "Key_Space"):
                     self.show_alarm_dialog()
                     return
-            if self.tree.hasFocus() and not (event.modifiers() & CTRL):
+            if self.tree.hasFocus() and modifiers & SHIFT and not (modifiers & CTRL):
+                if key == _enum(QtCore.Qt, "Key", "Key_Insert"):
+                    self.paste_node()
+                    return
+                if key == _enum(QtCore.Qt, "Key", "Key_Delete"):
+                    self.cut_node()
+                    return
+            if self.tree.hasFocus() and not (modifiers & (CTRL | SHIFT)):
                 if key == _enum(QtCore.Qt, "Key", "Key_Insert"):
                     self.add_child_node()
                     return

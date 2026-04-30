@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.9.4**.
+Aktueller Stand dieses Archivs: **0.9.6**.
 
 ## Start
 
@@ -17,6 +17,7 @@ PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer eben
 
 - ALX-Dateiformat mit GZip, UTF-16-XML und Legacy-DES-Passwortmodus.
 - Baumansicht, Editor, Knotenoperationen, Drag-and-drop, Suche, Export und Backups.
+- WinForms-nahe Hauptansicht mit sichtbarem Baumfeld `txt1` über dem Baum, Titel-Textfeld `txt2` über dem Editor und dauerhaft sichtbarem RichText-Editor `Inhalt`.
 - RTF-zu-HTML-Bridge für den Qt-Editor mit Fett/Kursiv/Unterstrichen/Durchgestrichen, Schriftgröße, Schriftfamilie, Textfarbe, Markierung und Unicode.
 - RTF-Bild-Roundtrip für übliche WinForms/Qt-`\pict`-Bilder mit PNG/JPEG-Hexdaten sowie HTML-`img`-Data-URIs.
 - Editor-Kontextfunktionen aus Notizen.NET: Text löschen, Bild einfügen, Datum einfügen, Suche und Zwischenablageaktionen.
@@ -31,6 +32,10 @@ PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer eben
 - WinForms-nahe Knoten-Einfügelogik: Kopierte/ausgeschnittene Teilbäume werden wie in `paste_anything(False)` vor dem markierten Geschwisterknoten bzw. als erster Root-Unterknoten eingefügt.
 - Erweiterte Export-Parität: aktueller Teilbaum oder ganzer Baum als RTF, UTF-8-TXT, ANSI-TXT oder Unicode-TXT sowie Roh-RTF des aktuellen Knotens.
 - Desktop-Notizen synchronisieren laufende Editoränderungen jetzt live und erhalten bei fehlender Alt-Farbe eine zufällige helle Legacy-Farbe.
+- Knoten-Kopieren/Ausschneiden nutzt zusätzlich zur internen Ablage ein eigenes systemweites XML-MIME-Format, damit Teilbäume zwischen zwei laufenden Programmfenstern eingefügt werden können.
+- Der Wecker aus `wecker.vb` unterstützt jetzt einmalige, tägliche, wöchentliche, monatliche und jährliche Wiederholungen mit Intervall und Wochentagen.
+- Drucken über QtPrintSupport für aktuelle Notiz, aktuellen Teilbaum oder ganzen Baum ist angebunden.
+- Legacy-Tastaturvarianten `Shift+Insert` und `Shift+Delete` sind ergänzt.
 
 Historische Qt-/QML-Migrationsskripte aus früheren Zwischenschritten liegen nicht mehr im aktiven Projektpfad, sondern unter `legacy_build_metadata/`.
 
