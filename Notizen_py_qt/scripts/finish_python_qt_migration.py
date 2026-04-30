@@ -7,6 +7,7 @@ Default mode is dry-run. Use --apply to edit files.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import re
 import shutil
@@ -39,7 +40,7 @@ SKIP_FILENAMES = {
     "migrate_remove_slint_to_qt611.py",
     "slint_to_qml.py",
     "check_no_slint.sh",
-    "check_no_slint_strict.sh",
+    "check_no_slint_strict.sh", "repair_pyproject_qt611.py",
 }
 
 REPLACEMENTS = [
@@ -64,6 +65,7 @@ APP_PY = r'''
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import sys
 from importlib import resources
@@ -333,6 +335,7 @@ if grep -RInE '(^|[^A-Za-z0-9_])(slint|Slint|SLINT|slint_build|slint-build|slint
   --exclude='finish_python_qt_migration.py' \
   --exclude='check_no_slint.sh' \
   --exclude='check_no_slint_strict.sh' \
+  --exclude='repair_pyproject_qt611.py' \
   --exclude-dir=.git \
   --exclude-dir=target \
   --exclude-dir=build \
@@ -341,6 +344,8 @@ if grep -RInE '(^|[^A-Za-z0-9_])(slint|Slint|SLINT|slint_build|slint-build|slint
   --exclude-dir=node_modules \
   --exclude-dir=.qt611_no_slint_backup \
   --exclude-dir=.qt611_no_slint_backup_v4 \
+  --exclude-dir=.qt611_pyproject_repair_backup \
+  --exclude-dir='qt611_no_slint_migration_kit*' \
   --exclude-dir=legacy_slint \
   --exclude-dir=legacy_build_metadata \
   --exclude-dir=dist \
@@ -360,7 +365,11 @@ fi
 
 BUILD_PYTHON_QT_SH = r'''#!/usr/bin/env bash
 set -euo pipefail
-ROOT="${1:-.}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${1:-.}" && pwd)"
+if [[ -f "$SCRIPT_DIR/repair_pyproject_qt611.py" ]]; then
+  python3 "$SCRIPT_DIR/repair_pyproject_qt611.py" "$ROOT" --apply
+fi
 cd "$ROOT"
 python3 -m pip install -e .
 QT_QPA_PLATFORM=offscreen python3 -m notizen_py_qt --smoke-test
@@ -474,11 +483,23 @@ def ensure_pyside_dependency(text: str) -> str:
 
 def update_pyproject(path: Path, log: ActionLog) -> None:
     text = path.read_text(encoding="utf-8", errors="ignore")
-    new = remove_legacy_ui_dependency_lines(text)
-    new = apply_replacements(new)
-    new = ensure_pyside_dependency(new)
-    if "notizen_py_qt.ui" not in new and "[tool.setuptools.package-data]" in new:
-        new = new.rstrip() + '\nnotizen_py_qt = ["ui/*.qml", "ui/*.js"]\n"notizen_py_qt.ui" = ["*.qml", "*.js"]\n'
+    repair_path = Path(__file__).resolve().with_name("repair_pyproject_qt611.py")
+    try:
+        spec = importlib.util.spec_from_file_location("_qt611_pyproject_repair", repair_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"cannot load {repair_path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        new = module.repair_text(text)
+    except Exception:
+        # Fallback to the older line-based path. The dedicated repair script is
+        # preferred because it also fixes already-invalid TOML with duplicate keys.
+        new = remove_legacy_ui_dependency_lines(text)
+        new = apply_replacements(new)
+        new = ensure_pyside_dependency(new)
+        if "notizen_py_qt.ui" not in new and "[tool.setuptools.package-data]" in new:
+            new = new.rstrip() + '\nnotizen_py_qt = ["ui/*.qml", "ui/*.js"]\n"notizen_py_qt.ui" = ["*.qml", "*.js"]\n'
     if new != text:
         log.write_text(path, new)
     else:
@@ -599,6 +620,13 @@ def write_helper_scripts(root: Path, log: ActionLog) -> None:
     log.write_text(scripts / "check_no_slint.sh", STRICT_CHECK_SH, executable=True)
     log.write_text(scripts / "check_no_slint_strict.sh", STRICT_CHECK_SH, executable=True)
     log.write_text(scripts / "build_python_qt.sh", BUILD_PYTHON_QT_SH, executable=True)
+    repair_source = Path(__file__).resolve().with_name("repair_pyproject_qt611.py")
+    if repair_source.exists():
+        log.write_text(
+            scripts / "repair_pyproject_qt611.py",
+            repair_source.read_text(encoding="utf-8"),
+            executable=True,
+        )
 
 
 def scan_remaining(root: Path) -> list[tuple[Path, int, str]]:

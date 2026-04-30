@@ -11,45 +11,32 @@ Root: `/home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint`
 - Structs converted to JS helpers: 0
 - Converter warnings: 0
 - Generated TODO markers: 19
-- Active old-UI references: 38
+- Active old-UI references: 45
 
 ## Generated TODO samples
 
-- `src/notizen_py_qt/ui/AppWindow.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
-- `src/notizen_py_qt/ui/Main.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
-- `src/notizen_py_qt/ui/app-window_AppWindow.qml:488: // TODO(qt611-port): pointer-event(event) => {`
-- `src/notizen_py_qt/ui/app-window_AppWindow.qml:694: // TODO(qt611-port): pointer-event(event) => {`
-- `src/notizen_py_qt/ui/app-window_AppWindow.qml:711: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
-- `src/notizen_py_qt/ui/app-window_AppWindow.qml:739: // TODO(qt611-port): pointer-event(event) => {`
-- `src/notizen_py_qt/ui/app-window.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
-- `qml/AppWindow.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
-- `qml/Main.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
-- `qml/app-window_AppWindow.qml:488: // TODO(qt611-port): pointer-event(event) => {`
-- `qml/app-window_AppWindow.qml:694: // TODO(qt611-port): pointer-event(event) => {`
-- `qml/app-window_AppWindow.qml:711: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
-- `qml/app-window_AppWindow.qml:739: // TODO(qt611-port): pointer-event(event) => {`
-- `.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
-- `.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
-- `.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:488: // TODO(qt611-port): pointer-event(event) => {`
-- `.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:694: // TODO(qt611-port): pointer-event(event) => {`
-- `.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:711: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
-- `.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:739: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:488: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:694: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:711: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:739: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:488: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:694: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:711: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:739: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/qml/AppWindow.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/qml/Main.qml:403: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:488: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:694: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:711: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:739: // TODO(qt611-port): pointer-event(event) => {`
 
 ## Active old-UI references still present
 
-- `pyproject.toml:6: name = "notizen-py-qt"`
-- `pyproject.toml:8: description = "Python/Qt port of the old VB.NET Notizen.NET application"`
-- `pyproject.toml:33: notizen-py-qt = "notizen_py_qt.app:main"`
-- `pyproject.toml:35: # Compatibility entry point for old installs. Prefer notizen-py-qt.`
-- `pyproject.toml:36: notizen-pypy-qt = "notizen_pypy_qt.app:main"`
-- `pyproject.toml:46: notizen_py_qt = ["ui/*.qml", "ui/*.js"]`
-- `pyproject.toml:47: "notizen_py_qt.ui" = ["*.qml", "*.js"]`
-- `CMakeLists.txt:17: qml/*.qml`
-- `src/backend.rs:4: include!("cxx-qt-lib/qstring.h");`
-- `src/notizen_py_qt/ui/AppWindow.qml:14: property string windowTitle: "Notizen PyPy Qt"`
-- `src/notizen_py_qt/ui/Main.qml:14: property string windowTitle: "Notizen PyPy Qt"`
-- `src/notizen_py_qt/ui/app-window_AppWindow.qml:15: property string windowTitle: "Notizen Py Qt"`
-- `src/notizen_py_qt/ui/app-window.qml:14: property string windowTitle: "Notizen PyPy Qt"`
 - `Notizen_py_qt/template_rust_cxx_qt/Cargo.toml:9: cxx-qt = "0.8.1"`
 - `Notizen_py_qt/template_rust_cxx_qt/Cargo.toml:10: cxx-qt-lib = { version = "0.8.1", features = ["qt_full"] }`
 - `Notizen_py_qt/template_rust_cxx_qt/Cargo.toml:13: cxx-qt-build = { version = "0.8.1", features = ["link_qt_object_files"] }`
@@ -70,9 +57,29 @@ Root: `/home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint`
 - `Notizen_py_qt/cpp/main.cpp:24: Qt::QueuedConnection);`
 - `Notizen_py_qt/qml/Main.qml:19: Label { text: qsTr("Qt 6.11") }`
 - `Notizen_py_qt/qml/Main.qml:25: orientation: Qt.Horizontal`
-- `qml/AppWindow.qml:14: property string windowTitle: "Notizen PyPy Qt"`
-- `qml/Main.qml:14: property string windowTitle: "Notizen PyPy Qt"`
-- `qml/app-window_AppWindow.qml:15: property string windowTitle: "Notizen Py Qt"`
-- `cpp/main.cpp:13: const QUrl url(QStringLiteral("qrc:/qt/qml/Notizen/Main.qml"));`
-- `cpp/main.cpp:24: Qt::QueuedConnection);`
+- `Notizen_py_slint/pyproject.toml:6: name = "notizen-py-qt"`
+- `Notizen_py_slint/pyproject.toml:8: description = "Python/Qt port of the old VB.NET Notizen.NET application"`
+- `Notizen_py_slint/pyproject.toml:35: # Compatibility entry point for old installs. Prefer notizen-py-qt.`
+- `Notizen_py_slint/pyproject.toml:37: notizen-py-qt = "notizen_py_qt.app:main"`
+- `Notizen_py_slint/pyproject.toml:39: notizen-pypy-qt = "notizen_pypy_qt.app:main"`
+- `Notizen_py_slint/pyproject.toml:48: notizen_py_qt = ["ui/*.qml", "ui/*.js"]`
+- `Notizen_py_slint/pyproject.toml:49: "notizen_py_qt.ui" = ["*.qml", "*.js"]`
+- `Notizen_py_slint/CMakeLists.txt:17: qml/*.qml`
+- `Notizen_py_slint/src/backend.rs:4: include!("cxx-qt-lib/qstring.h");`
+- `Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:15: property string windowTitle: "Notizen Py Qt"`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/qml/AppWindow.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/qml/Main.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:15: property string windowTitle: "Notizen Py Qt"`
+- `Notizen_py_slint/cpp/main.cpp:13: const QUrl url(QStringLiteral("qrc:/qt/qml/Notizen/Main.qml"));`
+- `Notizen_py_slint/cpp/main.cpp:24: Qt::QueuedConnection);`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:6: name = "notizen-py-qt"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:8: description = "Python/Qt port of the old VB.NET Notizen.NET application"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:33: notizen-py-qt = "notizen_py_qt.app:main"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:35: # Compatibility entry point for old installs. Prefer notizen-py-qt.`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:36: notizen-pypy-qt = "notizen_pypy_qt.app:main"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:46: notizen_py_qt = ["ui/*.qml", "ui/*.js"]`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:47: "notizen_py_qt.ui" = ["*.qml", "*.js"]`
 
