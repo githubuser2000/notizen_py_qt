@@ -1,3 +1,4 @@
+import "."
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -12,7 +13,7 @@ ApplicationWindow {
     title: root.windowTitle
 
     property string windowTitle: "Notizen PyPy Qt"
-    property var rows
+    property var rows: []
     property int selectedIndex: -1
     property string editorText
     property string noteTitle

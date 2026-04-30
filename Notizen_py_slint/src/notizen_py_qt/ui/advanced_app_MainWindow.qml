@@ -1,3 +1,4 @@
+import "."
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -6,7 +7,7 @@ ApplicationWindow {
     id: root
     visible: true
     property alias titleText: titleField.text
-    property var rows
+    property var rows: []
     width: 900
     height: 600
 

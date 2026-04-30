@@ -1,30 +1,35 @@
 #!/usr/bin/env python3
-"""Lightweight sanity checks for generated Qt/QML sources.
-
-This is deliberately not a QML compiler. It catches common migration mistakes
-before CMake: unbalanced braces/brackets/parentheses and unfinished strings in
-.qml/.js files.
-"""
+"""Lightweight sanity checks for generated Qt/QML sources."""
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
-IGNORE_DIRS = {".git", "target", "build", "node_modules", ".qt611_no_qt_backup", "legacy_qt", ".venv"}
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from qt611_project_utils import find_project_root, is_ignored_path, prune_dirnames  # noqa: E402
+
 SUFFIXES = {".qml", ".js", ".mjs"}
 
 
 def iter_qml_files(root: Path):
+    root = find_project_root(root)
     if root.is_file():
         if root.suffix in SUFFIXES:
             yield root
         return
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
+        d = Path(dirpath)
+        prune_dirnames(dirnames)
+        if is_ignored_path(d, root):
+            continue
         for filename in filenames:
-            path = Path(dirpath) / filename
-            if path.suffix in SUFFIXES:
+            path = d / filename
+            if path.suffix in SUFFIXES and not is_ignored_path(path, root):
                 yield path
 
 
@@ -98,7 +103,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("root", nargs="?", default=".")
     args = parser.parse_args()
-    root = Path(args.root).resolve()
+    root = find_project_root(Path(args.root).resolve())
     errors: list[str] = []
     files = list(iter_qml_files(root))
     for path in files:
@@ -106,7 +111,8 @@ def main() -> int:
             errors.extend(check_balance(path))
         except UnicodeDecodeError as exc:
             errors.append(f"{path}: cannot decode as UTF-8: {exc}")
-    print(f"Checked {len(files)} QML/JS file(s).")
+    print(f"Root: {root}")
+    print(f"Checked {len(files)} active QML/JS file(s).")
     if errors:
         print("Sanity check failed:")
         for error in errors[:200]:
@@ -114,7 +120,7 @@ def main() -> int:
         if len(errors) > 200:
             print(f"... {len(errors) - 200} more")
         return 1
-    print("OK: generated QML/JS has balanced delimiters.")
+    print("OK: active QML/JS has balanced delimiters.")
     return 0
 
 

@@ -4,27 +4,26 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
+import sys
 from pathlib import Path
 
-IGNORE_DIRS = {".git", "target", "build", "node_modules", ".qt611_no_qt_backup", "legacy_qt", ".venv"}
-ACTIVE_SUFFIXES = {".rs", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".qml", ".js", ".toml", ".cmake"}
-FORBIDDEN_RE = re.compile(r"(^|[^A-Za-z0-9_])(qt|Qt|QT|qt_build|qt-build|qt_interpreter|\.qml)([^A-Za-z0-9_]|$)")
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from qt611_project_utils import find_project_root, iter_files  # noqa: E402
+
+ACTIVE_SUFFIXES = {".rs", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".qml", ".js", ".toml", ".cmake", ".py", ".sh"}
+ACTIVE_NAMES = {"CMakeLists.txt", "build.rs", "Cargo.toml", "pyproject.toml"}
+FORBIDDEN_RE = re.compile(r"(^|[^A-Za-z0-9_])(slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint)([^A-Za-z0-9_]|$)")
 TODO_RE = re.compile(r"TODO\(qt611-port\)")
-
-
-def iter_files(root: Path):
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
-        for filename in filenames:
-            yield Path(dirpath) / filename
 
 
 def load_reports(root: Path) -> list[dict]:
     reports = []
-    for path in iter_files(root):
-        if path.name.endswith(".qml_to_qml.report.json"):
+    for path in iter_files(root, suffixes={".json"}):
+        if path.name.endswith(".slint_to_qml.report.json"):
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 data["_path"] = str(path.relative_to(root))
@@ -36,8 +35,16 @@ def load_reports(root: Path) -> list[dict]:
 
 def scan_active_refs(root: Path) -> list[str]:
     hits = []
-    for path in iter_files(root):
-        if path.suffix not in ACTIVE_SUFFIXES and path.name not in {"CMakeLists.txt", "build.rs"}:
+    for path in iter_files(root, suffixes=ACTIVE_SUFFIXES, names=ACTIVE_NAMES):
+        if path.suffix not in ACTIVE_SUFFIXES and path.name not in ACTIVE_NAMES:
+            continue
+        if path.name in {
+            "migrate_remove_slint_to_qt611.py", "slint_to_qml.py", "finish_python_qt_migration.py",
+            "check_no_slint.sh", "check_no_slint_strict.sh", "repair_pyproject_qt611.py",
+            "continue_qt611_transpile.py", "probe_python_qt_runtime.py", "restore_qt_controller_from_backup.py",
+            "harden_python_qt_runtime.py", "fix_qml_for_pyside.py", "recover_misrooted_qt611_migration.py",
+            "repair_qml_todo_blocks.py",
+        }:
             continue
         try:
             text = path.read_text(encoding="utf-8")
@@ -52,9 +59,7 @@ def scan_active_refs(root: Path) -> list[str]:
 def count_todos(root: Path) -> tuple[int, list[str]]:
     total = 0
     samples = []
-    for path in iter_files(root):
-        if path.suffix not in {".qml", ".js"}:
-            continue
+    for path in iter_files(root, suffixes={".qml", ".js", ".mjs"}):
         try:
             text = path.read_text(encoding="utf-8")
         except Exception:
@@ -131,7 +136,7 @@ def main() -> int:
     parser.add_argument("root", nargs="?", default=".")
     parser.add_argument("--write", action="store_true", help="write QT611_MIGRATION_STATUS.md")
     args = parser.parse_args()
-    root = Path(args.root).resolve()
+    root = find_project_root(Path(args.root).resolve())
     reports = load_reports(root)
     active_hits = scan_active_refs(root)
     todo_total, todo_samples = count_todos(root)

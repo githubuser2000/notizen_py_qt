@@ -15,6 +15,11 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from qt611_project_utils import find_project_root, is_ignored_path, prune_dirnames, should_skip_dir_name
 from typing import Iterable
 
 OLD_WORD_RE = re.compile(r"slint|Slint|SLINT|slint_build|slint-build|slint_interpreter|\.slint")
@@ -41,6 +46,20 @@ SKIP_FILENAMES = {
     "slint_to_qml.py",
     "check_no_slint.sh",
     "check_no_slint_strict.sh", "repair_pyproject_qt611.py",
+
+    "continue_qt611_transpile.py",
+    "fix_qml_for_pyside.py",
+    "harden_python_qt_runtime.py",
+    "restore_qt_controller_from_backup.py",
+    "probe_python_qt_runtime.py",
+    "recover_misrooted_qt611_migration.py",
+    "repair_qml_todo_blocks.py",
+    "qt611_project_utils.py",
+    "build_python_qt.sh",
+    "build_qt611.sh",
+    "verify_qt611_environment.sh",
+    "qml_sanity_check.py",
+    "analyze_transpilation.py",
 }
 
 REPLACEMENTS = [
@@ -418,14 +437,17 @@ def is_text_file(path: Path) -> bool:
 
 
 def should_skip_file(path: Path) -> bool:
-    return path.name in SKIP_FILENAMES
+    return path.name in SKIP_FILENAMES or should_skip_dir_name(path.name) or is_ignored_path(path)
 
 
 def iter_files(root: Path) -> Iterable[Path]:
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS and not d.endswith(".egg-info")]
+        prune_dirnames(dirnames)
+        d = Path(dirpath)
+        if is_ignored_path(d, root):
+            continue
         for filename in filenames:
-            path = Path(dirpath) / filename
+            path = d / filename
             if should_skip_file(path):
                 continue
             if is_text_file(path):
@@ -670,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--apply", action="store_true", help="Edit files instead of dry-run")
     args = parser.parse_args(argv)
 
-    root = Path(args.root).resolve()
+    root = find_project_root(Path(args.root).resolve())
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_root = root / ".qt611_no_slint_backup_v4" / timestamp
     log = ActionLog(apply=args.apply, root=root, backup_root=backup_root, actions=[])

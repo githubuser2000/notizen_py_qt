@@ -1,0 +1,124 @@
+# QML hardening report
+
+Mode: APPLY
+Root: `/home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint`
+
+## Actions
+
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples/MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/advanced_app_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/main_window_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/advanced_app_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/main_window_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples/Main.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples/MainWindow.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/transpiled_examples/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/MainWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/advanced_app_MainWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/main_window_MainWindow.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/MainWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/advanced_app_MainWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml
+- update: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/main_window_MainWindow.qml
+- create: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/template_cpp_qml/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/template_cpp_qml/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/template_cpp_qml/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/template_rust_cxx_qt/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/template_rust_cxx_qt/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/transpiled_examples
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/transpiled_examples/AppState.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/transpiled_examples/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/transpiled_examples/MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/transpiled_examples/Qt611Types.js
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_qt/transpiled_examples/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/AppState.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/advanced_app_AppState.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/advanced_app_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/app-window_AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/main_window_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/Qt611Types.js
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/advanced_app_Qt611Types.js
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/app-window_Qt611Types.js
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/qml/qmldir
+- scan qml dir: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/AppState.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/advanced_app_AppState.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/advanced_app_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/main_window_MainWindow.qml
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/Qt611Types.js
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/advanced_app_Qt611Types.js
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/app-window_Qt611Types.js
+- keep unchanged: /home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint/Notizen_py_slint/src/notizen_py_qt/ui/qmldir

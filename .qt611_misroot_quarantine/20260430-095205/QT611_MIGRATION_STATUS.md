@@ -1,0 +1,186 @@
+# Qt 6.11 Migration Status
+
+Root: `/home/alex/Eigene-Dateien/myRepos/Notizen_Py_Slint`
+
+## Summary
+
+- Reports: 0
+- Components generated: 0
+- Global singletons generated: 0
+- Enums converted to JS helpers: 0
+- Structs converted to JS helpers: 0
+- Converter warnings: 0
+- Generated TODO markers: 114
+- Active old-UI references: 115
+
+## Generated TODO samples
+
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/qml/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/qml/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/.qt611_no_slint_backup_v4/20260429-212035/qml/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml:404: // TODO(qt611-port): changed text => { root.editorChanged(root.text); }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:489: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:695: // TODO(qt611-port): pointer-event(event) => {`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:712: // TODO(qt611-port): edited(text) => { root.editorChanged(text); }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:740: // TODO(qt611-port): pointer-event(event) => {`
+
+## Active old-UI references still present
+
+- `Notizen_py_qt/template_rust_cxx_qt/Cargo.toml:9: cxx-qt = "0.8.1"`
+- `Notizen_py_qt/template_rust_cxx_qt/Cargo.toml:10: cxx-qt-lib = { version = "0.8.1", features = ["qt_full"] }`
+- `Notizen_py_qt/template_rust_cxx_qt/Cargo.toml:13: cxx-qt-build = { version = "0.8.1", features = ["link_qt_object_files"] }`
+- `Notizen_py_qt/template_rust_cxx_qt/CMakeLists.txt:17: qml/*.qml`
+- `Notizen_py_qt/template_rust_cxx_qt/src/backend.rs:4: include!("cxx-qt-lib/qstring.h");`
+- `Notizen_py_qt/template_rust_cxx_qt/src/main.rs:12: engine.load(&QUrl::from("qrc:/qt/qml/org/notizen/transpiler/qml/Main.qml"));`
+- `Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:12: title: qsTr("Notizen / Qt 6.11")`
+- `Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:30: Label { text: qsTr("Qt 6.11 + CXX-Qt") }`
+- `Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:36: orientation: Qt.Horizontal`
+- `Notizen_py_qt/template_rust_cxx_qt/cpp/main.cpp:10: const QUrl url(QStringLiteral("qrc:/qt/qml/org/notizen/transpiler/qml/Main.qml"));`
+- `Notizen_py_qt/template_rust_cxx_qt/cpp/main.cpp:21: Qt::QueuedConnection);`
+- `Notizen_py_qt/template_cpp_qml/CMakeLists.txt:17: qml/*.qml`
+- `Notizen_py_qt/template_cpp_qml/cpp/main.cpp:13: const QUrl url(QStringLiteral("qrc:/qt/qml/Notizen/Main.qml"));`
+- `Notizen_py_qt/template_cpp_qml/cpp/main.cpp:24: Qt::QueuedConnection);`
+- `Notizen_py_qt/template_cpp_qml/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `Notizen_py_qt/template_cpp_qml/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `Notizen_py_qt/cpp/main.cpp:13: const QUrl url(QStringLiteral("qrc:/qt/qml/Notizen/Main.qml"));`
+- `Notizen_py_qt/cpp/main.cpp:24: Qt::QueuedConnection);`
+- `Notizen_py_qt/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `Notizen_py_qt/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `Notizen_py_slint/pyproject.toml:6: name = "notizen-py-qt"`
+- `Notizen_py_slint/pyproject.toml:8: description = "Python/Qt port of the old VB.NET Notizen.NET application"`
+- `Notizen_py_slint/pyproject.toml:35: # Compatibility entry point for old installs. Prefer notizen-py-qt.`
+- `Notizen_py_slint/pyproject.toml:37: notizen-py-qt = "notizen_py_qt.app:main"`
+- `Notizen_py_slint/pyproject.toml:39: notizen-pypy-qt = "notizen_pypy_qt.app:main"`
+- `Notizen_py_slint/pyproject.toml:48: notizen_py_qt = ["ui/*.qml", "ui/*.js"]`
+- `Notizen_py_slint/pyproject.toml:49: "notizen_py_qt.ui" = ["*.qml", "*.js"]`
+- `Notizen_py_slint/CMakeLists.txt:17: qml/*.qml`
+- `Notizen_py_slint/src/backend.rs:4: include!("cxx-qt-lib/qstring.h");`
+- `Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/qml/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/qml/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `Notizen_py_slint/qml/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `Notizen_py_slint/cpp/main.cpp:13: const QUrl url(QStringLiteral("qrc:/qt/qml/Notizen/Main.qml"));`
+- `Notizen_py_slint/cpp/main.cpp:24: Qt::QueuedConnection);`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:6: name = "notizen-py-qt"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:8: description = "Python/Qt port of the old VB.NET Notizen.NET application"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:33: notizen-py-qt = "notizen_py_qt.app:main"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:35: # Compatibility entry point for old installs. Prefer notizen-py-qt.`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:36: notizen-pypy-qt = "notizen_pypy_qt.app:main"`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:46: notizen_py_qt = ["ui/*.qml", "ui/*.js"]`
+- `.qt611_no_slint_backup_v4/20260430-073423/Notizen_py_slint/pyproject.toml:47: "notizen_py_qt.ui" = ["*.qml", "*.js"]`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:12: title: qsTr("Notizen / Qt 6.11")`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:30: Label { text: qsTr("Qt 6.11 + CXX-Qt") }`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:36: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:12: title: qsTr("Notizen / Qt 6.11")`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:30: Label { text: qsTr("Qt 6.11 + CXX-Qt") }`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:36: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:12: title: qsTr("Notizen / Qt 6.11")`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:30: Label { text: qsTr("Qt 6.11 + CXX-Qt") }`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:36: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:20: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:26: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:12: title: qsTr("Notizen / Qt 6.11")`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:30: Label { text: qsTr("Qt 6.11 + CXX-Qt") }`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:36: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:15: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:16: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:19: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/qml/Main.qml:25: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:19: Label { text: qsTr("Qt 6.11") }`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_cpp_qml/qml/Main.qml:25: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:11: title: qsTr("Notizen / Qt 6.11")`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:29: Label { text: qsTr("Qt 6.11 + CXX-Qt") }`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_qt/template_rust_cxx_qt/qml/Main.qml:35: orientation: Qt.Horizontal`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/AppWindow.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/Main.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/qml/app-window_AppWindow.qml:15: property string windowTitle: "Notizen Py Qt"`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/AppWindow.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/Main.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window.qml:14: property string windowTitle: "Notizen PyPy Qt"`
+- `.qt611_qml_hardening_backup/20260430-082651/.qt611_qml_hardening_backup/20260430-082649/.qt611_qml_hardening_backup/20260430-082630/.qt611_qml_hardening_backup/20260430-082557/.qt611_qml_hardening_backup/20260430-082555/Notizen_py_slint/src/notizen_py_qt/ui/app-window_AppWindow.qml:15: property string windowTitle: "Notizen Py Qt"`
+

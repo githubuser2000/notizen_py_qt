@@ -1,3 +1,4 @@
+import "."
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -13,7 +14,7 @@ ApplicationWindow {
     title: root.windowTitle
 
     property string windowTitle: "Notizen Py Qt"
-    property var rows
+    property var rows: []
     property int selectedIndex: -1
     property string editorText
     property string noteTitle
@@ -486,13 +487,13 @@ ApplicationWindow {
                                         root.editorContextVisible = false
                                     }
                                     // TODO(qt611-port): pointer-event(event) => {
-                                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
-                                    root.selectRow(i)
-                                    root.contextRowIndex = i
-                                    root.treeContextVisible = true
-                                    root.editorContextVisible = false
-                                }
-                            }
+                                    // TODO(qt611-port raw): if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                    // TODO(qt611-port raw): root.selectRow(i)
+                                    // TODO(qt611-port raw): root.contextRowIndex = i
+                                    // TODO(qt611-port raw): root.treeContextVisible = true
+                                    // TODO(qt611-port raw): root.editorContextVisible = false
+                                // TODO(qt611-port raw): }
+                            // TODO(qt611-port raw): }
                         }
                     }
                 }
@@ -692,13 +693,13 @@ ApplicationWindow {
                     width: parent.width - 28
                     height: parent.height
                     // TODO(qt611-port): pointer-event(event) => {
-                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
-                    root.editorContextX = editor_hitbox.mouseX
-                    root.editorContextY = editor_hitbox.mouseY
-                    root.editorContextVisible = true
-                    root.treeContextVisible = false
-                }
-            }
+                    // TODO(qt611-port raw): if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                    // TODO(qt611-port raw): root.editorContextX = editor_hitbox.mouseX
+                    // TODO(qt611-port raw): root.editorContextY = editor_hitbox.mouseY
+                    // TODO(qt611-port raw): root.editorContextVisible = true
+                    // TODO(qt611-port raw): root.treeContextVisible = false
+                // TODO(qt611-port raw): }
+            // TODO(qt611-port raw): }
             TextArea {
                 id: editor
                 x: 0
@@ -737,13 +738,13 @@ ApplicationWindow {
                     root.treeContextVisible = false
                 }
                 // TODO(qt611-port): pointer-event(event) => {
-                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
-                root.editorContextX = parent.x - 520
-                root.editorContextY = 8
-                root.editorContextVisible = true
-                root.treeContextVisible = false
-            }
-        }
+                // TODO(qt611-port raw): if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                // TODO(qt611-port raw): root.editorContextX = parent.x - 520
+                // TODO(qt611-port raw): root.editorContextY = 8
+                // TODO(qt611-port raw): root.editorContextVisible = true
+                // TODO(qt611-port raw): root.treeContextVisible = false
+            // TODO(qt611-port raw): }
+        // TODO(qt611-port raw): }
     }
 }
 Rectangle {
