@@ -57,6 +57,28 @@ def tree_to_plain_text(root: NoteNode, options: ExportOptions | None = None) -> 
     return text
 
 
+
+def normalize_export_newlines(text: str) -> str:
+    """Use Windows CRLF line endings like the legacy RichTextBox exports."""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return normalized.replace("\n", "\r\n")
+
+
+def tree_to_text_bytes(root: NoteNode, options: ExportOptions | None = None, *, encoding: str = "utf-8") -> bytes:
+    """Return subtree text export bytes in legacy-compatible encodings.
+
+    ``encoding="ansi"`` maps to Windows-1252 and replaces characters that the
+    legacy ANSI export could not represent. ``encoding="unicode"``/``"utf-16"``
+    writes UTF-16 with BOM, matching the old Unicode-TXT export.
+    """
+    text = normalize_export_newlines(tree_to_plain_text(root, options))
+    normalized_encoding = encoding.casefold().replace("_", "-")
+    if normalized_encoding in {"ansi", "cp1252", "windows-1252"}:
+        return text.encode("cp1252", errors="replace")
+    if normalized_encoding in {"unicode", "utf-16", "utf16"}:
+        return text.encode("utf-16")
+    return text.encode("utf-8")
+
 def _strip_trailing_segments(segments: list[RtfTextSegment]) -> list[RtfTextSegment]:
     stripped = list(segments)
     while stripped and not stripped[-1].text.rstrip():

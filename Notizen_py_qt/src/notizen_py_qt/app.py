@@ -6,10 +6,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .alx_io import AlxError, InvalidPassword, PasswordRequired, dump_alx_bytes, load_alx, load_alx_bytes, save_alx
-from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf
+from .alx_io import AlxError, InvalidPassword, PasswordRequired, dump_alx_bytes, load_alx, load_alx_bytes, save_alx, normalize_password
+from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf, tree_to_text_bytes
 from .ftp_sync import FtpSyncError, FtpTarget
-from .models import DesktopNoteState, NoteDocument, NoteNode
+from .i18n import available_languages, tr
+from .legacy_colors import legacy_light_color_argb
+from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_paste_clone
+from .startup import parse_legacy_startup_args
 from .rtf_utils import html_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
 from .settings import AppSettings
@@ -104,7 +107,7 @@ if QtWidgets is not None:
             self.main_window = main_window
             self.node = node
             if self.node.desktop_note is None:
-                self.node.desktop_note = DesktopNoteState()
+                self.node.desktop_note = DesktopNoteState(argb=legacy_light_color_argb())
             self.setWindowTitle(node.title)
             self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_DeleteOnClose"), False)
             self._loading = False
@@ -229,6 +232,7 @@ if QtWidgets is not None:
             self.node.rtf = html_to_rtf(self.editor.toHtml())
             self.main_window.document.mark_changed()
             self.main_window.update_title()
+            self.main_window._reload_desktop_note_windows(self.node, source_window=self)
             if self.main_window.current_node_ref is self.node:
                 self.main_window.load_editor_from_node(self.node, preserve_focus=True)
 
@@ -343,6 +347,67 @@ if QtWidgets is not None:
             super().accept()
 
 
+    class PasswordChangeDialog(QtWidgets.QDialog):
+        """Legacy-style password dialog with old/new/repeat validation."""
+
+        def __init__(self, main_window: "MainWindow") -> None:
+            super().__init__(main_window)
+            self.main_window = main_window
+            self.new_password = ""
+            self.setWindowTitle(main_window.tr("strip1_21", "Passwort ändern"))
+            layout = QtWidgets.QFormLayout(self)
+
+            self.old_password = QtWidgets.QLineEdit()
+            self.old_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+            self.new_password_edit = QtWidgets.QLineEdit()
+            self.new_password_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+            self.repeat_password = QtWidgets.QLineEdit()
+            self.repeat_password.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+
+            layout.addRow(main_window.tr("pass1", "Altes Passwort"), self.old_password)
+            layout.addRow(main_window.tr("pass2", "Neues Passwort"), self.new_password_edit)
+            layout.addRow(main_window.tr("pass3", "Neues Passwort wiederholen"), self.repeat_password)
+            info = QtWidgets.QLabel(main_window.tr("pw_unten_info", "Maximal 24 Zeichen. Leer lassen entfernt das Passwort."))
+            info.setWordWrap(True)
+            layout.addRow(info)
+
+            buttons = QtWidgets.QDialogButtonBox(
+                _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Ok")
+                | _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Cancel")
+            )
+            buttons.accepted.connect(self.accept)
+            buttons.rejected.connect(self.reject)
+            layout.addRow(buttons)
+
+        def accept(self) -> None:  # noqa: N802 - Qt override
+            current = self.main_window.document.password or ""
+            if current and normalize_password(self.old_password.text()) != normalize_password(current):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    self.main_window.tr("strip1_21", "Passwort ändern"),
+                    self.main_window.tr("passerror2", "Das alte Passwort ist falsch."),
+                )
+                return
+            first = self.new_password_edit.text()
+            second = self.repeat_password.text()
+            if first != second:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    self.main_window.tr("strip1_21", "Passwort ändern"),
+                    self.main_window.tr("passerror3", "Die neuen Passwörter stimmen nicht überein."),
+                )
+                return
+            if len(first) > 24:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    self.main_window.tr("strip1_21", "Passwort ändern"),
+                    self.main_window.tr("passerror1", "Das Passwort darf höchstens 24 Zeichen haben."),
+                )
+                return
+            self.new_password = first
+            super().accept()
+
+
     class MainWindow(QtWidgets.QMainWindow):
         def __init__(self, initial_path: str | None = None, password: str | None = None) -> None:
             super().__init__()
@@ -365,7 +430,10 @@ if QtWidgets is not None:
             self._restore_window_settings()
             self.build_tree()
             if initial_path:
-                self.load_path(Path(initial_path), password=password or None)
+                if str(initial_path).casefold().startswith("ftp://"):
+                    self.load_ftp_url(str(initial_path), password=password or None, ask_save=False)
+                else:
+                    self.load_path(Path(initial_path), password=password or None)
             elif self.settings.last_directory and self.settings.last_file:
                 candidate = Path(self.settings.last_directory) / self.settings.last_file
                 if candidate.exists():
@@ -373,6 +441,9 @@ if QtWidgets is not None:
             self.update_title()
             self.update_actions()
             self._configure_autosave()
+
+        def tr(self, key: str, default: str | None = None) -> str:
+            return tr(getattr(self.settings, "language", "Auto"), key, default)
 
         def _build_ui(self) -> None:
             icon = app_icon()
@@ -387,6 +458,8 @@ if QtWidgets is not None:
             self.tree.setDefaultDropAction(MOVE_ACTION)
             self.tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
             self.tree.itemChanged.connect(self.on_item_changed)
+            self.tree.itemExpanded.connect(lambda item: self.on_tree_expansion_changed(item, True))
+            self.tree.itemCollapsed.connect(lambda item: self.on_tree_expansion_changed(item, False))
             try:
                 self.tree.model().rowsMoved.connect(lambda *_: self.on_tree_rows_moved())
             except Exception:
@@ -409,8 +482,9 @@ if QtWidgets is not None:
             self._create_menus()
             self._create_toolbars()
             self.editor.cursorPositionChanged.connect(self.update_format_controls)
-            self.statusBar().showMessage("Bereit")
+            self.statusBar().showMessage(self.tr("ready", "Bereit"))
             self._create_tray_icon()
+            self.apply_language()
 
         def _act(self, text: str, slot: Any, shortcut: str | None = None, checkable: bool = False) -> Any:
             action = QtGui.QAction(text, self)
@@ -431,6 +505,13 @@ if QtWidgets is not None:
             self.ftp_action = self._act("FTP öffnen/speichern", self.show_ftp_dialog)
             self.export_rtf_action = self._act("Export als RTF", lambda: self.export_current("rtf"))
             self.export_txt_action = self._act("Export als TXT", lambda: self.export_current("txt"))
+            self.export_ansi_txt_action = self._act("Export als ANSI TXT", lambda: self.export_current("txt_ansi"))
+            self.export_unicode_txt_action = self._act("Export als Unicode TXT", lambda: self.export_current("txt_unicode"))
+            self.export_all_rtf_action = self._act("Ganzen Baum als RTF exportieren", lambda: self.export_root("rtf"))
+            self.export_all_txt_action = self._act("Ganzen Baum als TXT exportieren", lambda: self.export_root("txt"))
+            self.export_all_ansi_txt_action = self._act("Ganzen Baum als ANSI TXT exportieren", lambda: self.export_root("txt_ansi"))
+            self.export_all_unicode_txt_action = self._act("Ganzen Baum als Unicode TXT exportieren", lambda: self.export_root("txt_unicode"))
+            self.export_node_rtf_action = self._act("Knoten-RTF speichern", self.export_node_rtf)
 
             self.add_child_action = self._act("Neu darunter", self.add_child_node)
             self.add_sibling_action = self._act("Neu daneben", self.add_sibling_node)
@@ -465,49 +546,58 @@ if QtWidgets is not None:
             self.settings_action = self._act("Einstellungen", self.show_settings_dialog)
 
         def _create_menus(self) -> None:
-            menu = self.menuBar().addMenu("&Menü")
-            menu.addAction(self.new_action)
-            menu.addAction(self.open_action)
-            menu.addAction(self.save_action)
-            menu.addAction(self.save_as_action)
-            menu.addAction(self.close_doc_action)
-            menu.addSeparator()
-            self.recent_menu = menu.addMenu("Zuletzt geöffnet")
+            self.file_menu = self.menuBar().addMenu("&Menü")
+            self.file_menu.addAction(self.new_action)
+            self.file_menu.addAction(self.open_action)
+            self.file_menu.addAction(self.save_action)
+            self.file_menu.addAction(self.save_as_action)
+            self.file_menu.addAction(self.close_doc_action)
+            self.file_menu.addSeparator()
+            self.recent_menu = self.file_menu.addMenu("Zuletzt geöffnet")
             self.update_recent_menu()
-            menu.addSeparator()
-            menu.addAction(self.password_action)
-            menu.addAction(self.ftp_action)
-            menu.addAction(self.settings_action)
-            menu.addSeparator()
-            menu.addAction(self.exit_action)
+            self.file_menu.addSeparator()
+            self.file_menu.addAction(self.password_action)
+            self.file_menu.addAction(self.ftp_action)
+            self.file_menu.addAction(self.settings_action)
+            self.file_menu.addSeparator()
+            self.file_menu.addAction(self.exit_action)
 
-            edit = self.menuBar().addMenu("Bearbeiten")
-            edit.addAction(self.cut_action)
-            edit.addAction(self.copy_action)
-            edit.addAction(self.paste_action)
-            edit.addSeparator()
-            edit.addAction(self.search_action)
+            self.edit_menu = self.menuBar().addMenu("Bearbeiten")
+            self.edit_menu.addAction(self.cut_action)
+            self.edit_menu.addAction(self.copy_action)
+            self.edit_menu.addAction(self.paste_action)
+            self.edit_menu.addSeparator()
+            self.edit_menu.addAction(self.search_action)
 
-            node = self.menuBar().addMenu("Knoten")
-            node.addAction(self.add_sibling_action)
-            node.addAction(self.add_child_action)
-            node.addAction(self.rename_action)
-            node.addAction(self.delete_action)
-            node.addSeparator()
-            node.addAction(self.unify_action)
-            node.addAction(self.desk_note_action)
-            node.addAction(self.bg_color_action)
-            node.addAction(self.fg_color_action)
+            self.node_menu = self.menuBar().addMenu("Knoten")
+            self.node_menu.addAction(self.add_sibling_action)
+            self.node_menu.addAction(self.add_child_action)
+            self.node_menu.addAction(self.rename_action)
+            self.node_menu.addAction(self.delete_action)
+            self.node_menu.addSeparator()
+            self.node_menu.addAction(self.unify_action)
+            self.node_menu.addAction(self.desk_note_action)
+            self.node_menu.addAction(self.bg_color_action)
+            self.node_menu.addAction(self.fg_color_action)
 
-            export = self.menuBar().addMenu("Export")
-            export.addAction(self.export_rtf_action)
-            export.addAction(self.export_txt_action)
+            self.export_menu = self.menuBar().addMenu("Export")
+            self.export_menu.addAction(self.export_rtf_action)
+            self.export_menu.addAction(self.export_txt_action)
+            self.export_menu.addAction(self.export_ansi_txt_action)
+            self.export_menu.addAction(self.export_unicode_txt_action)
+            self.export_menu.addSeparator()
+            self.export_menu.addAction(self.export_all_rtf_action)
+            self.export_menu.addAction(self.export_all_txt_action)
+            self.export_menu.addAction(self.export_all_ansi_txt_action)
+            self.export_menu.addAction(self.export_all_unicode_txt_action)
+            self.export_menu.addSeparator()
+            self.export_menu.addAction(self.export_node_rtf_action)
 
-            extras = self.menuBar().addMenu("Extras")
-            extras.addAction(self.alarm_action)
+            self.extras_menu = self.menuBar().addMenu("Extras")
+            self.extras_menu.addAction(self.alarm_action)
 
-            help_menu = self.menuBar().addMenu("Hilfe")
-            help_menu.addAction(self.about_action)
+            self.help_menu = self.menuBar().addMenu("Hilfe")
+            self.help_menu.addAction(self.about_action)
 
             self.tree.setContextMenuPolicy(_enum(QtCore.Qt, "ContextMenuPolicy", "ActionsContextMenu"))
             for action in (
@@ -519,6 +609,7 @@ if QtWidgets is not None:
                 self.desk_note_action,
                 self.bg_color_action,
                 self.fg_color_action,
+                self.export_node_rtf_action,
             ):
                 self.tree.addAction(action)
 
@@ -607,12 +698,62 @@ if QtWidgets is not None:
             if not getattr(self, "tray_icon", None):
                 return
             self.tray_menu.clear()
-            self.tray_menu.addAction("Beenden", self.close)
-            self.tray_menu.addAction("Zeigen/Ausblenden", self.toggle_visible)
+            self.tray_menu.addAction(self.tr("Strip1_8", "Beenden"), self.close)
+            self.tray_menu.addAction(self.tr("info3", "Zeigen/Ausblenden"), self.toggle_visible)
             self.tray_menu.addSeparator()
             for node in self.document.walk():
                 if node.desktop_note is not None:
                     self.tray_menu.addAction(node.title, lambda checked=False, n=node: self.show_desktop_note(n))
+
+        def apply_language(self) -> None:
+            """Apply the legacy language table to visible Qt menus and actions."""
+            self.tree.setHeaderLabel(self.tr("Info1", "Notizen"))
+            self.file_menu.setTitle(self.tr("Strip1_1", "&Menü"))
+            self.edit_menu.setTitle(self.tr("Strip1_17", "Bearbeiten"))
+            self.node_menu.setTitle("Knoten")
+            self.export_menu.setTitle(self.tr("export", "Export"))
+            self.extras_menu.setTitle("Extras")
+            self.help_menu.setTitle(self.tr("Strip1_9", "&Hilfe"))
+
+            self.new_action.setText(self.tr("Strip1_2", "Neue Datei"))
+            self.open_action.setText(self.tr("Strip1_3", "Öffnen"))
+            self.save_action.setText(self.tr("Strip1_4", "Speichern"))
+            self.save_as_action.setText(self.tr("Strip1_5", "Speichern unter"))
+            self.close_doc_action.setText(self.tr("Strip1_6", "Schließen"))
+            self.exit_action.setText(self.tr("Strip1_8", "Beenden"))
+            self.password_action.setText(self.tr("strip1_21", "Passwort setzen/ändern"))
+            self.settings_action.setText(self.tr("Strip1_7", "Einstellungen"))
+
+            self.add_child_action.setText(self.tr("kontext2_1", "Neu darunter"))
+            self.add_sibling_action.setText(self.tr("kontext11", "Neu daneben"))
+            self.rename_action.setText(self.tr("kontext2_2", "Umbenennen"))
+            self.delete_action.setText(self.tr("kontext2_3", "Löschen"))
+            self.desk_note_action.setText(self.tr("kontext2_5", "Desktop-Notiz"))
+            self.bg_color_action.setText(self.tr("kontext2_9", "Hintergrundfarbe"))
+            self.fg_color_action.setText(self.tr("kontext2_10", "Schriftfarbe"))
+            self.export_node_rtf_action.setText(self.tr("kontext2_4", "Knoten-RTF speichern"))
+
+            self.cut_action.setText(self.tr("Strip4_1", "Ausschneiden"))
+            self.copy_action.setText(self.tr("Strip4_2", "Kopieren"))
+            self.paste_action.setText(self.tr("Strip4_3", "Einfügen"))
+            self.delete_text_action.setText(self.tr("kontext4", "Text löschen"))
+            self.insert_image_action.setText(self.tr("kontext6", "Bild einfügen"))
+            self.insert_date_action.setText(self.tr("kontext7", "Datum einfügen"))
+            self.search_action.setText(self.tr("kontext5", "Suchen"))
+
+            self.export_rtf_action.setText(f"{self.tr('export', 'Export')} {self.tr('exportrtf', 'in rtf')}")
+            self.export_txt_action.setText("Export als UTF-8 TXT")
+            self.export_ansi_txt_action.setText(f"{self.tr('export', 'Export')} {self.tr('exporttxt', 'in ansi txt')}")
+            self.export_unicode_txt_action.setText(f"{self.tr('export', 'Export')} {self.tr('exporttxt2', 'in unicode txt')}")
+            self.export_all_rtf_action.setText("Ganzen Baum als RTF exportieren")
+            self.export_all_txt_action.setText("Ganzen Baum als UTF-8 TXT exportieren")
+            self.export_all_ansi_txt_action.setText("Ganzen Baum als ANSI TXT exportieren")
+            self.export_all_unicode_txt_action.setText("Ganzen Baum als Unicode TXT exportieren")
+
+            self.alarm_action.setText("Wecker")
+            self.about_action.setText("Info")
+            self.update_recent_menu()
+            self.update_tray_menu()
 
         def on_tray_activated(self, reason: Any) -> None:
             trigger = getattr(QtWidgets.QSystemTrayIcon.ActivationReason, "Trigger", None)
@@ -685,6 +826,13 @@ if QtWidgets is not None:
                 self.close_doc_action,
                 self.export_rtf_action,
                 self.export_txt_action,
+                self.export_ansi_txt_action,
+                self.export_unicode_txt_action,
+                self.export_all_rtf_action,
+                self.export_all_txt_action,
+                self.export_all_ansi_txt_action,
+                self.export_all_unicode_txt_action,
+                self.export_node_rtf_action,
                 self.password_action,
             ):
                 action.setEnabled(has_root)
@@ -768,6 +916,15 @@ if QtWidgets is not None:
             self.document.mark_changed()
             self.update_title()
 
+        def on_tree_expansion_changed(self, item: Any, expanded: bool) -> None:
+            if self._loading_tree:
+                return
+            node = item.data(0, USER_ROLE)
+            if isinstance(node, NoteNode):
+                node.expanded = expanded
+                self.document.mark_changed()
+                self.update_title()
+
         def sync_expansion_from_tree(self) -> None:
             def update(item: Any) -> None:
                 node = item.data(0, USER_ROLE)
@@ -826,9 +983,12 @@ if QtWidgets is not None:
                 self.editor.document().setModified(False)
                 self.document.mark_changed()
                 self.update_title()
-                for win in self.desktop_windows.values():
-                    if win.node is self.current_node_ref:
-                        win.reload_from_node()
+                self._reload_desktop_note_windows(self.current_node_ref)
+
+        def _reload_desktop_note_windows(self, node: NoteNode, source_window: "DesktopNoteWindow | None" = None) -> None:
+            for win in list(self.desktop_windows.values()):
+                if win.node is node and win is not source_window:
+                    win.reload_from_node()
 
         def on_editor_changed(self) -> None:
             if self._loading_editor or self.current_node_ref is None:
@@ -836,6 +996,7 @@ if QtWidgets is not None:
             self.current_node_ref.rtf = html_to_rtf(self.editor.toHtml())
             self.document.mark_changed()
             self.update_title()
+            self._reload_desktop_note_windows(self.current_node_ref)
 
         def maybe_save_changes(self) -> bool:
             self.save_current_editor_to_node()
@@ -940,6 +1101,41 @@ if QtWidgets is not None:
             except Exception as exc:
                 QtWidgets.QMessageBox.critical(self, "Öffnen fehlgeschlagen", f"{label}\n\n{exc}")
                 return None
+
+        def _replace_document_after_open(self, document: NoteDocument, status_message: str, *, path: Path | None = None) -> None:
+            self.close_all_desktop_notes()
+            self.document = document
+            if path is not None:
+                self.document.path = path
+                self.settings.remember_file(path)
+                self.update_recent_menu()
+            self.current_node_ref = None
+            self.settings.save()
+            self.build_tree()
+            self.update_title()
+            self.statusBar().showMessage(status_message)
+            for node in self.document.walk():
+                if node.desktop_note is not None and node.desktop_note.visible:
+                    self.show_desktop_note(node)
+
+        def load_ftp_url(self, url: str, password: str | None = None, *, ask_save: bool = True) -> bool:
+            if ask_save and not self.maybe_save_changes():
+                return False
+            try:
+                target = FtpTarget.from_fields(url, "")
+                payload = target.download()
+            except FtpSyncError as exc:
+                QtWidgets.QMessageBox.critical(self, "FTP öffnen fehlgeschlagen", str(exc))
+                return False
+            document = self._load_document_bytes_interactive(payload, target.display_url, password=password)
+            if document is None:
+                return False
+            self.settings.ftp_host = target.host
+            self.settings.ftp_path = target.remote_path
+            self.settings.ftp_username = target.username
+            self.settings.ftp_password = target.password
+            self._replace_document_after_open(document, f"Geöffnet per FTP: {target.display_url}")
+            return True
 
         def _ftp_target_from_settings(self) -> FtpTarget:
             return FtpTarget.from_fields(
@@ -1158,8 +1354,16 @@ if QtWidgets is not None:
             target = self.current_node()
             if target is None or self.clipboard_node is None:
                 return
-            pasted = self.clipboard_node.clone_deep()
-            target.add_child(pasted)
+            if self.cut_source_node is not None and (
+                self.cut_source_node is target or self.cut_source_node.is_ancestor_of(target)
+            ):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Einfügen",
+                    "Ein ausgeschnittener Knoten kann nicht in sich selbst oder darunter eingefügt werden.",
+                )
+                return
+            pasted = legacy_paste_clone(self.clipboard_node, target)
             if self.cut_source_node is not None:
                 self.close_desktop_note(self.cut_source_node)
                 self.cut_source_node.remove_from_parent()
@@ -1285,7 +1489,7 @@ if QtWidgets is not None:
                 win = DesktopNoteWindow(self, node)
                 self.desktop_windows[id(node)] = win
             if node.desktop_note is None:
-                node.desktop_note = DesktopNoteState()
+                node.desktop_note = DesktopNoteState(argb=legacy_light_color_argb())
             node.desktop_note.visible = True
             win.reload_from_node()
             win.show()
@@ -1358,29 +1562,68 @@ if QtWidgets is not None:
             self.activateWindow()
             QtWidgets.QMessageBox.information(self, "Wecker", message or "Notizen-Wecker")
 
-        def export_current(self, kind: str) -> None:
-            node = self.current_node()
-            if node is None:
-                return
+        def _safe_export_name(self, title: str, suffix: str) -> str:
+            bad = '<>:"/\\|?*'
+            clean = "".join("_" if ch in bad else ch for ch in (title or "export")).strip()
+            return f"{clean or 'export'}{suffix}"
+
+        def _export_tree_to_file(self, node: NoteNode, kind: str, title: str | None = None) -> None:
             suffix = ".rtf" if kind == "rtf" else ".txt"
-            file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export", f"{node.title}{suffix}", f"*{suffix}")
+            file_name, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Export",
+                self._safe_export_name(title or node.title, suffix),
+                f"*{suffix}",
+            )
             if not file_name:
                 return
             path = Path(file_name)
             if kind == "rtf":
                 path.write_text(tree_to_rtf(node), encoding="utf-8", errors="replace")
+            elif kind == "txt_ansi":
+                path.write_bytes(tree_to_text_bytes(node, encoding="ansi"))
+            elif kind == "txt_unicode":
+                path.write_bytes(tree_to_text_bytes(node, encoding="unicode"))
             else:
-                path.write_text(tree_to_plain_text(node), encoding="utf-8")
+                path.write_bytes(tree_to_text_bytes(node, encoding="utf-8"))
             self.statusBar().showMessage(f"Exportiert: {path}")
 
-        def change_password(self) -> None:
-            pw = self.prompt_password("Neues Passwort (leer = ohne Passwort)")
-            if pw is None:
+        def export_current(self, kind: str) -> None:
+            node = self.current_node()
+            if node is None:
                 return
-            self.document.password = pw
+            self._export_tree_to_file(node, kind)
+
+        def export_root(self, kind: str) -> None:
+            root = self.document.root
+            if root is None:
+                return
+            self._export_tree_to_file(root, kind, title=f"{root.title}_gesamt")
+
+        def export_node_rtf(self) -> None:
+            node = self.current_node()
+            if node is None:
+                return
+            file_name, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Knoten-RTF speichern",
+                self._safe_export_name(node.title, ".rtf"),
+                "*.rtf",
+            )
+            if not file_name:
+                return
+            path = Path(file_name)
+            path.write_text(node.rtf or "", encoding="utf-8", errors="replace")
+            self.statusBar().showMessage(f"Gespeichert: {path}")
+
+        def change_password(self) -> None:
+            dialog = PasswordChangeDialog(self)
+            if dialog.exec() != ACCEPTED:
+                return
+            self.document.password = dialog.new_password
             self.document.mark_changed()
             self.update_title()
-            msg = "Passwort gesetzt." if pw else "Passwort entfernt; die nächste Speicherung ist unverschlüsselt."
+            msg = "Passwort gesetzt." if dialog.new_password else "Passwort entfernt; die nächste Speicherung ist unverschlüsselt."
             self.statusBar().showMessage(msg)
 
         def merge_editor_format(self, fmt: Any) -> None:
@@ -1523,10 +1766,12 @@ if QtWidgets is not None:
             autosave_spin.setValue(self.settings.autosave_seconds)
 
             language_combo = QtWidgets.QComboBox()
-            language_combo.addItems(["Auto", "Deutsch", "English", "Français", "Español", "Русский", "中文"])
-            lang_index = language_combo.findText(self.settings.language)
-            if lang_index >= 0:
-                language_combo.setCurrentIndex(lang_index)
+            for display, key in available_languages():
+                language_combo.addItem(display, key)
+            for index in range(language_combo.count()):
+                if language_combo.itemData(index) == self.settings.language:
+                    language_combo.setCurrentIndex(index)
+                    break
 
             scroll_combo = QtWidgets.QComboBox()
             for label, value in (
@@ -1569,7 +1814,7 @@ if QtWidgets is not None:
             if dialog.exec() == ACCEPTED:
                 self.settings.backup_keep = backup_spin.value()
                 self.settings.autosave_seconds = autosave_spin.value()
-                self.settings.language = language_combo.currentText()
+                self.settings.language = language_combo.currentData()
                 self.settings.scrollbars_choice = int(scroll_combo.currentData())
                 self.settings.show_desknote_borders = border_check.isChecked()
                 self.settings.show_in_taskbar_when_minimized = taskbar_check.isChecked()
@@ -1578,16 +1823,22 @@ if QtWidgets is not None:
                 self.settings.save()
                 self._configure_autosave()
                 self._apply_scrollbar_settings()
+                self.apply_language()
 
         def show_about(self) -> None:
+            try:
+                from . import __version__
+            except Exception:
+                __version__ = "0.9.4"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
                 (
-                    "Notizen.NET Weitertranspilierung nach Python/Qt\n\n"
-                    "Portiert: ALX-Dateiformat, Notizbaum, lokale Speicherung, Suche, "
+                    f"Notizen.NET Weitertranspilierung nach Python/Qt {__version__}\n\n"
+                    "Portiert: ALX-Dateiformat, Notizbaum, lokale/FTP-Speicherung, Suche, "
                     "Knotenoperationen, Desktop-Notizen, RichText-Brücke, Teilbaum-Export, "
-                    "alte Tastaturbedienung und erweiterte Grundkonfiguration.\n\n"
+                    "Sprachdateien, legacy Startparameter, alte Tastaturbedienung und "
+                    "erweiterte Grundkonfiguration.\n\n"
                     f"Qt-Binding: {BINDING}"
                 ),
             )
@@ -1629,11 +1880,18 @@ if QtWidgets is not None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    legacy = parse_legacy_startup_args(raw_argv)
+
     parser = argparse.ArgumentParser(description="Notizen.NET Python/Qt port")
-    parser.add_argument("file", nargs="?", help="ALX/Notizen-Datei zum Öffnen")
+    parser.add_argument("file", nargs="?", help="ALX/Notizen-Datei oder ftp://-URL zum Öffnen")
     parser.add_argument("--password", help="Passwort für geschützte ALX-Dateien")
+    parser.add_argument("--minimized", action="store_true", help="Minimiert starten")
     parser.add_argument("--smoke-test", action="store_true", help="Nur initialisieren und sofort beenden")
-    args = parser.parse_args(argv)
+    if legacy.help_requested:
+        parser.print_help()
+        return 0
+    args = parser.parse_args(list(legacy.cleaned_args))
 
     if QT_IMPORT_ERROR is not None:
         print(str(QT_IMPORT_ERROR), file=sys.stderr)
@@ -1643,10 +1901,18 @@ def main(argv: list[str] | None = None) -> int:
     icon = app_icon()
     if not icon.isNull():
         app.setWindowIcon(icon)
-    window = MainWindow(args.file, password=args.password)
+    startup_file = args.file or legacy.file
+    start_minimized = bool(args.minimized or legacy.minimized)
+    window = MainWindow(startup_file, password=args.password)
     if args.smoke_test:
         return 0
-    window.show()
+    if start_minimized:
+        if getattr(window, "tray_icon", None) and not window.settings.show_in_taskbar_when_minimized:
+            window.hide()
+        else:
+            window.showMinimized()
+    else:
+        window.show()
     return int(app.exec())
 
 

@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from .legacy_colors import legacy_light_color_argb
 from .models import DesktopNoteState, NoteDocument, NoteNode
 from .rtf_utils import plain_text_to_rtf
 
@@ -140,7 +141,7 @@ def _desktop_state_from_element(element: ET.Element) -> DesktopNoteState | None:
         height=_int_attr(element, "height", 220),
         visible=_bool_attr(element.get("visible"), True),
         opacity=_float_attr(element, "opacity", 0.85),
-        argb=_int_attr(element, "argb", 0),
+        argb=_int_attr(element, "argb", legacy_light_color_argb()),
     )
 
 

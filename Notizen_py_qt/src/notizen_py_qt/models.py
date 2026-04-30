@@ -93,6 +93,30 @@ class NoteNode:
     def next_sibling_index(self) -> int:
         return self.index_in_parent() + 1
 
+    def is_ancestor_of(self, other: "NoteNode") -> bool:
+        node = other.parent
+        while node is not None:
+            if node is self:
+                return True
+            node = node.parent
+        return False
+
+
+def legacy_paste_clone(source: NoteNode, selected: NoteNode) -> NoteNode:
+    """Clone ``source`` using the insertion rule from Notizen.NET.
+
+    The old WinForms ``paste_anything(False)`` did not always append below the
+    selected node. If the root was selected, the pasted subtree became the first
+    child of the root. Otherwise it was inserted as a sibling directly before the
+    selected node.
+    """
+    pasted = source.clone_deep()
+    if selected.parent is None:
+        selected.insert_child(0, pasted)
+    else:
+        selected.parent.insert_child(selected.index_in_parent(), pasted)
+    return pasted
+
 
 @dataclass(slots=True)
 class NoteDocument:

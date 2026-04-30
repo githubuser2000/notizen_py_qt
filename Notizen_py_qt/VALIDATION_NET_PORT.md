@@ -1,73 +1,110 @@
-# Validierung: Notizen.NET-Python/Qt-Port 0.9.3
+# Validierungsbericht Notizen.NET → Python/Qt 0.9.4
 
 Stand: 2026-04-30
 
-## Ausgeführt
+## Ergebnis
+
+Der Stand 0.9.4 wurde syntaktisch und funktional ohne installierte Qt-GUI-Bindung validiert.
+
+```text
+compileall: OK
+pytest: 20 passed, 2 skipped
+shell syntax: OK
+check_no_slint.sh: OK
+check_no_slint_strict.sh: OK
+runtime probe ohne Qt: erwarteter Abbruch mit Installationshinweis
+legacy help parser: OK
+```
+
+## Ausgeführte Prüfungen
+
+### Python-Kompilierung
 
 ```bash
-PYTHONPATH=src /usr/bin/python3 -m compileall -q src tests scripts
-bash -n scripts/*.sh
-PYTHON=/usr/bin/python3 bash scripts/check_no_slint.sh .
-PYTHON=/usr/bin/python3 bash scripts/check_no_slint_strict.sh .
-PYTHONPATH=src /usr/bin/python3 scripts/probe_python_qt_runtime.py --skip-qt --skip-smoke
+python -m compileall -q src tests
+```
+
+Ergebnis: OK.
+
+### Tests
+
+```bash
+python -m pytest -q
 ```
 
 Ergebnis:
 
 ```text
-py_compile/compileall: OK
-shell syntax: OK
-check_no_slint: OK
-check_no_slint_strict: OK
-probe_python_qt_runtime --skip-qt --skip-smoke: RESULT: Python/Qt runtime probe passed.
+20 passed, 2 skipped in 0.41s
 ```
 
-## Testfunktionen
+Die beiden Skips sind erwartbar:
 
-Zusätzlich wurde die aktive Testsammlung direkt über Python-Testfunktionen ausgeführt. Das ist in dieser Sandbox zuverlässiger als der normale `pytest`-Prozess, weil der installierte virtuelle Python-Runner hier nach `pytest`-Importen nicht zuverlässig zur Shell zurückkehrt. Die Testfunktionen selbst laufen mit echten Assertions.
+- optionale Crypto-Abhängigkeit nicht installiert,
+- alte Fixture-Datei nicht im aktuellen Paketarchiv enthalten.
+
+### Shell-Skripte
+
+```bash
+bash -n scripts/check_no_slint.sh
+bash -n scripts/check_no_slint_strict.sh
+bash -n scripts/verify_qt611_environment.sh
+bash -n scripts/build_python_qt.sh
+```
+
+Ergebnis: OK.
+
+### Keine alten UI-Framework-Referenzen im aktiven Pfad
+
+```bash
+bash scripts/check_no_slint.sh
+bash scripts/check_no_slint_strict.sh
+```
 
 Ergebnis:
 
 ```text
-SUMMARY passed=13 skipped=2 failed=0
+OK: no old UI-framework references found in active source/build files
 ```
 
-Geprüft wurden unter anderem:
+### Runtime-Probe ohne Qt
 
-- ALX-Byte-Roundtrip über `dump_alx_bytes`/`load_alx_bytes`.
-- UTF-16/GZip-Kompatibilität der gespeicherten Dokument-XML-Struktur.
-- Legacy-Passwortnormalisierung.
-- Legacy-Notiz-XML-Parsing.
-- V2-Nested-XML-Roundtrip.
-- Suche über einen Knotenbaum.
-- FTP-Zielnormalisierung.
-- RTF→HTML→RTF-/Plaintext-Verhalten mit Fett, Kursiv, Unterstrichen, Durchgestrichen, Schriftgröße, Schriftfamilie, Textfarbe, Highlight und Emoji.
-- RTF-Bild-Roundtrip für HTML-Data-URI → RTF-`\pict\pngblip` → HTML-Data-URI.
-- Teilbaum-Export nach TXT/RTF mit Nummerierung `1.` und `1.1.`.
-- Formatierter Teilbaum-RTF-Export mit Kursiv, Schriftfamilie, Textfarbe und Highlight.
-- Erzeugen einer zusammengefassten Notiz.
-- Lesen und Schreiben erweiterter Legacy-Konfiguration (`scrolls`, `autorun`, Sprache, Taskleisten- und Desktop-Notiz-Optionen).
-
-Übersprungene Tests:
-
-```text
-pycryptodome not installed
-legacy fixture not included
+```bash
+PYTHONPATH=src python -m notizen_py_qt --smoke-test
 ```
 
-## GUI-Smoke-Test in dieser Umgebung
+Ergebnis: erwarteter Exitcode `2`, weil in dieser Umgebung weder PySide6 noch PyQt6 installiert ist.
 
-Ohne `--skip-qt` ergibt der Runtime-Probe erwartungsgemäß:
+Die Anwendung meldet sauber:
 
 ```text
-Qt binding import failed: No Qt binding is installed. Install one of:
+No Qt binding is installed. Install one of:
   python -m pip install 'PySide6>=6.6,<7'
   python -m pip install 'PyQt6>=6.6,<7'
-RESULT: 1 problem(s) found.
 ```
 
-Das ist für diesen Container erwartbar, weil weder PySide6 noch PyQt6 installiert ist. Der Code bricht dabei sauber mit Installationshinweis ab. Auf einem Rechner mit installiertem PySide6 oder PyQt6 sollte zusätzlich ausgeführt werden:
+### Legacy-Hilfeparameter
 
 ```bash
-python -m notizen_py_qt --smoke-test
+PYTHONPATH=src python -m notizen_py_qt /?
 ```
+
+Ergebnis: OK, Hilfeausgabe mit Exitcode `0`.
+
+## Neue Testabdeckung in 0.9.4
+
+Neu hinzugefügt wurde `tests/test_legacy_behaviour_094.py` mit Tests für:
+
+- WinForms-nahe Einfügelogik `legacy_paste_clone()`,
+- Einfügen vor dem markierten Geschwisterknoten,
+- Einfügen als erster Root-Unterknoten,
+- TXT-Export in UTF-8, ANSI/Windows-1252 und Unicode/UTF-16,
+- CRLF-Zeilenenden im TXT-Export,
+- Sprachauflösung `Auto`,
+- alte Sprachkeys,
+- legacy Startparameter `/min`, `/?`, lokale `.alx` und `ftp://`,
+- alte helle Desktop-Notiz-Farbpalette als signierte ARGB-Werte.
+
+## Hinweis zur Umgebung
+
+Während einiger Python-Prozesse gab die Notebook-/Artifact-Umgebung eine externe `artifact_tool`-Warmup-Warnung auf `stderr` aus. Die Projektprüfungen selbst hatten trotzdem erfolgreiche Rückgabecodes. Diese Warnung stammt nicht aus `notizen_py_qt`.
