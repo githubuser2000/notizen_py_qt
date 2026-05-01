@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.9.7**.
+Aktueller Stand dieses Archivs: **0.9.8**.
 
 ## Start
 
@@ -21,10 +21,10 @@ PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer eben
 - RTF-zu-HTML-Bridge für den Qt-Editor mit Fett/Kursiv/Unterstrichen/Durchgestrichen, Schriftgröße, Schriftfamilie, Textfarbe, Markierung und Unicode.
 - RTF-Bild-Roundtrip für übliche WinForms/Qt-`\pict`-Bilder mit PNG/JPEG-Hexdaten sowie HTML-`img`-Data-URIs.
 - Editor-Kontextfunktionen aus Notizen.NET: Text löschen, Bild einfügen, Datum einfügen, Suche und Zwischenablageaktionen.
-- Teilbaum-Export nach RTF/TXT mit alter Notizen.NET-Nummerierung sowie „Teilbaum zusammenfassen“ als neue Notiz.
+- Teilbaum-Export nach RTF/TXT mit alter Notizen.NET-Nummerierung sowie „Teilbaum zusammenfassen“ und „Ganzen Baum zusammenfassen“ als neue Notiz.
 - Fokusabhängiges Ausschneiden/Kopieren/Einfügen/Löschen wie im alten WinForms-Programm.
 - Desktop-Notizen mit Kontextmenü, Hintergrundfarbe, Transparenz, Ausblenden/Schließen und Doppelklick zurück zum Hauptfenster.
-- System-Tray, Wecker per `Ctrl+Space`, Grundeinstellungen und zuletzt geöffnete Dateien.
+- System-Tray, Wecker per `Ctrl+Space`, Grundeinstellungen und zuletzt geöffnete Dateien; Recent-Einträge prüfen fehlende Dateien und fragen bei ungespeicherten Änderungen nach.
 - FTP-Öffnen/Speichern wie im alten `ftpkram.vb`.
 - Importiertes Notizen-Icon als Paketressource plus `.qrc`.
 - Importierte Sprachdateien aus `languages.vb` für Deutsch, English, Chinese, français, spanish und russian; Menü-/Aktionsbeschriftungen werden zur Laufzeit umgeschaltet.
@@ -41,6 +41,7 @@ PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer eben
 - Statistikdialog zählt Knoten, Blätter, Tiefe, Desktop-Notizen, Textmengen und eingebettete Bilder für aktuellen Teilbaum und Gesamtbaum.
 - Knoten können per Aktion nach oben/unten verschoben werden; Auf-/Zu, Alle auf und Alle zu sind wieder als sichtbare Befehle vorhanden.
 - Alte `notizen.config.xml`-Dateien können aus der Oberfläche importiert werden; Scrollleisten können wie im WinForms-Menü zyklisch umgeschaltet werden.
+- Suche, Schnell-Suche und alle Exportpfade synchronisieren den sichtbaren Editorinhalt vor der Auswertung zurück ins Modell.
 
 Historische Qt-/QML-Migrationsskripte aus früheren Zwischenschritten liegen nicht mehr im aktiven Projektpfad, sondern unter `legacy_build_metadata/`.
 

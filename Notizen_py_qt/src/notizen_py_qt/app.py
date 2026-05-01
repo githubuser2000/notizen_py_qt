@@ -301,6 +301,7 @@ if QtWidgets is not None:
             layout.addWidget(close_button, 5, 2)
 
         def _collect_results(self) -> None:
+            self.main_window.save_current_editor_to_node()
             term = self.term.text()
             self.main_window.last_search = term
             if not term:
@@ -688,6 +689,7 @@ if QtWidgets is not None:
             self.rename_action = self._act("Umbenennen", self.rename_node, "Ctrl+U")
             self.delete_action = self._act("Löschen", self.delete_anything)
             self.unify_action = self._act("Teilbaum zusammenfassen", self.unify_current_subtree)
+            self.unify_root_action = self._act("Ganzen Baum zusammenfassen", self.unify_root_tree)
             self.desk_note_action = self._act("Desktop-Notiz", self.show_desktop_note)
             self.bg_color_action = self._act("Knoten-Hintergrundfarbe", lambda: self.choose_node_color("bg"))
             self.fg_color_action = self._act("Knoten-Schriftfarbe", lambda: self.choose_node_color("fg"))
@@ -765,6 +767,7 @@ if QtWidgets is not None:
             self.node_menu.addAction(self.paste_child_action)
             self.node_menu.addSeparator()
             self.node_menu.addAction(self.unify_action)
+            self.node_menu.addAction(self.unify_root_action)
             self.node_menu.addAction(self.desk_note_action)
             self.node_menu.addAction(self.bg_color_action)
             self.node_menu.addAction(self.fg_color_action)
@@ -807,6 +810,7 @@ if QtWidgets is not None:
                 self.rename_action,
                 self.delete_action,
                 self.unify_action,
+                self.unify_root_action,
                 self.desk_note_action,
                 self.bg_color_action,
                 self.fg_color_action,
@@ -878,6 +882,8 @@ if QtWidgets is not None:
                 self.expand_current_action,
                 self.expand_all_action,
                 self.collapse_all_action,
+                self.unify_action,
+                self.unify_root_action,
                 self.desk_note_action,
             ):
                 node_bar.addAction(action)
@@ -978,6 +984,8 @@ if QtWidgets is not None:
             self.add_sibling_action.setText(self.tr("kontext11", "Neu daneben"))
             self.rename_action.setText(self.tr("kontext2_2", "Umbenennen"))
             self.delete_action.setText(self.tr("kontext2_3", "Löschen"))
+            self.unify_action.setText("Teilbaum zusammenfassen")
+            self.unify_root_action.setText("Ganzen Baum zusammenfassen")
             self.desk_note_action.setText(self.tr("kontext2_5", "Desktop-Notiz"))
             self.bg_color_action.setText(self.tr("kontext2_9", "Hintergrundfarbe"))
             self.fg_color_action.setText(self.tr("kontext2_10", "Schriftfarbe"))
@@ -1071,7 +1079,17 @@ if QtWidgets is not None:
                 return
             for path_text in reversed(self.settings.recent_files):
                 action = self.recent_menu.addAction(path_text)
-                action.triggered.connect(lambda checked=False, p=path_text: self.load_path(Path(p)))
+                action.triggered.connect(lambda checked=False, p=path_text: self.open_recent_file(p))
+
+        def open_recent_file(self, path_text: str) -> bool:
+            """Open a legacy recent-file entry after the same save prompt as the old menu."""
+            path = Path(path_text)
+            if not path.exists():
+                QtWidgets.QMessageBox.warning(self, "Zuletzt geöffnet", f"Datei nicht gefunden:\n{path}")
+                return False
+            if not self.maybe_save_changes():
+                return False
+            return self.load_path(path)
 
         def update_title(self) -> None:
             name = self.document.path.name if self.document.path else "unbenannt.alx"
@@ -1113,6 +1131,7 @@ if QtWidgets is not None:
                 self.print_all_action,
                 self.password_action,
                 self.stats_action,
+                self.unify_root_action,
             ):
                 action.setEnabled(has_root)
             for action in (
@@ -1185,6 +1204,7 @@ if QtWidgets is not None:
                     win.reload_from_node()
 
         def _quick_search_collect(self, *, all_nodes: bool) -> None:
+            self.save_current_editor_to_node()
             term = self.quick_search_edit.text() if hasattr(self, "quick_search_edit") else ""
             signature = (term, all_nodes)
             if signature == self._quick_search_signature:
@@ -1953,13 +1973,24 @@ if QtWidgets is not None:
             source = self.current_node()
             if source is None:
                 return
-            title = f"Zusammenfassung - {source.title}"
+            self._append_unified_note(source, f"Zusammenfassung - {source.title}")
+
+        def unify_root_tree(self) -> None:
+            root = self.document.root
+            if root is None:
+                return
+            self._append_unified_note(root, f"Zusammenfassung - {root.title}")
+
+        def _append_unified_note(self, source: NoteNode, title: str) -> None:
+            self.save_current_editor_to_node()
             unified = create_unified_note(source, title=title)
             source.add_child(unified)
+            source.expanded = True
             self.build_tree()
             self.select_node(unified)
             self.document.mark_changed()
             self.update_title()
+            self.update_actions()
 
         def select_node(self, node: NoteNode) -> None:
             item = self.item_for_node(node)
@@ -2155,18 +2186,21 @@ if QtWidgets is not None:
             node = self.current_node()
             if node is None:
                 return
+            self.save_current_editor_to_node()
             self._export_tree_to_file(node, kind)
 
         def export_root(self, kind: str) -> None:
             root = self.document.root
             if root is None:
                 return
+            self.save_current_editor_to_node()
             self._export_tree_to_file(root, kind, title=f"{root.title}_gesamt")
 
         def export_node_rtf(self) -> None:
             node = self.current_node()
             if node is None:
                 return
+            self.save_current_editor_to_node()
             file_name, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self,
                 "Knoten-RTF speichern",
@@ -2577,7 +2611,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.9.7"
+                __version__ = "0.9.8"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
@@ -2588,7 +2622,8 @@ if QtWidgets is not None:
                     "Sprachdateien, legacy Startparameter, alte Tastaturbedienung, "
                     "systemweites Knoten-Clipboard, wiederholende Wecker, "
                     "Qt-Druckpfade, TXT/RTF-Import, HTML-Export, Statistik, "
-                    "Knoten-Verschieben und Auf-/Zu-Funktionen.\n\n"
+                    "Knoten-Verschieben, Auf-/Zu-Funktionen, sichere Recent-Dateien "
+                    "und aktuelle/ganze Baum-Zusammenfassung.\n\n"
                     f"Qt-Binding: {BINDING}"
                 ),
             )
