@@ -42,8 +42,16 @@ def print_block(title: str, body: str) -> None:
     print(body.rstrip() if body.strip() else "OK")
 
 
+def _python_cmd(*args: str) -> list[str]:
+    cmd = [sys.executable]
+    if getattr(sys.flags, "no_site", 0):
+        cmd.append("-S")
+    cmd.extend(args)
+    return cmd
+
+
 def py_snippet(root: Path, code: str) -> tuple[int, str]:
-    return run([sys.executable, "-c", code], cwd=root)
+    return run(_python_cmd("-c", code), cwd=root)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,7 +118,7 @@ except Exception as exc:
 
     if not args.skip_smoke and not args.skip_qt:
         env = {"QT_QPA_PLATFORM": "offscreen", "NOTIZEN_QT_SMOKE_TEST": "1"}
-        rc, out = run([sys.executable, "-m", "notizen_py_qt", "--smoke-test"], cwd=root, env=env)
+        rc, out = run(_python_cmd("-m", "notizen_py_qt", "--smoke-test"), cwd=root, env=env)
         print_block("Qt smoke test", out)
         if rc != 0:
             errors += 1

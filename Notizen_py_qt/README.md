@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.9.6**.
+Aktueller Stand dieses Archivs: **0.9.7**.
 
 ## Start
 
@@ -36,6 +36,11 @@ PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer eben
 - Der Wecker aus `wecker.vb` unterstützt jetzt einmalige, tägliche, wöchentliche, monatliche und jährliche Wiederholungen mit Intervall und Wochentagen.
 - Drucken über QtPrintSupport für aktuelle Notiz, aktuellen Teilbaum oder ganzen Baum ist angebunden.
 - Legacy-Tastaturvarianten `Shift+Insert` und `Shift+Delete` sind ergänzt.
+- TXT- und RTF-Import in die aktuelle Notiz sind angebunden.
+- HTML-Export für aktuellen Teilbaum und ganzen Baum erzeugt eine eigenständige UTF-8-HTML-Datei mit Nummerierung und eingebetteten Bildern.
+- Statistikdialog zählt Knoten, Blätter, Tiefe, Desktop-Notizen, Textmengen und eingebettete Bilder für aktuellen Teilbaum und Gesamtbaum.
+- Knoten können per Aktion nach oben/unten verschoben werden; Auf-/Zu, Alle auf und Alle zu sind wieder als sichtbare Befehle vorhanden.
+- Alte `notizen.config.xml`-Dateien können aus der Oberfläche importiert werden; Scrollleisten können wie im WinForms-Menü zyklisch umgeschaltet werden.
 
 Historische Qt-/QML-Migrationsskripte aus früheren Zwischenschritten liegen nicht mehr im aktiven Projektpfad, sondern unter `legacy_build_metadata/`.
 

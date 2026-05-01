@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${PYTHON:-python3}"
 INPUT_ROOT="${1:-.}"
-PROJECT_ROOT="$("$PYTHON" - "$SCRIPT_DIR" "$INPUT_ROOT" <<'PY'
+PROJECT_ROOT="$("$PYTHON" -S - "$SCRIPT_DIR" "$INPUT_ROOT" <<'PY'
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])

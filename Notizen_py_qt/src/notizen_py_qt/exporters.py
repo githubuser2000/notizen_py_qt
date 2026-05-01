@@ -19,7 +19,9 @@ class ExportOptions:
 
 def _walk_numbered(node: NoteNode, depth: int, counters: list[int], options: ExportOptions):
     if depth >= len(counters):
-        counters.append(0)
+        counters.extend(0 for _ in range(depth - len(counters) + 1))
+    else:
+        del counters[depth + 1 :]
     counters[depth] += 1
     if options.numbered_headings and (depth > 0 or options.include_root_number):
         start = 0 if options.include_root_number else 1
@@ -30,7 +32,6 @@ def _walk_numbered(node: NoteNode, depth: int, counters: list[int], options: Exp
     yield depth, heading, node
     for child in node.children:
         yield from _walk_numbered(child, depth + 1, counters, options)
-    counters[depth] = 0
 
 
 def tree_to_plain_text(root: NoteNode, options: ExportOptions | None = None) -> str:

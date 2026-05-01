@@ -82,11 +82,13 @@ def test_tree_export_numbering_and_unified_note() -> None:
         )
     )
     child.add_child(NoteNode(title="grand", rtf=plain_text_to_rtf("grand body")))
+    root.add_child(NoteNode(title="second", rtf=plain_text_to_rtf("second body")))
 
     text = tree_to_plain_text(root)
     assert "root" in text
     assert "1. child" in text
     assert "1.1. grand" in text
+    assert "2. second" in text
     assert "child body" in text
 
     rtf = tree_to_rtf(root)
@@ -102,6 +104,7 @@ def test_tree_export_numbering_and_unified_note() -> None:
     plain = rtf_to_plain_text(rtf)
     assert "1. child" in plain
     assert "1.1. grand" in plain
+    assert "2. second" in plain
     assert "grand body" in plain
 
     unified = create_unified_note(root, "Gesamt")
