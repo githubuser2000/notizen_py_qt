@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.3**.
+Aktueller Stand dieses Archivs: **0.10.6**.
 
 ## Start
 
@@ -55,13 +55,27 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+## Änderungen in 0.10.6
+
+- Die Löschlogik des Baums wurde näher an `Baum.element_loeschen` portiert: Nach dem Löschen wird nicht pauschal der Elternknoten markiert, sondern wie im alten WinForms-TreeView der vorher sichtbare Knoten (`PrevVisibleNode`).
+- Desktop-Notizen im gelöschten oder ausgeschnittenen Teilbaum werden jetzt rekursiv geschlossen wie in `Baum.mach_haft_weg`, statt nur die Desktop-Notiz des obersten Knotens zu entfernen.
+- Autosave folgt jetzt genauer `Autosavetimer_Tick`: Es wird nur automatisch gespeichert, wenn ein Baum existiert, Änderungen vorliegen, eine Datei zugeordnet ist und diese Datei auf dem Datenträger noch existiert.
+- Neue Qt-unabhängige Helfer: `legacy_visible_walk`, `legacy_previous_visible_node`, `legacy_delete_fallback_node` und `legacy_autosave_should_save`.
+
+## Änderungen in 0.10.5
+
+- Der Suchdialog wurde näher an `suche.vb`/`suchergebnisse.vb` gebracht: Neben „Suchen / Weiter“ gibt es jetzt eine sichtbare Ergebnisliste mit Knotenpfad, Trefferposition und kurzem Kontext.
+- Treffer können über die Liste direkt geöffnet werden; „Zurück“ und „Suchen / Weiter“ schalten zyklisch durch dieselbe Trefferliste wie das alte WinForms-Fenster.
+- „Ganze Wörter“ nutzt jetzt die alte Notizen.NET-Regel: Nur Leerzeichen sowie CR/LF trennen Wörter. Satzzeichen und Tabs bleiben Teil des Wort-Tokens, statt wie moderne Regex-Wortgrenzen behandelt zu werden.
+- Die neue Qt-unabhängige Suchansicht liegt in `search_results.py` und ist mit Regressionstests abgesichert.
+
 ## Enthalten
 
 - ALX-Dateiformat mit GZip, UTF-16-XML und Legacy-DES-Passwortmodus.
 - Baumansicht, Editor, Knotenoperationen, Drag-and-drop, Suche, Export und Notizen.NET-kompatible Sicherheitskopien.
 - WinForms-nahe Hauptansicht mit sichtbarem Baumfeld `txt1` über dem Baum, Titel-Textfeld `txt2` über dem Editor und dauerhaft sichtbarem RichText-Editor `Inhalt`.
 - RTF-zu-HTML-Bridge für den Qt-Editor mit Fett/Kursiv/Unterstrichen/Durchgestrichen, Schriftgröße, Schriftfamilie, Textfarbe, Markierung und Unicode.
-- RTF-Bild-Roundtrip für übliche WinForms/Qt-`\pict`-Bilder mit PNG/JPEG-Hexdaten sowie HTML-`img`-Data-URIs.
+- RTF-Bild-Roundtrip für übliche WinForms/Qt-`\pict`-Bilder mit PNG/JPEG-Hexdaten sowie HTML-`img`-Data-URIs; kombinierte Teilbaum-/Gesamtbaum-RTF-Exporte und Zusammenfassungsnotizen behalten eingebettete Bilder jetzt ebenfalls.
 - Editor-Kontextfunktionen aus Notizen.NET: Text löschen, Bild einfügen, Datum einfügen, Suche und Zwischenablageaktionen.
 - Teilbaum-Export nach RTF/TXT mit alter Notizen.NET-Nummerierung sowie „Teilbaum zusammenfassen“ und „Ganzen Baum zusammenfassen“ als neue Notiz.
 - Fokusabhängiges Ausschneiden/Kopieren/Einfügen/Löschen wie im alten WinForms-Programm.
@@ -85,6 +99,9 @@ notizen-py-qt /pfad/zur/datei.alx
 - Knoten können per Aktion nach oben/unten verschoben werden; Auf-/Zu, Alle auf und Alle zu sind wieder als sichtbare Befehle vorhanden.
 - Alte `notizen.config.xml`-Dateien können aus der Oberfläche importiert werden; Scrollleisten können wie im WinForms-Menü zyklisch umgeschaltet werden.
 - Suche, Schnell-Suche und alle Exportpfade synchronisieren den sichtbaren Editorinhalt vor der Auswertung zurück ins Modell.
+- Der Suchdialog zeigt Treffer jetzt als alte `suchergebnisse`-nahe Liste mit Knotenpfad, Vorschautext, Zurück/Weiter und direkter Trefferaktivierung.
+- Baum-Löschen folgt jetzt der alten `PrevVisibleNode`-Auswahl aus `Baum.element_loeschen`; Desktop-Notizen unter gelöschten oder verschobenen Teilbäumen werden rekursiv geschlossen.
+- Autosave folgt der alten `Autosavetimer_Tick`-Schutzbedingung und erzeugt keine fehlende Datei still neu, wenn die gespeicherte `.alx` zwischenzeitlich entfernt wurde.
 - Sicherheitskopien folgen der alten `saftycopies`-Logik aus Notizen.NET: Backup-Ordner neben der `.alx`-Datei, Dateinamen `Name-YYYY-MM-DD-HH-MM-SS-ms.alx`, konfigurierbare Rotation und neue Aktionen „Jetzt Sicherung erstellen“/„Sicherung öffnen“.
 - Legacy-Config-Parität weitergeführt: `open/once-opened`, alte `tool-stripes`-Positionen und der WinForms-Autosave-Schutz aus `einstellungen.vb` werden übernommen und beim Speichern erhalten; frische Configs starten wie Notizen.NET mit 60 Sekunden Autosave.
 - Die alte Datei-Startlogik aus `Datei.vb` ist präzisiert: Standardname `unbenannt.alx`, Standardordner `Documents/Notizen` und Windows-Backslash-Pfade aus alten Configs werden auch auf Linux/macOS korrekt in Verzeichnis und Dateiname getrennt.
@@ -92,7 +109,7 @@ notizen-py-qt /pfad/zur/datei.alx
 - Fensterzustände aus `xml_kram.vb` werden robuster normalisiert; gespeicherte `minimized`-/`maximized`-Werte werden beim Start ausgewertet, und offensichtlich außerhalb des Arbeitsbereichs liegende Hauptfensterpositionen werden abgefangen.
 - RTF-Tabellenzellen aus alten RichTextBox-Inhalten werden in Suche, Statistik und Exporten nicht mehr zusammengeschoben, sondern als Tabulatoren und Zeilenumbrüche erhalten.
 - ZIP-Verzeichnisrechte und Skript-Ausführungsrechte werden beim Paketieren korrekt gesetzt: Verzeichnisse `755`, Shell-/Python-Build-Skripte `755`, Desktop-Starter `755`, normale Dateien `644`.
-- Neue Startdateien für Linux/GNOME: `Notizen starten.sh`, `notizen-starten.sh`, `Notizen PyQt.desktop` und `scripts/install_linux_launcher.sh`. Die Direktstarter setzen automatisch `PYTHONPATH` und starten sichtbar ohne Tray.
+- Neue Startdateien für Linux/GNOME: `Notizen starten.sh`, `notizen-starten.sh`, `Notizen PyQt.desktop` und `scripts/install_linux_launcher.sh`. Die Direktstarter setzen automatisch `PYTHONPATH` und starten sichtbar ohne Tray; das Installationsskript registriert zusätzlich `*.alx` als `application/x-notizen-alx` und setzt den Notizen-Starter als Standard-App für diesen Dateityp.
 - GNOME-Tray-Schutz verschärft: GNOME startet standardmäßig sichtbar, auch wenn eine Tray-/AppIndicator-Erweiterung erkannt wird. Ein versteckter Tray-Start ist nur noch bewusst per `--force-tray-start` beziehungsweise mit `--allow-tray` im Startskript sinnvoll. `--no-tray` deaktiviert das Trayicon vollständig.
 
 ## GNOME und Trayicons

@@ -152,6 +152,10 @@ class RtfTextSegment:
     text: str
     style: RtfTextStyle
 
+
+RtfContentPart = RtfTextSegment | RtfImage
+
+
 @dataclass(slots=True)
 class _RtfState:
     skip: bool = False
@@ -612,6 +616,56 @@ def _resolve_style(style: _RtfStyle, colors: list[str]) -> RtfTextStyle:
         bg_color=bg,
         font_family=style.font_family,
     )
+
+
+def rtf_to_content_parts(rtf: str) -> list[RtfContentPart]:
+    """Extract ordered text and image parts from a practical subset of RTF.
+
+    This is the dependency-free equivalent of what the old WinForms
+    ``fasse_zusammen`` workflow did with a temporary RichTextBox: preserve the
+    order of styled text and embedded pictures instead of reducing everything to
+    plain text. Unsupported RTF destinations are still skipped by the shared
+    parser.
+    """
+    if not rtf:
+        return []
+    if "{\\rtf" not in rtf[:32]:
+        text = rtf.replace("\r\n", "\n").replace("\r", "\n")
+        return [RtfTextSegment(text=_combine_surrogate_pairs(text), style=RtfTextStyle())] if text else []
+
+    colors = extract_color_table(rtf)
+    parts: list[RtfContentPart] = []
+    current_style: RtfTextStyle | None = None
+    current_text: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_text
+        if current_style is None or not current_text:
+            current_text = []
+            return
+        text = _combine_surrogate_pairs("".join(current_text))
+        current_text = []
+        if not text:
+            return
+        if parts and isinstance(parts[-1], RtfTextSegment) and parts[-1].style == current_style:
+            previous = parts[-1]
+            parts[-1] = RtfTextSegment(previous.text + text, previous.style)
+        else:
+            parts.append(RtfTextSegment(text, current_style))
+
+    for token, style in _rtf_iter_html_tokens(rtf):
+        if isinstance(token, RtfImage):
+            flush()
+            parts.append(token)
+            current_style = None
+            continue
+        resolved = _resolve_style(style, colors)
+        if resolved != current_style:
+            flush()
+            current_style = resolved
+        current_text.append(token)
+    flush()
+    return parts
 
 
 def rtf_to_text_segments(rtf: str) -> list[RtfTextSegment]:

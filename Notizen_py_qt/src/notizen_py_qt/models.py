@@ -119,6 +119,57 @@ def legacy_paste_clone(source: NoteNode, selected: NoteNode) -> NoteNode:
     return pasted
 
 
+def legacy_visible_walk(root: NoteNode) -> list[NoteNode]:
+    """Return nodes in the visible WinForms ``TreeView`` order.
+
+    ``Baum.element_loeschen`` selected ``SelectedNode.PrevVisibleNode`` after a
+    deletion.  That value is not simply the parent: if the previous sibling is
+    expanded, WinForms selects the deepest visible child of that sibling.  This
+    helper mirrors that preorder traversal without depending on Qt.
+    """
+
+    visible: list[NoteNode] = []
+
+    def visit(node: NoteNode) -> None:
+        visible.append(node)
+        if node.expanded:
+            for child in node.children:
+                visit(child)
+
+    visit(root)
+    return visible
+
+
+def legacy_previous_visible_node(selected: NoteNode) -> NoteNode | None:
+    """Return the WinForms ``PrevVisibleNode`` equivalent for ``selected``."""
+
+    root = selected
+    while root.parent is not None:
+        root = root.parent
+    visible = legacy_visible_walk(root)
+    try:
+        index = visible.index(selected)
+    except ValueError:
+        return selected.parent
+    if index <= 0:
+        return None
+    return visible[index - 1]
+
+
+def legacy_delete_fallback_node(selected: NoteNode) -> NoteNode | None:
+    """Return the node selected by Notizen.NET after deleting ``selected``.
+
+    The legacy root deletion path closes the document instead of removing the
+    root, so root returns ``None``.  Non-root nodes fall back to the previous
+    visible node; if the tree state is inconsistent, the parent is safer than
+    leaving the UI without a current node.
+    """
+
+    if selected.parent is None:
+        return None
+    return legacy_previous_visible_node(selected) or selected.parent
+
+
 @dataclass(slots=True)
 class NoteDocument:
     root: NoteNode | None = None

@@ -15,14 +15,15 @@ from .ftp_sync import FtpSyncError, FtpTarget
 from .i18n import available_languages, tr
 from .legacy_colors import legacy_light_color_argb
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, ensure_legacy_documents_notizen_dir
-from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_paste_clone
+from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_delete_fallback_node, legacy_paste_clone
 from .desktop_note_legacy import legacy_transparency_menu_options
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
 from .startup import apply_windows_autostart_script, parse_legacy_startup_args
 from .tray_support import decide_startup_tray_visibility, gnome_tray_install_hint
 from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
-from .settings import AppSettings, normalize_autosave_seconds, normalize_window_state
+from .search_results import SearchHitView, build_search_hit_views
+from .settings import AppSettings, legacy_autosave_should_save, normalize_autosave_seconds, normalize_window_state
 from .stats import collect_tree_stats
 
 try:  # Importing is optional so tests and CLI helpers work without Qt installed.
@@ -280,6 +281,7 @@ if QtWidgets is not None:
             super().__init__(main_window)
             self.main_window = main_window
             self.results: list[SearchResult] = []
+            self.result_views: list[SearchHitView] = []
             self.result_index = 0
             self.setWindowTitle("Suche")
             layout = QtWidgets.QGridLayout(self)
@@ -288,27 +290,37 @@ if QtWidgets is not None:
             self.whole_words = QtWidgets.QCheckBox("ganze Wörter")
             self.case_sensitive = QtWidgets.QCheckBox("Groß-/Klein-Schreibung beachten")
             self.count_label = QtWidgets.QLabel("")
+            self.result_list = QtWidgets.QListWidget()
+            self.result_list.setObjectName("Suchliste")
+            self.result_list.setMinimumHeight(180)
             search_button = QtWidgets.QPushButton("Suchen / Weiter")
+            previous_button = QtWidgets.QPushButton("Zurück")
             close_button = QtWidgets.QPushButton("Fertig")
             search_button.clicked.connect(self.search_next)
+            previous_button.clicked.connect(self.search_previous)
             close_button.clicked.connect(self.accept)
             self.term.returnPressed.connect(self.search_next)
+            self.result_list.itemActivated.connect(self._activate_list_item)
             layout.addWidget(QtWidgets.QLabel("Suchbegriff:"), 0, 0)
-            layout.addWidget(self.term, 0, 1, 1, 2)
-            layout.addWidget(self.all_nodes, 1, 0, 1, 3)
-            layout.addWidget(self.whole_words, 2, 0, 1, 3)
-            layout.addWidget(self.case_sensitive, 3, 0, 1, 3)
+            layout.addWidget(self.term, 0, 1, 1, 3)
+            layout.addWidget(self.all_nodes, 1, 0, 1, 4)
+            layout.addWidget(self.whole_words, 2, 0, 1, 4)
+            layout.addWidget(self.case_sensitive, 3, 0, 1, 4)
             layout.addWidget(QtWidgets.QLabel("Ergebnisse:"), 4, 0)
             layout.addWidget(self.count_label, 4, 1)
-            layout.addWidget(search_button, 5, 1)
-            layout.addWidget(close_button, 5, 2)
+            layout.addWidget(self.result_list, 5, 0, 1, 4)
+            layout.addWidget(previous_button, 6, 1)
+            layout.addWidget(search_button, 6, 2)
+            layout.addWidget(close_button, 6, 3)
 
         def _collect_results(self) -> None:
             self.main_window.save_current_editor_to_node()
             term = self.term.text()
             self.main_window.last_search = term
+            self.result_list.clear()
             if not term:
                 self.results = []
+                self.result_views = []
                 self.count_label.setText("0")
                 return
             if self.all_nodes.isChecked():
@@ -322,10 +334,16 @@ if QtWidgets is not None:
                 whole_words=self.whole_words.isChecked(),
                 case_sensitive=self.case_sensitive.isChecked(),
             )
+            self.result_views = build_search_hit_views(self.results)
             self.result_index = 0
             self.count_label.setText(str(len(self.results)))
+            for index, view in enumerate(self.result_views):
+                item = QtWidgets.QListWidgetItem(view.label)
+                item.setToolTip(f"{view.node_path}\n{view.snippet}")
+                item.setData(USER_ROLE, index)
+                self.result_list.addItem(item)
 
-        def search_next(self) -> None:
+        def _ensure_current_results(self) -> bool:
             previous_signature = (
                 self.term.text(),
                 self.all_nodes.isChecked(),
@@ -335,16 +353,44 @@ if QtWidgets is not None:
             if getattr(self, "_signature", None) != previous_signature:
                 self._signature = previous_signature
                 self._collect_results()
+            return bool(self.results)
+
+        def _activate_list_item(self, item: Any) -> None:
+            index = item.data(USER_ROLE)
+            try:
+                numeric_index = int(index)
+            except Exception:
+                return
+            self.activate_result(numeric_index)
+
+        def activate_result(self, index: int) -> None:
             if not self.results:
                 return
-            result = self.results[self.result_index % len(self.results)]
-            self.result_index += 1
+            if index < 0 or index >= len(self.results):
+                index = index % len(self.results)
+            result = self.results[index]
+            self.result_index = (index + 1) % len(self.results)
+            self.result_list.setCurrentRow(index)
             self.main_window.select_node(result.node)
             cursor = self.main_window.editor.textCursor()
             cursor.setPosition(result.start)
             cursor.setPosition(result.start + result.length, QtGui.QTextCursor.MoveMode.KeepAnchor)
             self.main_window.editor.setTextCursor(cursor)
             self.main_window.editor.setFocus()
+
+        def search_next(self) -> None:
+            if not self._ensure_current_results():
+                return
+            row = self.result_list.currentRow()
+            index = row + 1 if row >= 0 else self.result_index
+            self.activate_result(index)
+
+        def search_previous(self) -> None:
+            if not self._ensure_current_results():
+                return
+            row = self.result_list.currentRow()
+            index = row - 1 if row >= 0 else len(self.results) - 1
+            self.activate_result(index)
 
     class AlarmDialog(QtWidgets.QDialog):
         def __init__(self, main_window: "MainWindow") -> None:
@@ -1793,7 +1839,11 @@ if QtWidgets is not None:
             return self.load_path(Path(file_name))
 
         def autosave(self) -> None:
-            if self.document.changed and self.document.path is not None:
+            if legacy_autosave_should_save(
+                root_exists=self.document.root is not None,
+                path=self.document.path,
+                changed=self.document.changed,
+            ):
                 self._save_to(self.document.path)
 
         def add_child_node(self) -> None:
@@ -1851,12 +1901,12 @@ if QtWidgets is not None:
                 return
             if QtWidgets.QMessageBox.question(self, "Löschen", "Möchten Sie den Knoten wirklich löschen?") != YES:
                 return
-            self.close_desktop_note(node)
+            fallback = legacy_delete_fallback_node(node)
+            self.close_desktop_notes_in_subtree(node)
             node.remove_from_parent()
-            parent_item = item.parent()
-            if parent_item is not None:
-                parent_item.removeChild(item)
-                self.tree.setCurrentItem(parent_item)
+            self.build_tree()
+            if fallback is not None:
+                self.select_node(fallback)
             self.document.mark_changed()
             self.update_title()
 
@@ -1938,7 +1988,7 @@ if QtWidgets is not None:
                 return
             pasted = self._paste_node_model(source, target, as_child=False)
             if is_cut and self.cut_source_node is not None:
-                self.close_desktop_note(self.cut_source_node)
+                self.close_desktop_notes_in_subtree(self.cut_source_node)
                 self.cut_source_node.remove_from_parent()
                 self.cut_source_node = None
                 self.cut_clipboard_xml = None
@@ -1963,7 +2013,7 @@ if QtWidgets is not None:
                 return
             pasted = self._paste_node_model(source, target, as_child=True)
             if is_cut and self.cut_source_node is not None:
-                self.close_desktop_note(self.cut_source_node)
+                self.close_desktop_notes_in_subtree(self.cut_source_node)
                 self.cut_source_node.remove_from_parent()
                 self.cut_source_node = None
                 self.cut_clipboard_xml = None
@@ -2158,6 +2208,12 @@ if QtWidgets is not None:
                 win.deleteLater()
             node.desktop_note = None
             self.update_tray_menu()
+
+        def close_desktop_notes_in_subtree(self, node: NoteNode) -> None:
+            """Close floating notes below ``node`` like ``Baum.mach_haft_weg``."""
+
+            for victim in list(node.walk()):
+                self.close_desktop_note(victim)
 
         def close_all_desktop_notes(self) -> None:
             for win in list(self.desktop_windows.values()):
@@ -2769,7 +2825,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.3"
+                __version__ = "0.10.4"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",

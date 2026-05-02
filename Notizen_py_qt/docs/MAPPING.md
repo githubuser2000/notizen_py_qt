@@ -1,16 +1,16 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.3**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.6**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
 | Notizen.NET-Quelle | Python/Qt-Ziel | Stand |
 |---|---|---|
 | `Notizen.vb`, `Notizen.Designer.vb` | `src/notizen_py_qt/app.py` | Hauptfenster, Menüs, Toolbar, Baum, Editor, Dialoge und Legacy-Aktionen sind semantisch portiert. |
-| `Baum.vb`, `Baum_Kontext_.vb` | `app.py`, `models.py`, `node_clipboard.py` | Baumoperationen, Einfügen/Ausschneiden/Kopieren, Drag-and-drop-nahe Modellpflege, Knotenfarben, Auf-/Zu-Funktionen und Teilbaum-Zusammenfassung sind portiert. |
+| `Baum.vb`, `Baum_Kontext_.vb` | `app.py`, `models.py`, `node_clipboard.py` | Baumoperationen, Einfügen/Ausschneiden/Kopieren, Drag-and-drop-nahe Modellpflege, Knotenfarben, Auf-/Zu-Funktionen, `PrevVisibleNode`-Löschauswahl und Teilbaum-Zusammenfassung sind portiert. |
 | `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
-| `Datei.vb`, `xml_kram.vb` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen` und Legacy-Dateipfad-Splitting sind portiert. |
-| `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.9.8 synchronisiert vorher den Live-Editorinhalt. |
+| `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting und die alte Autosave-Schutzbedingung sind portiert. |
+| `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
 | `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen, Farben, altes Transparenzmenü, Kontextmenü, Rücksprung ins Hauptfenster und WinForms-nahe Startgeometrie sind portiert. |
 | `einstellungen.vb` | `settings.py`, Settings-Dialog in `app.py` | Backups, Autosave, Sprache, Scrollleisten, Desktop-Notiz-Ränder, Autostart-Felder und zuletzt geöffnete Dateien sind portiert. |
 | `ftpkram.vb` | `ftp_sync.py`, FTP-Dialog in `app.py` | FTP-Öffnen/Speichern der ALX-Datei ist portiert. |
@@ -19,6 +19,26 @@ Aktiver Portierungsstand: **0.10.3**. Diese Datei beschreibt die aktuelle semant
 | `ApplicationEvents.vb` | `startup.py`, `app.py` | Legacy-Startargumente wie minimierter Start und direkte Datei-/FTP-Ziele sind portiert. |
 | `passwort_dialog*.vb`, `wanna_save.vb`, `wanna_restart.vb`, `AboutBox1.vb` | Qt-Dialoge in `app.py` | Passwort-, Speicher-, Einstellungs- und Info-Dialoge sind in Qt nachgebildet. |
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
+
+
+## In 0.10.6 weitergeführt
+
+- `Baum.element_loeschen` ist genauer abgebildet: Nach dem Löschen eines Nicht-Wurzelknotens wird wie im alten WinForms-TreeView der vorher sichtbare Knoten ausgewählt. Dafür stellt `models.py` die Qt-unabhängigen Helfer `legacy_visible_walk`, `legacy_previous_visible_node` und `legacy_delete_fallback_node` bereit.
+- `Baum.mach_haft_weg`/`loesche_haftnotiz_aus_baum` ist auf Teilbäume übertragen: Beim Löschen und beim Ausschneiden/Verschieben werden Desktop-Notizfenster im gesamten betroffenen Teilbaum geschlossen, nicht nur am obersten Knoten.
+- `Autosavetimer_Tick` ist als reine Schutzfunktion `legacy_autosave_should_save` portiert. Autosave speichert nur noch, wenn ein Baum existiert, Änderungen vorliegen, eine Datei zugeordnet ist und diese Datei noch existiert.
+
+## In 0.10.5 weitergeführt
+
+- `suche.vb` und `suchergebnisse.vb` sind genauer abgebildet: Der Suchdialog besitzt jetzt eine sichtbare Ergebnisliste `Suchliste`, behält weiterhin das alte „Suchen / Weiter“-Durchschalten und kann Treffer per Doppelklick/Enter direkt anspringen.
+- Die Suchtreffer werden wie im alten Hilfsobjekt aus Knotenreferenz plus `SelectionStart` geführt; `search_results.py` ergänzt daraus Pfad, Vorschautext und Listenbeschriftung ohne Qt-Abhängigkeit.
+- Die Option „ganze Wörter“ folgt jetzt der historischen Token-Regel aus `suche.vb`: Nur Leerzeichen und CR/LF trennen Wörter. Satzzeichen und Tabs bleiben absichtlich Teil des Such-Tokens, damit alte Suchfälle reproduzierbar bleiben.
+- Neue testbare Kernhilfen sind `SearchHitView`, `node_path`, `legacy_search_snippet`, `legacy_search_result_label` und `build_search_hit_views`.
+
+## In 0.10.4 weitergeführt
+
+- Das alte `fasse_zusammen`-Prinzip wurde für eingebettete Bilder präzisiert: kombinierte RTF-Exporte und neue Zusammenfassungsnotizen laufen nun über geordnete RTF-Inhaltsteile und behalten PNG-/JPEG-`\pict`-Gruppen statt nur Textsegmente zu übernehmen.
+- `rtf_utils.py` stellt dafür `rtf_to_content_parts` bereit; `exporters.py` schreibt Bilder wieder als RTF-`\pict\pngblip` beziehungsweise `\pict\jpegblip`.
+- Der Linux-Starter-Installer richtet zusätzlich eine XDG-MIME-Zuordnung für `*.alx` ein und setzt `notizen-py-qt.desktop` als Standard-App für `application/x-notizen-alx`. Damit ist die alte Windows-Dateizuordnungs-Idee plattformgerecht auf GNOME/Linux übertragen.
 
 ## In 0.10.3 weitergeführt
 

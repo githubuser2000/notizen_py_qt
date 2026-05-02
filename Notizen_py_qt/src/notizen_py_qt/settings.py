@@ -47,6 +47,23 @@ def normalize_autosave_seconds(value: int | str | None) -> int:
     return max(5, seconds)
 
 
+def legacy_autosave_should_save(*, root_exists: bool, path: str | Path | None, changed: bool) -> bool:
+    """Return whether the old ``Autosavetimer_Tick`` would save.
+
+    Notizen.NET autosaved only when a tree root existed, a real file was already
+    associated with the document, that file still existed on disk and the model
+    was marked as changed.  In particular, autosave did **not** silently create
+    a missing file after it had been moved or deleted.
+    """
+
+    if not root_exists or not changed or path is None:
+        return False
+    try:
+        return Path(path).exists()
+    except (OSError, TypeError):
+        return False
+
+
 
 
 def normalize_window_state(value: str | None) -> str:

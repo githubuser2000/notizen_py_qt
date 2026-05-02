@@ -1,142 +1,71 @@
-# Transpilationsbericht Notizen.NET → Python/Qt 0.10.3
+# Transpilationsbericht Notizen.NET → Python/Qt 0.10.6
 
-## Ausgangslage
+## Ausgangspunkt
 
-Der Stand 0.10.2 hatte bereits korrekte ZIP-Rechte und einen ersten Schutz gegen den unsichtbaren GNOME-Tray-Start. Die neue Rückmeldung zeigt aber, dass das in GNOME praktisch noch nicht robust genug ist: Selbst mit Tray-Erkennung kann die Anwendung für den Nutzer unerreichbar bleiben. Zusätzlich soll die Anwendung aus dem entpackten Archiv direkt per Startdatei ausführbar sein und nicht nur über `python -m` oder ein installiertes Konsolenskript.
+Diese Runde baut auf dem geprüften Stand 0.10.5 auf. Der Projekt-/Chat-Kontext wurde weitergeführt: Das Ziel bleibt eine semantische Weitertranspilierung des alten VB.NET/WinForms-Projekts nach Python/Qt. Nach der Suchdialog-Parität aus 0.10.5 lag der nächste sinnvolle Block bei kleinen, aber im Alltag spürbaren Verhaltensdetails aus `Baum.vb` und dem Autosave-Pfad in `Notizen.vb`.
 
-Der aktive Port bleibt Python/Qt mit PySide6/PyQt6-Kompatibilität. Frühere Slint-/QML-/Rust-Zwischenschritte bleiben archiviert und sind weiterhin nicht Teil des aktiven Laufzeitpfads.
+## Umgesetzte Änderungen in 0.10.6
 
-## Umgesetzte Änderungen in 0.10.3
+### Baum-Löschen wie `Baum.element_loeschen`
 
-### 1. Direkt startbare Dateien im Archiv
+Das alte WinForms-Programm wählte nach dem Löschen eines Knotens `SelectedNode.PrevVisibleNode`. Der bisherige Qt-Port markierte pauschal den Elternknoten. Das war funktional, aber nicht dasselbe Verhalten.
 
-Neu im Wurzelordner:
+Neu ist deshalb eine Qt-unabhängige Modelllogik in `models.py`:
 
-- `Notizen starten.sh`
-- `notizen-starten.sh`
-- `Notizen PyQt.desktop`
+- `legacy_visible_walk(...)`,
+- `legacy_previous_visible_node(...)`,
+- `legacy_delete_fallback_node(...)`.
 
-`Notizen starten.sh` ist die menschenlesbare Startdatei und delegiert an `notizen-starten.sh`. Der technische Starter ermittelt seinen eigenen Projektordner, setzt automatisch `PYTHONPATH=<Projekt>/src` und startet dann das Paketmodul. Dadurch kann der entpackte Quellstand ohne vorheriges `python -m notizen_py_qt` gestartet werden.
+Damit wird die sichtbare TreeView-Reihenfolge nachgebildet. Wenn ein vorheriger Geschwisterknoten aufgeklappt ist, landet die Auswahl wie früher auf dessen tiefstem sichtbaren Kind; bei einem ersten Kind fällt sie auf den Elternknoten zurück. Die Wurzel bleibt ein Sonderfall: Wie im Original wird sie nicht direkt entfernt, sondern der Dokument-Schließen-Pfad benutzt.
 
-Der Starter bevorzugt:
+### Desktop-Notizen im Teilbaum rekursiv schließen
 
-1. die Umgebungsvariable `PYTHON`, falls gesetzt,
-2. `.venv/bin/python` im Projektordner,
-3. `python3`,
-4. `python`.
+`Baum.mach_haft_weg` lief im Original rekursiv über den betroffenen Teilbaum und schloss alle daran hängenden Desktop-Notizen. Im Port wurde bisher nur das Fenster des obersten Knotens geschlossen.
 
-Wenn weder PySide6 noch PyQt6 installiert ist, erscheint eine klare Fehlermeldung mit Installationsbefehl statt eines stillen Fehlstarts.
+Neu ist `close_desktop_notes_in_subtree(...)` in `app.py`. Diese Funktion wird jetzt verwendet bei:
 
-### 2. GNOME sichtbar-first statt Tray-first
+- Baumknoten löschen,
+- ausgeschnittenen Knoten nach dem Einfügen entfernen,
+- ausgeschnittenen Knoten als Unterknoten einfügen.
 
-Der GNOME-Schutz wurde bewusst verschärft. Ab 0.10.3 versteckt sich die Anwendung unter GNOME beim Start nicht mehr automatisch ins Tray, auch dann nicht, wenn eine bekannte AppIndicator/KStatusNotifier-Erweiterung erkannt wird. Der Grund ist die konkrete Nutzererfahrung: Eine erkannte Erweiterung bedeutet nicht zuverlässig, dass das Icon in der jeweiligen GNOME-Sitzung sichtbar und erreichbar ist.
+Damit bleiben beim Löschen oder Verschieben eines Teilbaums keine verwaisten Desktop-Notizfenster aus Kindknoten zurück.
 
-Das alte versteckte Tray-Verhalten bleibt nur noch über explizite Absicht erreichbar:
+### Autosave-Schutzbedingung aus `Autosavetimer_Tick`
 
-```bash
-./notizen-starten.sh --allow-tray --force-tray-start --minimized
-```
+Das alte `Autosavetimer_Tick` speicherte nur automatisch, wenn:
 
-Die neue Startdatei hängt standardmäßig an:
+- ein Baum vorhanden war,
+- eine Datei bereits zugeordnet war,
+- diese Datei auf dem Datenträger noch existierte,
+- Änderungen vorlagen.
 
-```text
---show --no-tray
-```
+Der Port bildet diese Bedingung jetzt als reine Funktion `legacy_autosave_should_save(...)` ab. Autosave erstellt dadurch eine zwischenzeitlich gelöschte oder verschobene `.alx`-Datei nicht mehr still neu.
 
-Damit werden gespeicherte `Minimized`-Fensterzustände und alte `/min`-/`-min`-Startzustände für den Direktstart übersteuert. Das Hauptfenster wird sichtbar geöffnet und das Trayicon deaktiviert.
+### Öffentliche API ergänzt
 
-### 3. Neuer CLI-Schalter `--show` / `--visible`
+Die neuen Modell-/Autosave-Helfer werden aus `notizen_py_qt.__init__` exportiert, damit sie ohne Qt getestet und später auch in kleinen Wartungs- oder Diagnosewerkzeugen genutzt werden können.
 
-`app.py` akzeptiert jetzt:
+## Dateien mit relevanten Änderungen
 
-```bash
-notizen-py-qt --show
-notizen-py-qt --visible
-```
-
-Dieser Schalter erzwingt einen sichtbaren Start. Er hat Vorrang vor:
-
-- altem `/min`, `-min`, `min`,
-- `--minimized`, wenn über die Startdatei nicht zusätzlich verwendet,
-- gespeichertem Fensterzustand `Minimized` aus der Config.
-
-Das ist wichtig für GNOME, aber auch allgemein nützlich, wenn eine alte Config das Programm immer wieder minimiert starten ließ.
-
-### 4. Linux-/GNOME-Anwendungsstarter
-
-Neu:
-
-```bash
-scripts/install_linux_launcher.sh
-```
-
-Das Skript installiert einen Starter unter:
-
-```text
-$XDG_DATA_HOME/applications/notizen-py-qt.desktop
-```
-
-beziehungsweise standardmäßig unter:
-
-```text
-~/.local/share/applications/notizen-py-qt.desktop
-```
-
-Zusätzlich wird das Icon aus `src/notizen_py_qt/resources/notizen.png` nach:
-
-```text
-~/.local/share/icons/hicolor/256x256/apps/notizen-py-qt.png
-```
-
-kopiert. Der erzeugte Menüeintrag nutzt eine absolute `Exec=`-Zeile und startet ebenfalls sichtbar ohne Tray:
-
-```text
---show --no-tray
-```
-
-Mit:
-
-```bash
-scripts/install_linux_launcher.sh --desktop
-```
-
-wird zusätzlich eine anklickbare Desktop-/Schreibtisch-Datei erstellt und, soweit über `gio` möglich, als vertrauenswürdig markiert.
-
-### 5. ZIP-Rechte für Desktop-Starter erweitert
-
-Die Verpackungshilfe `scripts/package_zip.py` speichert jetzt auch `.desktop`-Dateien als ausführbare Startdateien mit `755`. Die bestehende Rechte-Policy bleibt erhalten:
-
-- Verzeichnisse: `755`
-- Shell-Skripte: `755`
-- Python-Skripte unter `scripts/`: `755`
-- Desktop-Starter: `755`
-- normale Dateien: `644`
-
-### 6. Dokumentation und Tests
-
-Aktualisiert:
-
+- `src/notizen_py_qt/models.py`
+- `src/notizen_py_qt/settings.py`
+- `src/notizen_py_qt/app.py`
+- `src/notizen_py_qt/__init__.py`
+- `tests/test_tree_delete_autosave_106.py`
 - `README.md`
 - `docs/MAPPING.md`
 - `docs/PROJECT_CONTEXT_IMPORTED.md`
+- `pyproject.toml`
 - `TRANSPILE_NET_TO_PYQT_REPORT.md`
 - `VALIDATION_NET_PORT.md`
 
-Archiviert:
+Zusätzlich wurden die 0.10.5-Berichte archiviert:
 
-- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.2.md`
-- `VALIDATION_NET_PORT_0.10.2.md`
+- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.5.md`
+- `VALIDATION_NET_PORT_0.10.5.md`
 
-Neue beziehungsweise angepasste Tests:
+## Bewusst nicht geändert
 
-- `tests/test_launchers_103.py`
-- `tests/test_tray_permissions_102.py`
+Die GNOME-sicheren Startdateien und der sichtbare Start ohne Tray bleiben unverändert. Die neue Arbeit betrifft Baum-/Autosave-Parität und hat keine neue externe Abhängigkeit.
 
-## Ergebnis
-
-0.10.3 behebt die praktische GNOME-Aussperrung robuster als 0.10.2: Der sichere Standard ist jetzt ein sichtbarer Fensterstart ohne Tray. Gleichzeitig kann die Anwendung aus dem entpackten Archiv über eine echte Startdatei gestartet werden. Wer das alte Tray-Verhalten bewusst nutzen will, kann es weiterhin explizit erzwingen.
-
-## Weiter offene Punkte
-
-- Die echte visuelle Qt-Prüfung muss lokal mit installierter PySide6- oder PyQt6-Bindung erfolgen.
-- Ein vollständiges Linux-Paketformat wie `.deb`, `.rpm`, AppImage oder Flatpak ist noch nicht erzeugt. Für diese Runde wurde bewusst zuerst der robuste Direktstarter aus dem Quellarchiv umgesetzt.
+Die Desktop-Notiz-Autosize-/MouseLeave-Feinheiten aus dem alten WinForms-Fenster bleiben ein späterer visueller Paritätsblock, weil sie ohne lokale Qt-Sitzung schwer seriös zu prüfen sind.

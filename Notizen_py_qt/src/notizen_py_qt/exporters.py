@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .models import NoteNode
-from .rtf_utils import RtfTextSegment, RtfTextStyle, _rtf_escape_text, rtf_to_plain_text, rtf_to_text_segments
+from .rtf_utils import (
+    RtfImage,
+    RtfTextSegment,
+    RtfTextStyle,
+    _rtf_escape_text,
+    rtf_to_content_parts,
+    rtf_to_plain_text,
+    rtf_to_text_segments,
+)
 
 
 @dataclass(slots=True)
@@ -99,13 +107,38 @@ def _collect_body_segments(root: NoteNode, options: ExportOptions) -> list[tuple
     return entries
 
 
-def _collect_fonts(entries: list[tuple[str, list[RtfTextSegment]]]) -> dict[str, int]:
+def _strip_trailing_parts(parts: list[RtfTextSegment | RtfImage]) -> list[RtfTextSegment | RtfImage]:
+    stripped = list(parts)
+    while stripped and isinstance(stripped[-1], RtfTextSegment) and not stripped[-1].text.rstrip():
+        stripped.pop()
+    if stripped and isinstance(stripped[-1], RtfTextSegment):
+        last = stripped[-1]
+        text = last.text.rstrip()
+        if text != last.text:
+            stripped[-1] = RtfTextSegment(text=text, style=last.style)
+    return stripped
+
+
+def _collect_body_parts(root: NoteNode, options: ExportOptions) -> list[tuple[str, list[RtfTextSegment | RtfImage]]]:
+    entries: list[tuple[str, list[RtfTextSegment | RtfImage]]] = []
+    for _depth, heading, node in _walk_numbered(root, 0, [], options):
+        entries.append((heading, _strip_trailing_parts(rtf_to_content_parts(node.rtf))))
+    return entries
+
+
+def _iter_text_segments(entries: list[tuple[str, list[RtfTextSegment | RtfImage]]]):
+    for _heading, parts in entries:
+        for part in parts:
+            if isinstance(part, RtfTextSegment):
+                yield part
+
+
+def _collect_fonts(entries: list[tuple[str, list[RtfTextSegment | RtfImage]]]) -> dict[str, int]:
     font_indexes: dict[str, int] = {}
-    for _heading, segments in entries:
-        for segment in segments:
-            family = segment.style.font_family
-            if family and family not in font_indexes:
-                font_indexes[family] = len(font_indexes) + 1
+    for segment in _iter_text_segments(entries):
+        family = segment.style.font_family
+        if family and family not in font_indexes:
+            font_indexes[family] = len(font_indexes) + 1
     return font_indexes
 
 
@@ -119,13 +152,12 @@ def _font_table(font_indexes: dict[str, int]) -> str:
     return r"{\fonttbl" + "".join(entries) + "}" + "\n"
 
 
-def _collect_colors(entries: list[tuple[str, list[RtfTextSegment]]]) -> dict[str, int]:
+def _collect_colors(entries: list[tuple[str, list[RtfTextSegment | RtfImage]]]) -> dict[str, int]:
     color_indexes: dict[str, int] = {}
-    for _heading, segments in entries:
-        for segment in segments:
-            for color in (segment.style.fg_color, segment.style.bg_color):
-                if color and color not in color_indexes:
-                    color_indexes[color] = len(color_indexes) + 1
+    for segment in _iter_text_segments(entries):
+        for color in (segment.style.fg_color, segment.style.bg_color):
+            if color and color not in color_indexes:
+                color_indexes[color] = len(color_indexes) + 1
     return color_indexes
 
 
@@ -173,24 +205,50 @@ def _emit_segment(segment: RtfTextSegment, color_indexes: dict[str, int], font_i
     return escaped_text
 
 
+def _emit_image(image: RtfImage) -> str:
+    mime_type = image.mime_type.casefold()
+    if mime_type == "image/png":
+        blip = "pngblip"
+    elif mime_type in {"image/jpeg", "image/jpg"}:
+        blip = "jpegblip"
+    else:
+        return _rtf_escape_text("[Bild]")
+
+    controls = [rf"\pict\{blip}"]
+    if image.width_twips and image.width_twips > 0:
+        controls.append(rf"\picwgoal{image.width_twips}")
+    if image.height_twips and image.height_twips > 0:
+        controls.append(rf"\pichgoal{image.height_twips}")
+    hex_data = image.data.hex()
+    lines = [hex_data[index : index + 64] for index in range(0, len(hex_data), 64)]
+    return "{" + "".join(controls) + "\n" + "\n".join(lines) + "}"
+
+
+def _emit_part(part: RtfTextSegment | RtfImage, color_indexes: dict[str, int], font_indexes: dict[str, int]) -> str:
+    if isinstance(part, RtfImage):
+        return _emit_image(part)
+    return _emit_segment(part, color_indexes, font_indexes)
+
+
 def tree_to_rtf(root: NoteNode, options: ExportOptions | None = None) -> str:
     """Create a combined RTF export for a whole Notizen subtree.
 
     The old application clipboard-pasted each RichTextBox body into a temporary
     RichTextBox. This implementation keeps that document structure and preserves
     the formatting subset the port can safely parse: bold, italic, underline,
-    strikeout, font size, font family, foreground color and background highlight.
+    strikeout, font size, font family, foreground color, background highlight
+    and embedded PNG/JPEG pictures.
     """
     options = options or ExportOptions()
-    entries = _collect_body_segments(root, options)
+    entries = _collect_body_parts(root, options)
     color_indexes = _collect_colors(entries)
     font_indexes = _collect_fonts(entries)
     body: list[str] = []
-    for heading, segments in entries:
+    for heading, parts in entries:
         body.append(r"{\b\fs28 " + _rtf_escape_text(heading) + r"}\par" + "\n")
         body.append(r"\par" + "\n" * max(1, options.title_separator_blank_lines - 1))
-        if segments:
-            body.extend(_emit_segment(segment, color_indexes, font_indexes) for segment in segments)
+        if parts:
+            body.extend(_emit_part(part, color_indexes, font_indexes) for part in parts)
             body.append(r"\par" + "\n")
         body.append(r"\par" + "\n" * max(1, options.body_separator_blank_lines - 1))
     return (
