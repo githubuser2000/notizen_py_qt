@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.6**.
+Aktueller Stand dieses Archivs: **0.10.7**.
 
 ## Start
 
@@ -55,6 +55,12 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+## Änderungen in 0.10.7
+
+- „Neu daneben“/Enter folgt jetzt genauer `Notizen.vb`/`neu_neben_knoten`: Bei einem Nicht-Wurzelknoten wird der neue Geschwisterknoten ans Ende der Elternebene angehängt, statt direkt hinter dem markierten Knoten eingefügt zu werden.
+- Neue Qt-unabhängige Helfer: `legacy_new_next_parent(...)` und `legacy_new_next_node(...)`.
+- Die Zufallsfarbe neuer Desktop-Notizen folgt jetzt exakt der alten `get_lightcolor()`-Reichweite: `Random.Next(0, 14)` wählte nur die Farben 0 bis 13; Magenta und der LightGray-Fallback bleiben dokumentiert, werden aber nicht automatisch zufällig gewählt.
+
 ## Änderungen in 0.10.6
 
 - Die Löschlogik des Baums wurde näher an `Baum.element_loeschen` portiert: Nach dem Löschen wird nicht pauschal der Elternknoten markiert, sondern wie im alten WinForms-TreeView der vorher sichtbare Knoten (`PrevVisibleNode`).
@@ -86,9 +92,9 @@ notizen-py-qt /pfad/zur/datei.alx
 - Importiertes Notizen-Icon als Paketressource plus `.qrc`.
 - Importierte Sprachdateien aus `languages.vb` für Deutsch, English, Chinese, français, spanish und russian; Menü-/Aktionsbeschriftungen werden zur Laufzeit umgeschaltet.
 - Legacy-Startparameter aus `ApplicationEvents.vb`: `/min`, `-min`, `min`, Hilfe-Flags und direkte `ftp://...alx`-Startziele.
-- WinForms-nahe Knoten-Einfügelogik: Kopierte/ausgeschnittene Teilbäume werden wie in `paste_anything(False)` vor dem markierten Geschwisterknoten bzw. als erster Root-Unterknoten eingefügt.
+- WinForms-nahe Knoten-Einfügelogik: Kopierte/ausgeschnittene Teilbäume werden wie in `paste_anything(False)` vor dem markierten Geschwisterknoten bzw. als erster Root-Unterknoten eingefügt; „Neu daneben“/Enter hängt wie `neu_neben_knoten` ans Ende der Elternebene.
 - Erweiterte Export-Parität: aktueller Teilbaum oder ganzer Baum als RTF, UTF-8-TXT, ANSI-TXT oder Unicode-TXT sowie Roh-RTF des aktuellen Knotens.
-- Desktop-Notizen synchronisieren laufende Editoränderungen jetzt live und erhalten bei fehlender Alt-Farbe eine zufällige helle Legacy-Farbe.
+- Desktop-Notizen synchronisieren laufende Editoränderungen jetzt live und erhalten bei fehlender Alt-Farbe eine zufällige helle Legacy-Farbe aus der tatsächlich erreichbaren `get_lightcolor()`-Palette.
 - Knoten-Kopieren/Ausschneiden nutzt zusätzlich zur internen Ablage ein eigenes systemweites XML-MIME-Format, damit Teilbäume zwischen zwei laufenden Programmfenstern eingefügt werden können.
 - Der Wecker aus `wecker.vb` unterstützt jetzt einmalige, tägliche, wöchentliche, monatliche und jährliche Wiederholungen mit Intervall und Wochentagen.
 - Drucken über QtPrintSupport für aktuelle Notiz, aktuellen Teilbaum oder ganzen Baum ist angebunden.

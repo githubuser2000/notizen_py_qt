@@ -15,7 +15,7 @@ from .ftp_sync import FtpSyncError, FtpTarget
 from .i18n import available_languages, tr
 from .legacy_colors import legacy_light_color_argb
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, ensure_legacy_documents_notizen_dir
-from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_delete_fallback_node, legacy_paste_clone
+from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_delete_fallback_node, legacy_new_next_node, legacy_paste_clone
 from .desktop_note_legacy import legacy_transparency_menu_options
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
 from .startup import apply_windows_autostart_script, parse_legacy_startup_args
@@ -1865,13 +1865,12 @@ if QtWidgets is not None:
 
         def add_sibling_node(self) -> None:
             current = self.current_node()
-            if current is None or current.parent is None:
+            if current is None:
                 self.add_child_node()
                 return
-            sibling = NoteNode(title="...", rtf="")
-            parent = current.parent
-            index = current.next_sibling_index()
-            parent.insert_child(index, sibling)
+            parent = current if current.parent is None else current.parent
+            sibling = legacy_new_next_node(current)
+            index = parent.children.index(sibling)
             parent_item = self.item_for_node(parent)
             if parent_item is None:
                 self.build_tree()
@@ -2825,7 +2824,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.4"
+                __version__ = "0.10.7"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",

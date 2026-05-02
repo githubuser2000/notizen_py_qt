@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.6.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.7.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -28,3 +28,8 @@ In 0.10.4 zusätzlich übernommen: Der nächste Paritätsschritt lag bei alter R
 In 0.10.5 zusätzlich übernommen: Der nächste Paritätsschritt liegt bei `suche.vb` und `suchergebnisse.vb`. Der Suchdialog zeigt jetzt eine alte Ergebnislisten-Entsprechung, und die Ganzwortsuche verwendet die historische Leerzeichen/CR/LF-Tokenregel.
 
 In 0.10.6 zusätzlich übernommen: Der nächste Paritätsschritt greift `Baum.element_loeschen`, `Baum.mach_haft_weg` und `Autosavetimer_Tick` auf. Die Auswahl nach dem Löschen folgt jetzt `PrevVisibleNode`, Desktop-Notizen in betroffenen Teilbäumen werden rekursiv geschlossen, und Autosave erzeugt keine verschwundene `.alx`-Datei still neu.
+
+
+## Weiterführung 0.10.7
+
+Der importierte Projekt-/Chat-Kontext bleibt maßgeblich: semantische Portierung statt Slint/QML-Rückfall. In dieser Runde wurde eine kleine, aber konkrete WinForms-Abweichung korrigiert: `neu_neben_knoten` hängt neue Geschwister ans Ende der Elternebene. Zusätzlich wurde die erreichbare `get_lightcolor`-Zufallspalette auf die alte `Random.Next(0, 14)`-Reichweite eingeschränkt.

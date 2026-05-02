@@ -170,6 +170,32 @@ def legacy_delete_fallback_node(selected: NoteNode) -> NoteNode | None:
     return legacy_previous_visible_node(selected) or selected.parent
 
 
+def legacy_new_next_parent(selected: NoteNode) -> tuple[NoteNode, int]:
+    """Return the legacy insertion target for ``Neu daneben`` / Enter.
+
+    ``Notizen.vb`` implements ``neu_neben_knoten`` by temporarily selecting the
+    parent for non-root nodes and then calling ``Baum.element_dazu``.  Since
+    ``element_dazu`` always appends a new child to the selected node, the old
+    "next" command appends the new sibling at the end of the parent level
+    instead of inserting it directly after the currently selected node.  If the
+    root is selected, the new node is appended as a child of the root.
+    """
+
+    parent = selected if selected.parent is None else selected.parent
+    return parent, len(parent.children)
+
+
+def legacy_new_next_node(selected: NoteNode, title: str = "...") -> NoteNode:
+    """Create the node produced by legacy ``neu_neben_knoten``.
+
+    The helper is intentionally Qt-independent so the slightly surprising
+    WinForms insertion rule stays regression-testable.
+    """
+
+    parent, _index = legacy_new_next_parent(selected)
+    return parent.add_child(NoteNode(title=title, rtf=""))
+
+
 @dataclass(slots=True)
 class NoteDocument:
     root: NoteNode | None = None

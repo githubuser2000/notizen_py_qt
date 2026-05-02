@@ -18,25 +18,27 @@ IGNORED_NAMES = {".git", ".pytest_cache", "__pycache__"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}
 
 
-def unix_zip_mode_for_path(path: Path) -> int:
+def unix_zip_mode_for_path(path: Path, rel: Path | None = None) -> int:
     """Return a portable Unix mode for a ZIP entry.
 
     Previous hand-made archives accidentally stored several directories as
     ``0600``/``drw-------``.  Directories must be searchable/executable, and
-    shell scripts should be executable after extraction on Unix-like systems.
+    actual launcher/helper scripts should be executable after extraction on
+    Unix-like systems.  Archived migration metadata is deliberately kept as
+    normal data, even when it contains old ``scripts/*.py`` files.
     """
 
     if path.is_dir():
         return stat.S_IFDIR | 0o755
     if path.suffix in EXECUTABLE_SUFFIXES or path.name in EXECUTABLE_NAMES:
         return stat.S_IFREG | 0o755
-    if "scripts" in path.parts and path.suffix == ".py":
+    if rel is not None and len(rel.parts) == 2 and rel.parts[0] == "scripts" and path.suffix == ".py":
         return stat.S_IFREG | 0o755
     return stat.S_IFREG | 0o644
 
 
-def add_entry(zf: zipfile.ZipFile, src: Path, arcname: str) -> None:
-    mode = unix_zip_mode_for_path(src)
+def add_entry(zf: zipfile.ZipFile, src: Path, arcname: str, rel: Path | None = None) -> None:
+    mode = unix_zip_mode_for_path(src, rel)
     info = zipfile.ZipInfo(arcname + ("/" if src.is_dir() and not arcname.endswith("/") else ""))
     info.create_system = 3
     info.external_attr = mode << 16
@@ -67,8 +69,9 @@ def build_zip(source_dir: Path, output_zip: Path, root_name: str | None = None) 
         for path in sorted(source_dir.rglob("*")):
             if not should_include(path.relative_to(source_dir)):
                 continue
-            rel = path.relative_to(source_dir).as_posix()
-            add_entry(zf, path, f"{root_name}/{rel}")
+            rel_path = path.relative_to(source_dir)
+            rel = rel_path.as_posix()
+            add_entry(zf, path, f"{root_name}/{rel}", rel_path)
 
 
 def main() -> int:

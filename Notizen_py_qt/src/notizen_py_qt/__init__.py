@@ -5,6 +5,8 @@ from .models import (
     NoteDocument,
     NoteNode,
     legacy_delete_fallback_node,
+    legacy_new_next_node,
+    legacy_new_next_parent,
     legacy_paste_clone,
     legacy_previous_visible_node,
     legacy_visible_walk,
@@ -22,6 +24,8 @@ __all__ = [
     "NoteDocument",
     "NoteNode",
     "legacy_paste_clone",
+    "legacy_new_next_parent",
+    "legacy_new_next_node",
     "legacy_visible_walk",
     "legacy_previous_visible_node",
     "legacy_delete_fallback_node",
@@ -51,4 +55,4 @@ __all__ = [
     "SearchHitView",
 ]
 
-__version__ = "0.10.6"
+__version__ = "0.10.7"

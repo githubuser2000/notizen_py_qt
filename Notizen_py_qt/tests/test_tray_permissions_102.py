@@ -111,7 +111,11 @@ def test_zip_permission_policy_for_future_packaging(tmp_path: Path) -> None:
     assert stat.S_IMODE(unix_zip_mode_for_path(script)) == 0o755
     desktop = project / "Notizen PyQt.desktop"
     desktop.write_text("[Desktop Entry]\nType=Application\n", encoding="utf-8")
-    assert stat.S_IMODE(unix_zip_mode_for_path(py_script)) == 0o755
+    assert stat.S_IMODE(unix_zip_mode_for_path(py_script, Path("scripts/probe.py"))) == 0o755
+    legacy_py_script = project / "legacy_build_metadata" / "old" / "scripts" / "probe.py"
+    legacy_py_script.parent.mkdir(parents=True)
+    legacy_py_script.write_text("#!/usr/bin/env python3\nprint('old')\n", encoding="utf-8")
+    assert stat.S_IMODE(unix_zip_mode_for_path(legacy_py_script, Path("legacy_build_metadata/old/scripts/probe.py"))) == 0o644
     assert stat.S_IMODE(unix_zip_mode_for_path(desktop)) == 0o755
     assert stat.S_IMODE(unix_zip_mode_for_path(module_file)) == 0o644
     assert stat.S_IMODE(unix_zip_mode_for_path(readme)) == 0o644
