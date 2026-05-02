@@ -87,6 +87,7 @@ class AppSettings:
     autorun_minimized: bool = True
     show_desknote_borders: bool = True
     show_in_taskbar_when_minimized: bool = False
+    gnome_safe_tray_start: bool = True
     ftp_host: str = ""
     ftp_path: str = ""
     ftp_username: str = ""
@@ -208,6 +209,12 @@ class AppSettings:
                 minimized.get("taskbar"), self.show_in_taskbar_when_minimized
             )
 
+        tray = child("tray")
+        if tray is not None:
+            self.gnome_safe_tray_start = _as_bool(
+                tray.get("gnome-safe-start", tray.get("gnome_safe_start")), self.gnome_safe_tray_start
+            )
+
         main_form = child("main-form")
         if main_form is not None:
             for attr, field_name in (
@@ -290,6 +297,7 @@ class AppSettings:
             },
         )
         ET.SubElement(root, "minimized-show-in", {"taskbar": "yes" if self.show_in_taskbar_when_minimized else "no"})
+        ET.SubElement(root, "tray", {"gnome-safe-start": "yes" if self.gnome_safe_tray_start else "no"})
         ET.SubElement(root, "desknotes", {"show_desknote_borders": "yes" if self.show_desknote_borders else "no"})
         tool_stripes = ET.SubElement(root, "tool-stripes")
         positions = default_toolstrip_positions()

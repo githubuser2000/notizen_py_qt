@@ -12,8 +12,13 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.1.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.3.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
 In 0.10.1 zusätzlich übernommen: Die aktuelle Weiterführung greift die verbliebenen Legacy-Details aus `Datei.vb`, `desknote_kontext_opacy.vb` und `xml_kram.vb` auf: Standardordner/Dateiname, robustes Pfad-Splitting, alte Transparenzsemantik der Desktop-Notizen und normalisierte Fensterzustände.
+
+
+In 0.10.2 zusätzlich übernommen: Die Nutzer-Rückmeldung zu falschen ZIP-Berechtigungen und zum unter GNOME unsichtbaren Tray-Start wurde direkt verarbeitet. Der Port enthält seitdem einen sicheren GNOME-Tray-Startpfad, neue CLI-Schalter und eine reproduzierbare ZIP-Verpackung mit korrekten Unix-Rechten.
+
+In 0.10.3 zusätzlich übernommen: Die erneute GNOME-Rückmeldung zeigt, dass ein sichtbares Trayicon nicht zuverlässig genug ist. Deshalb startet GNOME jetzt sichtbar-first, selbst wenn eine AppIndicator-Erweiterung erkannt wird. Zusätzlich liegen echte Startdateien im Archiv: `Notizen starten.sh`, `notizen-starten.sh`, `Notizen PyQt.desktop` und ein Installationsskript für den Linux-Anwendungsstarter.

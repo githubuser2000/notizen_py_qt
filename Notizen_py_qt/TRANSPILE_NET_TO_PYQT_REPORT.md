@@ -1,89 +1,142 @@
-# Transpilationsbericht Notizen.NET → Python/Qt 0.10.1
+# Transpilationsbericht Notizen.NET → Python/Qt 0.10.3
 
-Datum: 2026-05-02
+## Ausgangslage
 
-## Ziel dieser Runde
+Der Stand 0.10.2 hatte bereits korrekte ZIP-Rechte und einen ersten Schutz gegen den unsichtbaren GNOME-Tray-Start. Die neue Rückmeldung zeigt aber, dass das in GNOME praktisch noch nicht robust genug ist: Selbst mit Tray-Erkennung kann die Anwendung für den Nutzer unerreichbar bleiben. Zusätzlich soll die Anwendung aus dem entpackten Archiv direkt per Startdatei ausführbar sein und nicht nur über `python -m` oder ein installiertes Konsolenskript.
 
-Der vorhandene Python/Qt-Port 0.10.0 wurde erneut gegen das alte VB.NET/WinForms-Projekt geprüft und semantisch weitergeführt. Der aktive Port bleibt Python/Qt mit PySide6/PyQt6-Kompatibilität; frühere Slint-/QML-Zwischenschritte bleiben historisches Material und sind nicht Teil des aktiven Laufzeitpfads.
+Der aktive Port bleibt Python/Qt mit PySide6/PyQt6-Kompatibilität. Frühere Slint-/QML-/Rust-Zwischenschritte bleiben archiviert und sind weiterhin nicht Teil des aktiven Laufzeitpfads.
 
-## Ausgewertete Ausgangslage
+## Umgesetzte Änderungen in 0.10.3
 
-- Original: `Notizen.NET/Notizen/*.vb`, in dieser Runde besonders `Datei.vb`, `desknote_kontext_opacy.vb` und `xml_kram.vb`.
-- Zielprojekt: `src/notizen_py_qt/` mit getrennten Modulen für Datenmodell, ALX-IO, Einstellungen, Startparameter, RTF-Brücke, Legacy-Pfade und Qt-Oberfläche.
-- Vorheriger Stand: 0.10.0 mit ALX, Baum/Editor, Suche, Export, Desktop-Notizen, FTP, Wecker, Statistik, Config-/Autostart-Parität, Backup-Verwaltung und RTF-Tabellengrenzen.
+### 1. Direkt startbare Dateien im Archiv
 
-## Umgesetzte Änderungen in 0.10.1
+Neu im Wurzelordner:
 
-### 1. Datei-Standardlogik aus `Datei.vb` portiert
+- `Notizen starten.sh`
+- `notizen-starten.sh`
+- `Notizen PyQt.desktop`
 
-Das alte `Datei.vb` nutzt als Startverzeichnis `MyDocuments\\Notizen`, legt diesen Ordner beim Start an und startet mit dem Dateinamen `unbenannt.alx`. 0.10.1 bildet diese Details als reine, testbare Python-Helfer ab:
+`Notizen starten.sh` ist die menschenlesbare Startdatei und delegiert an `notizen-starten.sh`. Der technische Starter ermittelt seinen eigenen Projektordner, setzt automatisch `PYTHONPATH=<Projekt>/src` und startet dann das Paketmodul. Dadurch kann der entpackte Quellstand ohne vorheriges `python -m notizen_py_qt` gestartet werden.
 
-- `LEGACY_DEFAULT_FILENAME = "unbenannt.alx"`
-- `legacy_documents_notizen_dir(...)`
-- `ensure_legacy_documents_notizen_dir(...)`
-- `split_legacy_file_location(...)`
+Der Starter bevorzugt:
 
-Der Standardordner ist im Port plattformneutral `Documents/Notizen` unterhalb des Benutzerordners.
+1. die Umgebungsvariable `PYTHON`, falls gesetzt,
+2. `.venv/bin/python` im Projektordner,
+3. `python3`,
+4. `python`.
 
-### 2. Legacy-Dateipfade robuster gesplittet
+Wenn weder PySide6 noch PyQt6 installiert ist, erscheint eine klare Fehlermeldung mit Installationsbefehl statt eines stillen Fehlstarts.
 
-Die alte VB.NET-Anwendung lief auf Windows und trennte Dateipfade über Backslashes. Unter Linux/macOS interpretiert `pathlib.Path` solche Werte nicht automatisch als Verzeichnistrenner. 0.10.1 trennt daher Windows- und POSIX-Pfade bewusst selbst:
+### 2. GNOME sichtbar-first statt Tray-first
 
-- `C:\\Users\\me\\Notizen\\demo.alx` wird zu Verzeichnis `C:\\Users\\me\\Notizen` und Datei `demo.alx`.
-- `/home/me/Notizen/demo.alx` wird weiter korrekt behandelt.
-- Leere Werte aus alten Configs fallen auf `Documents/Notizen` und `unbenannt.alx` zurück.
-- `AppSettings.remember_file(...)` verwendet diese Logik und erhält Recent-Einträge unverändert.
+Der GNOME-Schutz wurde bewusst verschärft. Ab 0.10.3 versteckt sich die Anwendung unter GNOME beim Start nicht mehr automatisch ins Tray, auch dann nicht, wenn eine bekannte AppIndicator/KStatusNotifier-Erweiterung erkannt wird. Der Grund ist die konkrete Nutzererfahrung: Eine erkannte Erweiterung bedeutet nicht zuverlässig, dass das Icon in der jeweiligen GNOME-Sitzung sichtbar und erreichbar ist.
 
-Damit werden alte `open`-Configwerte und zuletzt geöffnete Dateien auf Nicht-Windows-Systemen nicht mehr falsch als einzelner Dateiname behandelt.
+Das alte versteckte Tray-Verhalten bleibt nur noch über explizite Absicht erreichbar:
 
-### 3. Desktop-Notiz-Transparenz aus `desknote_kontext_opacy.vb` korrigiert
+```bash
+./notizen-starten.sh --allow-tray --force-tray-start --minimized
+```
 
-Das alte Kontextmenü bezeichnete die Einträge als Transparenz, nicht als Deckkraft:
+Die neue Startdatei hängt standardmäßig an:
 
-- `90 %` Transparenz bedeutete `Opacity = 0.1`.
-- `80 %` Transparenz bedeutete `Opacity = 0.2`.
-- `0 %` Transparenz bedeutete `Opacity = 1.0`.
+```text
+--show --no-tray
+```
 
-0.10.1 ergänzt dafür `desktop_note_legacy.py` mit:
+Damit werden gespeicherte `Minimized`-Fensterzustände und alte `/min`-/`-min`-Startzustände für den Direktstart übersteuert. Das Hauptfenster wird sichtbar geöffnet und das Trayicon deaktiviert.
 
-- `legacy_opacity_percent_for_transparency_percent(...)`
-- `legacy_transparency_menu_options()`
+### 3. Neuer CLI-Schalter `--show` / `--visible`
 
-`DesktopNoteWindow` nutzt diese Liste jetzt direkt. Das Menü sieht dadurch wie das alte WinForms-Menü aus, während die Qt-Fensterinternas weiterhin mit Deckkraftwerten arbeiten.
+`app.py` akzeptiert jetzt:
 
-### 4. Fensterzustände aus `xml_kram.vb` normalisiert
+```bash
+notizen-py-qt --show
+notizen-py-qt --visible
+```
 
-Alte Configs können `windowstate="minimized"`, `windowstate="maximized"` oder ähnliche Schreibweisen enthalten. 0.10.1 führt dafür `normalize_window_state(...)` ein:
+Dieser Schalter erzwingt einen sichtbaren Start. Er hat Vorrang vor:
 
-- `minimized` wird zu `Minimized`.
-- `maximized` wird zu `Maximized`.
-- unbekannte Werte fallen auf `Normal` zurück.
+- altem `/min`, `-min`, `min`,
+- `--minimized`, wenn über die Startdatei nicht zusätzlich verwendet,
+- gespeichertem Fensterzustand `Minimized` aus der Config.
 
-Die Startlogik berücksichtigt gespeicherte minimierte Zustände jetzt zusätzlich zu den alten `/min`-/`-min`-Argumenten. Beim Wiederherstellen des Hauptfensters werden außerdem offensichtlich außerhalb des Arbeitsbereichs liegende Koordinaten abgefangen.
+Das ist wichtig für GNOME, aber auch allgemein nützlich, wenn eine alte Config das Programm immer wieder minimiert starten ließ.
 
-### 5. Paket- und API-Stand aktualisiert
+### 4. Linux-/GNOME-Anwendungsstarter
 
-- Paketversion: `0.10.1`
-- Neue API-Exports in `notizen_py_qt.__init__`:
-  - `LEGACY_DEFAULT_FILENAME`
-  - `legacy_documents_notizen_dir`
-  - `split_legacy_file_location`
-  - `legacy_opacity_percent_for_transparency_percent`
-  - `legacy_transparency_menu_options`
-  - `normalize_window_state`
+Neu:
 
-## Neue Tests
+```bash
+scripts/install_linux_launcher.sh
+```
 
-Neu ergänzt:
+Das Skript installiert einen Starter unter:
 
-- `tests/test_legacy_paths_desktop_101.py`
-  - Standardordner und Standarddateiname aus `Datei.vb`
-  - Windows-Pfad-Splitting auf Nicht-Windows-Systemen
-  - POSIX-Pfad-Splitting und Fallbacks für leere Configwerte
-  - `AppSettings.remember_file(...)` mit Backslash-Pfaden
-  - alte Desktop-Notiz-Transparenzsemantik
-  - Fensterzustandsnormalisierung
+```text
+$XDG_DATA_HOME/applications/notizen-py-qt.desktop
+```
 
-## Nicht visuell geprüft
+beziehungsweise standardmäßig unter:
 
-In dieser Umgebung ist keine Qt-Bindung installiert. Deshalb konnte das Hauptfenster nicht interaktiv geöffnet werden. Die headless Validierung, Import-/Datenmodelltests, Legacy-Pfadtests, Desktop-Notiz-Hilfstests, RTF-/Config-/Autostarttests und statischen UI-Quellprüfungen laufen durch. Eine lokale Sichtprüfung mit `PySide6>=6.6,<7` oder `PyQt6>=6.6,<7` bleibt sinnvoll.
+```text
+~/.local/share/applications/notizen-py-qt.desktop
+```
+
+Zusätzlich wird das Icon aus `src/notizen_py_qt/resources/notizen.png` nach:
+
+```text
+~/.local/share/icons/hicolor/256x256/apps/notizen-py-qt.png
+```
+
+kopiert. Der erzeugte Menüeintrag nutzt eine absolute `Exec=`-Zeile und startet ebenfalls sichtbar ohne Tray:
+
+```text
+--show --no-tray
+```
+
+Mit:
+
+```bash
+scripts/install_linux_launcher.sh --desktop
+```
+
+wird zusätzlich eine anklickbare Desktop-/Schreibtisch-Datei erstellt und, soweit über `gio` möglich, als vertrauenswürdig markiert.
+
+### 5. ZIP-Rechte für Desktop-Starter erweitert
+
+Die Verpackungshilfe `scripts/package_zip.py` speichert jetzt auch `.desktop`-Dateien als ausführbare Startdateien mit `755`. Die bestehende Rechte-Policy bleibt erhalten:
+
+- Verzeichnisse: `755`
+- Shell-Skripte: `755`
+- Python-Skripte unter `scripts/`: `755`
+- Desktop-Starter: `755`
+- normale Dateien: `644`
+
+### 6. Dokumentation und Tests
+
+Aktualisiert:
+
+- `README.md`
+- `docs/MAPPING.md`
+- `docs/PROJECT_CONTEXT_IMPORTED.md`
+- `TRANSPILE_NET_TO_PYQT_REPORT.md`
+- `VALIDATION_NET_PORT.md`
+
+Archiviert:
+
+- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.2.md`
+- `VALIDATION_NET_PORT_0.10.2.md`
+
+Neue beziehungsweise angepasste Tests:
+
+- `tests/test_launchers_103.py`
+- `tests/test_tray_permissions_102.py`
+
+## Ergebnis
+
+0.10.3 behebt die praktische GNOME-Aussperrung robuster als 0.10.2: Der sichere Standard ist jetzt ein sichtbarer Fensterstart ohne Tray. Gleichzeitig kann die Anwendung aus dem entpackten Archiv über eine echte Startdatei gestartet werden. Wer das alte Tray-Verhalten bewusst nutzen will, kann es weiterhin explizit erzwingen.
+
+## Weiter offene Punkte
+
+- Die echte visuelle Qt-Prüfung muss lokal mit installierter PySide6- oder PyQt6-Bindung erfolgen.
+- Ein vollständiges Linux-Paketformat wie `.deb`, `.rpm`, AppImage oder Flatpak ist noch nicht erzeugt. Für diese Runde wurde bewusst zuerst der robuste Direktstarter aus dem Quellarchiv umgesetzt.

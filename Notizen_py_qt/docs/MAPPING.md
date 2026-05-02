@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.1**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.3**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -19,6 +19,15 @@ Aktiver Portierungsstand: **0.10.1**. Diese Datei beschreibt die aktuelle semant
 | `ApplicationEvents.vb` | `startup.py`, `app.py` | Legacy-Startargumente wie minimierter Start und direkte Datei-/FTP-Ziele sind portiert. |
 | `passwort_dialog*.vb`, `wanna_save.vb`, `wanna_restart.vb`, `AboutBox1.vb` | Qt-Dialoge in `app.py` | Passwort-, Speicher-, Einstellungs- und Info-Dialoge sind in Qt nachgebildet. |
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
+
+## In 0.10.3 weitergeführt
+
+- Linux/GNOME-Direktstart ergänzt: `Notizen starten.sh` und `notizen-starten.sh` starten aus dem entpackten Ordner ohne vorheriges `python -m` und setzen automatisch `PYTHONPATH` auf `src/`.
+- Die Direktstarter hängen standardmäßig `--show --no-tray` an. Damit werden gespeicherte minimierte Fensterzustände ignoriert und das unter GNOME problematische Trayicon deaktiviert.
+- Ein Menü-/Desktop-Starter kann jetzt mit `scripts/install_linux_launcher.sh` installiert werden; mit `--desktop` wird zusätzlich eine anklickbare Desktop-/Schreibtisch-Datei erstellt und, soweit möglich, als vertrauenswürdig markiert.
+- `app.py` akzeptiert neu `--show`/`--visible`, damit sichtbarer Start Vorrang vor alter `/min`-/`-min`-Logik und gespeicherten `Minimized`-Fensterzuständen bekommt.
+- Die GNOME-Tray-Regel wurde verschärft: GNOME versteckt beim Start nicht mehr automatisch ins Tray, auch dann nicht, wenn eine bekannte AppIndicator/KStatusNotifier-Erweiterung erkannt wird. Ein versteckter Tray-Start bleibt nur per `--force-tray-start` beziehungsweise `NOTIZEN_FORCE_TRAY_START=1` möglich.
+- `scripts/package_zip.py` behandelt `.desktop`-Dateien wie ausführbare Startdateien und speichert sie im ZIP mit `755`; Verzeichnisse bleiben `755`, normale Dateien `644`.
 
 ## In 0.10.1 weitergeführt
 

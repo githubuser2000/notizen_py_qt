@@ -3,6 +3,7 @@
 from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_paste_clone
 from .alx_io import backup_directory_for, create_backup, dump_alx_bytes, list_backups, load_alx, load_alx_bytes, save_alx
 from .settings import normalize_autosave_seconds, normalize_window_state
+from .tray_support import decide_startup_tray_visibility, is_gnome_session
 from .startup import build_autostart_command, legacy_autostart_arguments
 from .desktop_note_legacy import legacy_opacity_percent_for_transparency_percent, legacy_transparency_menu_options
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, legacy_documents_notizen_dir, split_legacy_file_location
@@ -21,6 +22,8 @@ __all__ = [
     "save_alx",
     "normalize_autosave_seconds",
     "normalize_window_state",
+    "decide_startup_tray_visibility",
+    "is_gnome_session",
     "legacy_opacity_percent_for_transparency_percent",
     "legacy_transparency_menu_options",
     "LEGACY_DEFAULT_FILENAME",
@@ -30,4 +33,4 @@ __all__ = [
     "legacy_autostart_arguments",
 ]
 
-__version__ = "0.10.1"
+__version__ = "0.10.3"

@@ -19,6 +19,7 @@ from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_paste_clone
 from .desktop_note_legacy import legacy_transparency_menu_options
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
 from .startup import apply_windows_autostart_script, parse_legacy_startup_args
+from .tray_support import decide_startup_tray_visibility, gnome_tray_install_hint
 from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
 from .settings import AppSettings, normalize_autosave_seconds, normalize_window_state
@@ -479,8 +480,19 @@ if QtWidgets is not None:
 
 
     class MainWindow(QtWidgets.QMainWindow):
-        def __init__(self, initial_path: str | None = None, password: str | None = None) -> None:
+        def __init__(
+            self,
+            initial_path: str | None = None,
+            password: str | None = None,
+            *,
+            disable_tray: bool = False,
+            force_tray_start: bool = False,
+        ) -> None:
             super().__init__()
+            self.disable_tray = bool(disable_tray)
+            self.force_tray_start = bool(force_tray_start)
+            self.tray_icon = None
+            self.tray_menu = None
             self.settings = AppSettings.load()
             self.document = NoteDocument.new()
             self.document.password = password or ""
@@ -937,6 +949,9 @@ if QtWidgets is not None:
 
         def _create_tray_icon(self) -> None:
             self.tray_icon = None
+            self.tray_menu = None
+            if self.disable_tray:
+                return
             if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
                 return
             self.tray_menu = QtWidgets.QMenu(self)
@@ -947,8 +962,22 @@ if QtWidgets is not None:
             self.update_tray_menu()
             self.tray_icon.show()
 
+        def tray_hide_decision(self):
+            return decide_startup_tray_visibility(
+                tray_icon_created=bool(getattr(self, "tray_icon", None)),
+                show_in_taskbar_when_minimized=self.settings.show_in_taskbar_when_minimized,
+                gnome_safe_start=self.settings.gnome_safe_tray_start,
+                force_hide_to_tray=self.force_tray_start,
+            )
+
+        def tray_safety_message(self) -> str:
+            decision = self.tray_hide_decision()
+            if decision.gnome_session and not decision.hide_to_tray:
+                return f"{decision.reason} {gnome_tray_install_hint()}"
+            return decision.reason
+
         def update_tray_menu(self) -> None:
-            if not getattr(self, "tray_icon", None):
+            if not getattr(self, "tray_icon", None) or not getattr(self, "tray_menu", None):
                 return
             self.tray_menu.clear()
             self.tray_menu.addAction(self.tr("Strip1_8", "Beenden"), self.close)
@@ -2684,6 +2713,9 @@ if QtWidgets is not None:
             border_check.setChecked(self.settings.show_desknote_borders)
             taskbar_check = QtWidgets.QCheckBox()
             taskbar_check.setChecked(self.settings.show_in_taskbar_when_minimized)
+            gnome_safe_tray_check = QtWidgets.QCheckBox()
+            gnome_safe_tray_check.setChecked(self.settings.gnome_safe_tray_start)
+            gnome_safe_tray_check.setToolTip("Unter GNOME nicht unsichtbar ins Tray starten, wenn keine AppIndicator/KStatusNotifier-Erweiterung erkannt wird.")
             autorun_check = QtWidgets.QCheckBox()
             autorun_check.setChecked(self.settings.autorun_enabled)
             autorun_minimized_check = QtWidgets.QCheckBox()
@@ -2700,6 +2732,7 @@ if QtWidgets is not None:
             layout.addRow("Scrollleisten im Editor", scroll_combo)
             layout.addRow("Desktop-Notiz-Ränder zeigen", border_check)
             layout.addRow("Minimiert in Taskleiste zeigen", taskbar_check)
+            layout.addRow("GNOME ohne Tray nicht verstecken", gnome_safe_tray_check)
             layout.addRow("Autostart vormerken", autorun_check)
             layout.addRow("Autostart minimiert", autorun_minimized_check)
 
@@ -2717,6 +2750,7 @@ if QtWidgets is not None:
                 self.settings.scrollbars_choice = int(scroll_combo.currentData())
                 self.settings.show_desknote_borders = border_check.isChecked()
                 self.settings.show_in_taskbar_when_minimized = taskbar_check.isChecked()
+                self.settings.gnome_safe_tray_start = gnome_safe_tray_check.isChecked()
                 self.settings.autorun_enabled = autorun_check.isChecked()
                 self.settings.autorun_minimized = autorun_minimized_check.isChecked()
                 self.settings.save()
@@ -2735,7 +2769,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.1"
+                __version__ = "0.10.3"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
@@ -2783,8 +2817,12 @@ if QtWidgets is not None:
         def changeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             super().changeEvent(event)
             if event.type() == _enum(QtCore.QEvent, "Type", "WindowStateChange"):
-                if self.isMinimized() and getattr(self, "tray_icon", None) and not self.settings.show_in_taskbar_when_minimized:
-                    QtCore.QTimer.singleShot(0, self.hide)
+                if self.isMinimized():
+                    decision = self.tray_hide_decision()
+                    if decision.hide_to_tray:
+                        QtCore.QTimer.singleShot(0, self.hide)
+                    elif decision.gnome_session:
+                        self.statusBar().showMessage(decision.reason)
 
         def closeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             if not self.maybe_save_changes():
@@ -2805,6 +2843,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("file", nargs="?", help="ALX/Notizen-Datei oder ftp://-URL zum Öffnen")
     parser.add_argument("--password", help="Passwort für geschützte ALX-Dateien")
     parser.add_argument("--minimized", action="store_true", help="Minimiert starten")
+    parser.add_argument(
+        "--show",
+        "--visible",
+        dest="show",
+        action="store_true",
+        help="Sichtbar starten und gespeicherten/minimierten Startzustand ignorieren",
+    )
+    parser.add_argument("--no-tray", action="store_true", help="Trayicon deaktivieren und nie unsichtbar starten")
+    parser.add_argument("--force-tray-start", action="store_true", help="Auch unter GNOME verborgen ins Tray starten")
     parser.add_argument("--smoke-test", action="store_true", help="Nur initialisieren und sofort beenden")
     if legacy.help_requested:
         parser.print_help()
@@ -2820,15 +2867,28 @@ def main(argv: list[str] | None = None) -> int:
     if not icon.isNull():
         app.setWindowIcon(icon)
     startup_file = args.file or legacy.file
-    window = MainWindow(startup_file, password=args.password)
-    start_minimized = bool(args.minimized or legacy.minimized or normalize_window_state(window.settings.window_state) == "Minimized")
+    window = MainWindow(
+        startup_file,
+        password=args.password,
+        disable_tray=args.no_tray,
+        force_tray_start=args.force_tray_start,
+    )
+    start_minimized = bool(
+        not args.show
+        and (args.minimized or legacy.minimized or normalize_window_state(window.settings.window_state) == "Minimized")
+    )
     if args.smoke_test:
         return 0
     if start_minimized:
-        if getattr(window, "tray_icon", None) and not window.settings.show_in_taskbar_when_minimized:
+        decision = window.tray_hide_decision()
+        if decision.hide_to_tray:
             window.hide()
         else:
-            window.showMinimized()
+            # GNOME often has no visible legacy tray.  Show the main window
+            # instead of creating an inaccessible hidden process.
+            window.show()
+            if decision.reason:
+                window.statusBar().showMessage(decision.reason)
     else:
         window.show()
     return int(app.exec())

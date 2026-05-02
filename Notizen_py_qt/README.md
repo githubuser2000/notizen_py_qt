@@ -2,16 +2,58 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.1**.
+Aktueller Stand dieses Archivs: **0.10.3**.
 
 ## Start
+
+Direkt aus dem entpackten Ordner, ohne `python -m`:
+
+```bash
+./Notizen\ starten.sh
+```
+
+oder technisch gleichwertig:
+
+```bash
+./notizen-starten.sh
+```
+
+Diese Startdatei setzt den Quellordner automatisch in `PYTHONPATH` und startet standardmäßig mit `--show --no-tray`, damit GNOME dich nicht durch ein unsichtbares Trayicon aussperrt. Eine `.alx`-Datei kann als Argument übergeben werden:
+
+```bash
+./Notizen\ starten.sh /pfad/zur/datei.alx
+```
+
+Für einen GNOME-/Linux-Anwendungsstarter im Menü:
+
+```bash
+./scripts/install_linux_launcher.sh
+```
+
+Für einen zusätzlichen Desktop-/Schreibtisch-Starter:
+
+```bash
+./scripts/install_linux_launcher.sh --desktop
+```
+
+PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer ebenfalls akzeptiert, falls PyQt6 installiert oder lokal bevorzugt wird. Falls Qt für Python fehlt:
+
+```bash
+python3 -m pip install --user "PySide6>=6.6,<7"
+```
+
+Optional für alte verschlüsselte ALX-Dateien:
+
+```bash
+python3 -m pip install --user pycryptodome
+```
+
+Eine Installation als Python-Paket funktioniert weiterhin:
 
 ```bash
 python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
-
-PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer ebenfalls akzeptiert, falls PyQt6 installiert oder lokal bevorzugt wird.
 
 ## Enthalten
 
@@ -49,6 +91,27 @@ PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer eben
 - Autostart-Einstellung aus `xml_kram.setshortcut` ist als Windows-Startup-`.cmd`-Adapter portiert: jüngste zuletzt geöffnete Datei wird bevorzugt, `-min` wird bei minimiertem Autostart vorangestellt.
 - Fensterzustände aus `xml_kram.vb` werden robuster normalisiert; gespeicherte `minimized`-/`maximized`-Werte werden beim Start ausgewertet, und offensichtlich außerhalb des Arbeitsbereichs liegende Hauptfensterpositionen werden abgefangen.
 - RTF-Tabellenzellen aus alten RichTextBox-Inhalten werden in Suche, Statistik und Exporten nicht mehr zusammengeschoben, sondern als Tabulatoren und Zeilenumbrüche erhalten.
+- ZIP-Verzeichnisrechte und Skript-Ausführungsrechte werden beim Paketieren korrekt gesetzt: Verzeichnisse `755`, Shell-/Python-Build-Skripte `755`, Desktop-Starter `755`, normale Dateien `644`.
+- Neue Startdateien für Linux/GNOME: `Notizen starten.sh`, `notizen-starten.sh`, `Notizen PyQt.desktop` und `scripts/install_linux_launcher.sh`. Die Direktstarter setzen automatisch `PYTHONPATH` und starten sichtbar ohne Tray.
+- GNOME-Tray-Schutz verschärft: GNOME startet standardmäßig sichtbar, auch wenn eine Tray-/AppIndicator-Erweiterung erkannt wird. Ein versteckter Tray-Start ist nur noch bewusst per `--force-tray-start` beziehungsweise mit `--allow-tray` im Startskript sinnvoll. `--no-tray` deaktiviert das Trayicon vollständig.
+
+## GNOME und Trayicons
+
+GNOME zeigt klassische Trayicons/AppIndicators nicht zuverlässig. Dieser Port startet deshalb unter GNOME ab 0.10.3 grundsätzlich mit sichtbarem Hauptfenster, solange der Tray-Start nicht ausdrücklich erzwungen wird. Das gilt auch dann, wenn eine AppIndicator-Erweiterung erkannt wird.
+
+Sicherster GNOME-Start aus dem entpackten Ordner:
+
+```bash
+./Notizen\ starten.sh
+```
+
+Der Starter hängt automatisch `--show --no-tray` an. Dadurch wird ein gespeicherter minimierter Fensterzustand ignoriert und das Trayicon deaktiviert. Wer das Tray bewusst wieder nutzen will:
+
+```bash
+./notizen-starten.sh --allow-tray --force-tray-start --minimized
+```
+
+Für sichtbare Trayicons unter GNOME installiere und aktiviere eine AppIndicator/KStatusNotifier-Erweiterung, zum Beispiel `appindicatorsupport@rgcjonas.gmail.com`. Trotzdem bleibt der Standard dieses Ports sichtbar-first, weil die reale Tray-Erreichbarkeit je nach GNOME-Sitzung und Erweiterung variieren kann.
 
 Historische Qt-/QML-Migrationsskripte aus früheren Zwischenschritten liegen nicht mehr im aktiven Projektpfad, sondern unter `legacy_build_metadata/`.
 
