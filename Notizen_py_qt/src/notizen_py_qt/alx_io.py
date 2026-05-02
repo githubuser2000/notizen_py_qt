@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import shutil
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -12,6 +13,107 @@ from .rtf_utils import plain_text_to_rtf
 
 GZIP_MAGIC = b"\x1f\x8b"
 BLANK_PASSWORD_24 = " " * 24
+
+
+@dataclass(frozen=True, slots=True)
+class BackupEntry:
+    """One Notizen.NET-style safety copy next to the saved ALX file."""
+
+    path: Path
+    created: datetime | None
+    size: int
+
+
+def backup_directory_for(path: str | Path) -> Path:
+    """Return the legacy backup directory for an ALX file.
+
+    Notizen.NET created safety copies in a sibling directory named like the
+    document without the ``.alx`` suffix.  Example: ``notes.alx`` stores
+    backups below ``notes/``.
+    """
+
+    return Path(path).with_suffix("")
+
+
+def backup_file_pattern(path: str | Path) -> str:
+    original = Path(path)
+    suffix = original.suffix or ".alx"
+    return f"{original.stem}-*{suffix}"
+
+
+def parse_legacy_backup_timestamp(backup_path: str | Path, original_path: str | Path) -> datetime | None:
+    """Parse ``name-YYYY-MM-DD-HH-MM-SS-ms.alx`` timestamps used by Notizen.NET."""
+
+    backup = Path(backup_path)
+    original = Path(original_path)
+    suffix = original.suffix or backup.suffix
+    prefix = f"{original.stem}-"
+    name = backup.name
+    if not name.startswith(prefix) or (suffix and not name.endswith(suffix)):
+        return None
+    stamp = name[len(prefix): -len(suffix) if suffix else None]
+    parts = stamp.split("-")
+    if len(parts) != 7:
+        return None
+    try:
+        year, month, day, hour, minute, second, millisecond = (int(part) for part in parts)
+        return datetime(year, month, day, hour, minute, second, millisecond * 1000)
+    except ValueError:
+        return None
+
+
+def _backup_sort_value(entry: BackupEntry) -> tuple[datetime, str]:
+    if entry.created is not None:
+        return entry.created, entry.path.name
+    try:
+        return datetime.fromtimestamp(entry.path.stat().st_mtime), entry.path.name
+    except OSError:
+        return datetime.min, entry.path.name
+
+
+def list_backups(path: str | Path) -> list[BackupEntry]:
+    """List legacy safety copies, oldest first."""
+
+    original = Path(path)
+    backup_dir = backup_directory_for(original)
+    if not backup_dir.exists():
+        return []
+    entries: list[BackupEntry] = []
+    for candidate in backup_dir.glob(backup_file_pattern(original)):
+        if not candidate.is_file():
+            continue
+        try:
+            size = candidate.stat().st_size
+        except OSError:
+            continue
+        entries.append(
+            BackupEntry(
+                path=candidate,
+                created=parse_legacy_backup_timestamp(candidate, original),
+                size=size,
+            )
+        )
+    return sorted(entries, key=_backup_sort_value)
+
+
+def prune_backups(path: str | Path, keep: int = 30) -> list[Path]:
+    """Delete old safety copies and return the removed files."""
+
+    if keep < 0:
+        keep = 0
+    entries = list_backups(path)
+    if keep == 0:
+        stale = entries
+    else:
+        stale = entries[:-keep]
+    removed: list[Path] = []
+    for entry in stale:
+        try:
+            entry.path.unlink()
+            removed.append(entry.path)
+        except OSError:
+            pass
+    return removed
 
 
 class AlxError(Exception):
@@ -246,23 +348,19 @@ def document_to_xml_bytes(document: NoteDocument) -> bytes:
     return buffer.getvalue()
 
 
-def create_backup(path: Path, keep: int = 30) -> Path | None:
-    if keep <= 0 or not path.exists():
+def create_backup(path: str | Path, keep: int = 30) -> Path | None:
+    """Create one legacy safety copy before overwriting a saved ALX file."""
+
+    target = Path(path)
+    if keep <= 0 or not target.exists():
         return None
-    backup_dir = path.with_suffix("")
+    backup_dir = backup_directory_for(target)
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")[:-3]
-    backup = backup_dir / f"{path.stem}-{stamp}{path.suffix}"
-    shutil.copy2(path, backup)
-    backups = sorted(
-        [p for p in backup_dir.glob(f"{path.stem}-*{path.suffix}") if p.is_file()],
-        key=lambda p: p.stat().st_mtime,
-    )
-    for old in backups[:-keep]:
-        try:
-            old.unlink()
-        except OSError:
-            pass
+    suffix = target.suffix or ".alx"
+    backup = backup_dir / f"{target.stem}-{stamp}{suffix}"
+    shutil.copy2(target, backup)
+    prune_backups(target, keep=keep)
     return backup
 
 

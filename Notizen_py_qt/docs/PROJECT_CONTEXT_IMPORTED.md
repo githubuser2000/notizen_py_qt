@@ -12,4 +12,8 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT_0.9.8.md`.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.1.
+
+In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
+
+In 0.10.1 zusätzlich übernommen: Die aktuelle Weiterführung greift die verbliebenen Legacy-Details aus `Datei.vb`, `desknote_kontext_opacy.vb` und `xml_kram.vb` auf: Standardordner/Dateiname, robustes Pfad-Splitting, alte Transparenzsemantik der Desktop-Notizen und normalisierte Fensterzustände.

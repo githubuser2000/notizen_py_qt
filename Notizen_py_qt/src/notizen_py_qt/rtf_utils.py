@@ -50,6 +50,12 @@ _TEXT_CONTROLS = {
     "rquote": "’",
     "ldblquote": "“",
     "rdblquote": "”",
+    # RichTextBox tables use cell/row separators.  The Qt bridge does not try to
+    # recreate table layout here, but preserving tab/newline boundaries keeps
+    # pasted legacy table content readable in search, statistics and exports.
+    "cell": "\t",
+    "nestcell": "\t",
+    "row": "\n",
 }
 
 

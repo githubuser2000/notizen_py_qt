@@ -1,84 +1,89 @@
-# Transpilationsbericht Notizen.NET → Python/Qt 0.9.8
+# Transpilationsbericht Notizen.NET → Python/Qt 0.10.1
 
-Datum: 2026-05-01
+Datum: 2026-05-02
 
 ## Ziel dieser Runde
 
-Der vorhandene Python/Qt-Port wurde anhand des alten VB.NET/WinForms-Projekts weitergeführt. Der Projektkontext aus den bisherigen Notizen-Chats wurde übernommen: keine weitere 1:1-Übersetzung alter WinForms-Designerdateien, sondern semantische Portierung der alten Bedienlogik in eine wartbare Python/Qt-Struktur.
+Der vorhandene Python/Qt-Port 0.10.0 wurde erneut gegen das alte VB.NET/WinForms-Projekt geprüft und semantisch weitergeführt. Der aktive Port bleibt Python/Qt mit PySide6/PyQt6-Kompatibilität; frühere Slint-/QML-Zwischenschritte bleiben historisches Material und sind nicht Teil des aktiven Laufzeitpfads.
 
 ## Ausgewertete Ausgangslage
 
-- Original: `Notizen.NET/Notizen/*.vb`, insbesondere `Notizen.vb`, `Baum.vb`, `inhalt.vb`, `Datei.vb`, `xml_kram.vb`, `suche.vb`, `desknote.vb`, `ftpkram.vb`, `wecker.vb`, `einstellungen.vb` und `languages.vb`.
-- Zielprojekt: `src/notizen_py_qt/` mit PySide6/PyQt6-Kompatibilitätslayer.
-- Der vorherige Stand war Version 0.9.7.
-- Im aktiven Projektpfad lagen noch alte Dateien aus einem früheren UI-Zwischenschritt. Diese wurden archiviert, damit der aktive Pfad wieder eindeutig Python/Qt ist.
+- Original: `Notizen.NET/Notizen/*.vb`, in dieser Runde besonders `Datei.vb`, `desknote_kontext_opacy.vb` und `xml_kram.vb`.
+- Zielprojekt: `src/notizen_py_qt/` mit getrennten Modulen für Datenmodell, ALX-IO, Einstellungen, Startparameter, RTF-Brücke, Legacy-Pfade und Qt-Oberfläche.
+- Vorheriger Stand: 0.10.0 mit ALX, Baum/Editor, Suche, Export, Desktop-Notizen, FTP, Wecker, Statistik, Config-/Autostart-Parität, Backup-Verwaltung und RTF-Tabellengrenzen.
 
-## Umgesetzte Änderungen
+## Umgesetzte Änderungen in 0.10.1
 
-### 1. Ganze Baum-Zusammenfassung aus Notizen.NET ergänzt
+### 1. Datei-Standardlogik aus `Datei.vb` portiert
 
-Das alte Notizen.NET hatte zwei Zusammenfassungswege: den aktuellen Teilbaum und den Start-/Gesamtbaum. In 0.9.8 gibt es nun zusätzlich zur bestehenden Aktion **Teilbaum zusammenfassen** die Aktion **Ganzen Baum zusammenfassen**.
+Das alte `Datei.vb` nutzt als Startverzeichnis `MyDocuments\\Notizen`, legt diesen Ordner beim Start an und startet mit dem Dateinamen `unbenannt.alx`. 0.10.1 bildet diese Details als reine, testbare Python-Helfer ab:
 
-Umsetzung:
+- `LEGACY_DEFAULT_FILENAME = "unbenannt.alx"`
+- `legacy_documents_notizen_dir(...)`
+- `ensure_legacy_documents_notizen_dir(...)`
+- `split_legacy_file_location(...)`
 
-- neue QAction `unify_root_action`
-- Menüeintrag im Knoten-Menü
-- Eintrag im Baum-Kontextmenü und in der Knoten-Werkzeugleiste
-- Aktivierung nur bei vorhandenem Dokumentwurzelknoten
-- neue Methode `unify_root_tree()`
-- gemeinsamer Hilfsweg `_append_unified_note(source, title)` für Teilbaum und Gesamtbaum
+Der Standardordner ist im Port plattformneutral `Documents/Notizen` unterhalb des Benutzerordners.
 
-Die erzeugte Zusammenfassungsnotiz wird als Kind des Quellknotens angelegt, der Quellknoten wird aufgeklappt und die neue Notiz wird ausgewählt.
+### 2. Legacy-Dateipfade robuster gesplittet
 
-### 2. Suche und Export synchronisieren den sichtbaren Editorinhalt
+Die alte VB.NET-Anwendung lief auf Windows und trennte Dateipfade über Backslashes. Unter Linux/macOS interpretiert `pathlib.Path` solche Werte nicht automatisch als Verzeichnistrenner. 0.10.1 trennt daher Windows- und POSIX-Pfade bewusst selbst:
 
-Mehrere alte WinForms-Aktionen arbeiten implizit mit dem gerade sichtbaren `RichTextBox`-Inhalt. Der Python/Qt-Port kann dagegen Modell und Editor getrennt halten. Deshalb synchronisiert 0.9.8 vor folgenden Auswertungen explizit den Editor zurück in das aktuelle Modell:
+- `C:\\Users\\me\\Notizen\\demo.alx` wird zu Verzeichnis `C:\\Users\\me\\Notizen` und Datei `demo.alx`.
+- `/home/me/Notizen/demo.alx` wird weiter korrekt behandelt.
+- Leere Werte aus alten Configs fallen auf `Documents/Notizen` und `unbenannt.alx` zurück.
+- `AppSettings.remember_file(...)` verwendet diese Logik und erhält Recent-Einträge unverändert.
 
-- Suchdialog-Suche
-- Schnell-Suche
-- Export des aktuellen Teilbaums
-- Export des ganzen Baums
-- Roh-RTF-Export des aktuellen Knotens
+Damit werden alte `open`-Configwerte und zuletzt geöffnete Dateien auf Nicht-Windows-Systemen nicht mehr falsch als einzelner Dateiname behandelt.
 
-Damit werden aktuelle, noch nicht durch Fokuswechsel gespeicherte Texte nicht mehr bei Suche oder Export übergangen.
+### 3. Desktop-Notiz-Transparenz aus `desknote_kontext_opacy.vb` korrigiert
 
-### 3. Zuletzt-geöffnet-Menü abgesichert
+Das alte Kontextmenü bezeichnete die Einträge als Transparenz, nicht als Deckkraft:
 
-Die Recent-Datei-Aktion ruft nun nicht mehr direkt `load_path()` auf, sondern geht über `open_recent_file()`:
+- `90 %` Transparenz bedeutete `Opacity = 0.1`.
+- `80 %` Transparenz bedeutete `Opacity = 0.2`.
+- `0 %` Transparenz bedeutete `Opacity = 1.0`.
 
-- nicht mehr vorhandene Dateien werden abgefangen
-- ungespeicherte Änderungen werden über denselben Speicher-/Verwerfen-/Abbrechen-Pfad behandelt wie beim normalen Öffnen
-- der bestehende Ladevorgang bleibt anschließend unverändert
+0.10.1 ergänzt dafür `desktop_note_legacy.py` mit:
 
-### 4. Aktiven Projektpfad bereinigt
+- `legacy_opacity_percent_for_transparency_percent(...)`
+- `legacy_transparency_menu_options()`
 
-Aus dem aktiven Projekt wurden alte Migrationsreste aus früheren UI-Zwischenschritten entfernt und archiviert:
+`DesktopNoteWindow` nutzt diese Liste jetzt direkt. Das Menü sieht dadurch wie das alte WinForms-Menü aus, während die Qt-Fensterinternas weiterhin mit Deckkraftwerten arbeiten.
 
-- Root-CMake-Dateien
-- alte C++-/Rust-/QML-Beispiele
-- alte Hilfsskripte zur früheren UI-Migration
-- alte Migrationstests
-- alte Qt/QML-Statusberichte
-- das alte Mapping-Dokument
+### 4. Fensterzustände aus `xml_kram.vb` normalisiert
 
-Die Dateien bleiben unter `legacy_build_metadata/active_root_archived_0.9.8/` beziehungsweise im vorhandenen Legacy-Kit erhalten, sind aber nicht mehr Teil des aktiven Python/Qt-Pfads.
+Alte Configs können `windowstate="minimized"`, `windowstate="maximized"` oder ähnliche Schreibweisen enthalten. 0.10.1 führt dafür `normalize_window_state(...)` ein:
 
-### 5. Dokumentation aktualisiert
+- `minimized` wird zu `Minimized`.
+- `maximized` wird zu `Maximized`.
+- unbekannte Werte fallen auf `Normal` zurück.
 
-- `README.md` auf 0.9.8 erweitert
-- neues aktives `docs/MAPPING.md` mit Notizen.NET-zu-Python/Qt-Zuordnung
-- `docs/PROJECT_CONTEXT_IMPORTED.md` mit dem übernommenen Projekt-Chat-Kontext
-- dieser Bericht als `TRANSPILE_NET_TO_PYQT_REPORT_0.9.8.md`
-- `TRANSPILE_NET_TO_PYQT_REPORT.md` zeigt auf den aktuellen Stand
+Die Startlogik berücksichtigt gespeicherte minimierte Zustände jetzt zusätzlich zu den alten `/min`-/`-min`-Argumenten. Beim Wiederherstellen des Hauptfensters werden außerdem offensichtlich außerhalb des Arbeitsbereichs liegende Koordinaten abgefangen.
 
-### 6. Tests ergänzt
+### 5. Paket- und API-Stand aktualisiert
 
-Neu: `tests/test_legacy_ui_source_098.py` prüft statisch, dass die 0.9.8-UI-Anbindungen vorhanden sind:
+- Paketversion: `0.10.1`
+- Neue API-Exports in `notizen_py_qt.__init__`:
+  - `LEGACY_DEFAULT_FILENAME`
+  - `legacy_documents_notizen_dir`
+  - `split_legacy_file_location`
+  - `legacy_opacity_percent_for_transparency_percent`
+  - `legacy_transparency_menu_options`
+  - `normalize_window_state`
 
-- Gesamtbaum-Zusammenfassung
-- sichere Recent-Datei-Öffnung
-- Editor-Synchronisierung vor Suche und Export
+## Neue Tests
+
+Neu ergänzt:
+
+- `tests/test_legacy_paths_desktop_101.py`
+  - Standardordner und Standarddateiname aus `Datei.vb`
+  - Windows-Pfad-Splitting auf Nicht-Windows-Systemen
+  - POSIX-Pfad-Splitting und Fallbacks für leere Configwerte
+  - `AppSettings.remember_file(...)` mit Backslash-Pfaden
+  - alte Desktop-Notiz-Transparenzsemantik
+  - Fensterzustandsnormalisierung
 
 ## Nicht visuell geprüft
 
-In dieser Umgebung ist keine Qt-Bindung installiert. Deshalb konnte ich das Hauptfenster nicht interaktiv öffnen. Die headless Validierung, Import-/Datenmodelltests und statischen UI-Quellprüfungen laufen jedoch durch. Eine lokale Sichtprüfung mit `PySide6>=6.6,<7` oder `PyQt6>=6.6,<7` bleibt der nächste sinnvolle Schritt.
+In dieser Umgebung ist keine Qt-Bindung installiert. Deshalb konnte das Hauptfenster nicht interaktiv geöffnet werden. Die headless Validierung, Import-/Datenmodelltests, Legacy-Pfadtests, Desktop-Notiz-Hilfstests, RTF-/Config-/Autostarttests und statischen UI-Quellprüfungen laufen durch. Eine lokale Sichtprüfung mit `PySide6>=6.6,<7` oder `PyQt6>=6.6,<7` bleibt sinnvoll.

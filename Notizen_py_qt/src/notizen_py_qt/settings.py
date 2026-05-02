@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from .legacy_paths import LEGACY_DEFAULT_FILENAME, legacy_documents_notizen_dir, split_legacy_file_location
+
 
 def default_config_dir() -> Path:
     if os.name == "nt":
@@ -28,16 +30,59 @@ def _as_int(value: str | None, default: int) -> int:
         return default
 
 
+def normalize_autosave_seconds(value: int | str | None) -> int:
+    """Return the WinForms-compatible autosave interval.
+
+    ``einstellungen.vb`` disabled autosave at ``0`` and raised enabled values
+    below five seconds to five seconds.  Keeping this logic in a pure helper
+    lets tests and the Qt settings dialog share the same behavior.
+    """
+
+    try:
+        seconds = int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return 0
+    if seconds <= 0:
+        return 0
+    return max(5, seconds)
+
+
+
+
+def normalize_window_state(value: str | None) -> str:
+    """Normalize legacy/main-form window state names from ``xml_kram.vb``."""
+
+    state = (value or "").strip().lower()
+    if state in {"maximized", "maximise", "maximize", "maximiert"}:
+        return "Maximized"
+    if state in {"minimized", "minimised", "minimize", "minimieren", "minimiert"}:
+        return "Minimized"
+    return "Normal"
+
+def default_toolstrip_positions() -> dict[str, tuple[int, int]]:
+    """Legacy toolbar position map from ``xml_kram.vb``/``Notizen.Designer.vb``."""
+
+    return {
+        "haupt": (0, 0),
+        "elements": (0, 0),
+        "font": (0, 0),
+        "cutpastecopy": (0, 0),
+    }
+
+
 @dataclass(slots=True)
 class AppSettings:
     config_dir: Path = field(default_factory=default_config_dir)
     language: str = "Auto"
-    last_directory: str = ""
-    last_file: str = ""
+    last_directory: str = field(default_factory=lambda: str(legacy_documents_notizen_dir()))
+    last_file: str = LEGACY_DEFAULT_FILENAME
     recent_files: list[str] = field(default_factory=list)
     backup_keep: int = 30
-    autosave_seconds: int = 0
+    autosave_seconds: int = 60
     scrollbars_choice: int = 3
+    open_once_file: str = ""
+    open_once_timestamp: str = ""
+    toolstrip_positions: dict[str, tuple[int, int]] = field(default_factory=default_toolstrip_positions)
     autorun_enabled: bool = False
     autorun_minimized: bool = True
     show_desknote_borders: bool = True
@@ -97,8 +142,17 @@ class AppSettings:
 
         opened = child("open")
         if opened is not None:
-            self.last_directory = opened.get("directory", self.last_directory)
-            self.last_file = opened.get("file", self.last_file)
+            directory = opened.get("directory", self.last_directory)
+            file_name = opened.get("file", self.last_file)
+            if directory is not None and len(directory.strip()) >= 2:
+                self.last_directory = directory
+            else:
+                self.last_directory = str(legacy_documents_notizen_dir())
+            self.last_file = file_name or LEGACY_DEFAULT_FILENAME
+            once_opened = opened.find("once-opened")
+            if once_opened is not None:
+                self.open_once_file = once_opened.get("file", self.open_once_file)
+                self.open_once_timestamp = once_opened.get("timestamp", self.open_once_timestamp)
 
         files = child("files")
         if files is not None:
@@ -119,7 +173,23 @@ class AppSettings:
         if autosave is None:
             autosave = child("x")
         if autosave is not None:
-            self.autosave_seconds = _as_int(autosave.get("seconds", autosave.get("a")), self.autosave_seconds)
+            self.autosave_seconds = normalize_autosave_seconds(
+                _as_int(autosave.get("seconds", autosave.get("a")), self.autosave_seconds)
+            )
+
+        tool_stripes = child("tool-stripes")
+        if tool_stripes is not None:
+            positions = default_toolstrip_positions()
+            positions.update(self.toolstrip_positions)
+            for name in positions:
+                element = tool_stripes.find(name)
+                if element is None:
+                    continue
+                positions[name] = (
+                    _as_int(element.get("x"), positions[name][0]),
+                    _as_int(element.get("y"), positions[name][1]),
+                )
+            self.toolstrip_positions = positions
 
         autorun = child("autorun")
         if autorun is not None:
@@ -147,7 +217,7 @@ class AppSettings:
                 ("height", "window_height"),
             ):
                 setattr(self, field_name, _as_int(main_form.get(attr), getattr(self, field_name)))
-            self.window_state = main_form.get("windowstate", self.window_state)
+            self.window_state = normalize_window_state(main_form.get("windowstate", self.window_state))
 
     def apply_from_file(self, path: str | Path) -> None:
         """Import settings from a selected legacy/current config XML file."""
@@ -168,9 +238,8 @@ class AppSettings:
         return settings
 
     def remember_file(self, path: str | Path) -> None:
-        p = str(Path(path))
-        self.last_directory = str(Path(p).parent)
-        self.last_file = Path(p).name
+        p = os.fspath(path)
+        self.last_directory, self.last_file = split_legacy_file_location(p, self.last_directory)
         self.recent_files = [x for x in self.recent_files if x != p]
         self.recent_files.append(p)
         self.recent_files = self.recent_files[-4:]
@@ -203,7 +272,12 @@ class AppSettings:
             recent.setdefault(key, "")
         ET.SubElement(root, "files", recent)
         ET.SubElement(root, "language", {"choice": self.language})
-        ET.SubElement(root, "open", {"file": self.last_file, "directory": self.last_directory})
+        opened = ET.SubElement(root, "open", {"file": self.last_file, "directory": self.last_directory})
+        ET.SubElement(
+            opened,
+            "once-opened",
+            {"file": self.open_once_file, "timestamp": self.open_once_timestamp},
+        )
         ET.SubElement(
             root,
             "main-form",
@@ -212,14 +286,17 @@ class AppSettings:
                 "y": str(self.window_y),
                 "width": str(self.window_width),
                 "height": str(self.window_height),
-                "windowstate": self.window_state,
+                "windowstate": normalize_window_state(self.window_state),
             },
         )
         ET.SubElement(root, "minimized-show-in", {"taskbar": "yes" if self.show_in_taskbar_when_minimized else "no"})
         ET.SubElement(root, "desknotes", {"show_desknote_borders": "yes" if self.show_desknote_borders else "no"})
         tool_stripes = ET.SubElement(root, "tool-stripes")
+        positions = default_toolstrip_positions()
+        positions.update(self.toolstrip_positions)
         for name in ("haupt", "elements", "font", "cutpastecopy"):
-            ET.SubElement(tool_stripes, name, {"x": "0", "y": "0"})
-        ET.SubElement(root, "x", {"y": "0", "z": "0", "a": str(self.autosave_seconds)})
+            x, y = positions[name]
+            ET.SubElement(tool_stripes, name, {"x": str(x), "y": str(y)})
+        ET.SubElement(root, "x", {"y": "0", "z": "0", "a": str(normalize_autosave_seconds(self.autosave_seconds))})
         tree = ET.ElementTree(root)
         tree.write(self.path, encoding="utf-16", xml_declaration=True)

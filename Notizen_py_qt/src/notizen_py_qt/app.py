@@ -8,18 +8,20 @@ from pathlib import Path
 from typing import Any
 
 from .alarms import AlarmSpec, describe_recurrence, next_occurrence
-from .alx_io import AlxError, InvalidPassword, PasswordRequired, dump_alx_bytes, load_alx, load_alx_bytes, save_alx, normalize_password
+from .alx_io import AlxError, InvalidPassword, PasswordRequired, backup_directory_for, create_backup, dump_alx_bytes, list_backups, load_alx, load_alx_bytes, save_alx, normalize_password
 from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf, tree_to_text_bytes
 from .html_export import HtmlExportOptions, tree_to_html_bytes
 from .ftp_sync import FtpSyncError, FtpTarget
 from .i18n import available_languages, tr
 from .legacy_colors import legacy_light_color_argb
+from .legacy_paths import LEGACY_DEFAULT_FILENAME, ensure_legacy_documents_notizen_dir
 from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_paste_clone
+from .desktop_note_legacy import legacy_transparency_menu_options
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
-from .startup import parse_legacy_startup_args
+from .startup import apply_windows_autostart_script, parse_legacy_startup_args
 from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
-from .settings import AppSettings
+from .settings import AppSettings, normalize_autosave_seconds, normalize_window_state
 from .stats import collect_tree_stats
 
 try:  # Importing is optional so tests and CLI helpers work without Qt installed.
@@ -126,7 +128,7 @@ if QtWidgets is not None:
             self.main_window = main_window
             self.node = node
             if self.node.desktop_note is None:
-                self.node.desktop_note = DesktopNoteState(argb=legacy_light_color_argb())
+                self.node.desktop_note = main_window.default_desktop_note_state()
             self.setWindowTitle(node.title)
             self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_DeleteOnClose"), False)
             self._loading = False
@@ -198,9 +200,9 @@ if QtWidgets is not None:
             menu.addSeparator()
             menu.addAction("Hintergrundfarbe", self._choose_background_color)
             opacity_menu = menu.addMenu("Transparenz")
-            for value in range(10, 101, 10):
-                action = opacity_menu.addAction(f"{value} %")
-                action.triggered.connect(lambda checked=False, v=value: self._set_opacity_percent(v))
+            for label, opacity_percent in legacy_transparency_menu_options():
+                action = opacity_menu.addAction(label)
+                action.triggered.connect(lambda checked=False, v=opacity_percent: self._set_opacity_percent(v))
             menu.addSeparator()
             menu.addAction("Im Hauptfenster öffnen", self._activate_main_window_node)
             menu.addAction("Ausblenden", self.close)
@@ -663,6 +665,8 @@ if QtWidgets is not None:
             self.open_action = self._act("Öffnen", self.open_dialog, "Ctrl+O")
             self.save_action = self._act("Speichern", self.save_file, "Ctrl+S")
             self.save_as_action = self._act("Speichern unter", self.save_file_as)
+            self.backup_now_action = self._act("Jetzt Sicherung erstellen", self.create_manual_backup)
+            self.open_backup_action = self._act("Sicherung öffnen", self.open_backup_dialog)
             self.close_doc_action = self._act("Schließen", self.close_document)
             self.print_note_action = self._act("Aktuelle Notiz drucken", self.print_current_note, "Ctrl+P")
             self.print_subtree_action = self._act("Aktuellen Teilbaum drucken", self.print_current_subtree)
@@ -732,6 +736,10 @@ if QtWidgets is not None:
             self.file_menu.addAction(self.open_action)
             self.file_menu.addAction(self.save_action)
             self.file_menu.addAction(self.save_as_action)
+            self.file_menu.addSeparator()
+            self.file_menu.addAction(self.backup_now_action)
+            self.file_menu.addAction(self.open_backup_action)
+            self.file_menu.addSeparator()
             self.file_menu.addAction(self.close_doc_action)
             self.file_menu.addSeparator()
             self.file_menu.addAction(self.import_txt_action)
@@ -861,6 +869,8 @@ if QtWidgets is not None:
                 self.ftp_action,
                 self.save_action,
                 self.save_as_action,
+                self.backup_now_action,
+                self.open_backup_action,
                 self.close_doc_action,
                 self.print_note_action,
                 self.export_txt_action,
@@ -969,6 +979,8 @@ if QtWidgets is not None:
             self.open_action.setText(self.tr("Strip1_3", "Öffnen"))
             self.save_action.setText(self.tr("Strip1_4", "Speichern"))
             self.save_as_action.setText(self.tr("Strip1_5", "Speichern unter"))
+            self.backup_now_action.setText("Jetzt Sicherung erstellen")
+            self.open_backup_action.setText("Sicherung öffnen")
             self.close_doc_action.setText(self.tr("Strip1_6", "Schließen"))
             self.print_note_action.setText(self.tr("Strip1_15", "Aktuelle Notiz drucken"))
             self.print_subtree_action.setText("Aktuellen Teilbaum drucken")
@@ -1040,8 +1052,18 @@ if QtWidgets is not None:
 
         def _restore_window_settings(self) -> None:
             self.resize(max(640, self.settings.window_width), max(420, self.settings.window_height))
-            self.move(self.settings.window_x, self.settings.window_y)
-            if self.settings.window_state.lower() == "maximized":
+            x = int(self.settings.window_x)
+            y = int(self.settings.window_y)
+            try:
+                screen = QtGui.QGuiApplication.primaryScreen()
+                available = screen.availableGeometry() if screen is not None else None
+                if available is not None and (x > available.right() - 50 or y > available.bottom() - 50):
+                    x = max(available.left(), 60)
+                    y = max(available.top(), 60)
+            except Exception:
+                pass
+            self.move(x, y)
+            if normalize_window_state(self.settings.window_state) == "Maximized":
                 self.showMaximized()
 
         def _store_window_settings(self) -> None:
@@ -1051,7 +1073,7 @@ if QtWidgets is not None:
                 self.settings.window_y = geo.y()
                 self.settings.window_width = geo.width()
                 self.settings.window_height = geo.height()
-            self.settings.window_state = "Maximized" if self.isMaximized() else "Normal"
+            self.settings.window_state = "Maximized" if self.isMaximized() else "Minimized" if self.isMinimized() else "Normal"
             if self.document.path:
                 self.settings.remember_file(self.document.path)
             self.settings.save()
@@ -1111,6 +1133,8 @@ if QtWidgets is not None:
             for action in (
                 self.save_action,
                 self.save_as_action,
+                self.backup_now_action,
+                self.open_backup_action,
                 self.close_doc_action,
                 self.print_note_action,
                 self.print_subtree_action,
@@ -1447,7 +1471,7 @@ if QtWidgets is not None:
         def open_dialog(self) -> None:
             if not self.maybe_save_changes():
                 return
-            start_dir = self.settings.last_directory or str(Path.home())
+            start_dir = self.settings.last_directory or str(ensure_legacy_documents_notizen_dir())
             file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self,
                 "Notizen öffnen",
@@ -1649,7 +1673,7 @@ if QtWidgets is not None:
 
         def save_file_as(self) -> bool:
             self.save_current_editor_to_node()
-            start = str(self.document.path or Path(self.settings.last_directory or str(Path.home())) / "unbenannt.alx")
+            start = str(self.document.path or Path(self.settings.last_directory or str(ensure_legacy_documents_notizen_dir())) / LEGACY_DEFAULT_FILENAME)
             file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Speichern unter", start, "ALX Dateien (*.alx)")
             if not file_name:
                 return False
@@ -1676,6 +1700,68 @@ if QtWidgets is not None:
             self.update_title()
             self.statusBar().showMessage(f"Gespeichert: {path}")
             return True
+
+        def create_manual_backup(self) -> bool:
+            """Create an explicit Notizen.NET-style safety copy of the saved ALX file."""
+            self.save_current_editor_to_node()
+            self.sync_expansion_from_tree()
+            self.sync_model_from_tree()
+            if self.document.path is None:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Sicherung",
+                    "Diese Notizdatei wurde noch nicht gespeichert. Bitte zuerst speichern.",
+                )
+                return False
+            path = self.document.path
+            if not path.exists():
+                QtWidgets.QMessageBox.warning(self, "Sicherung", f"Datei nicht gefunden:\n{path}")
+                return False
+            try:
+                backup = create_backup(path, keep=self.settings.backup_keep)
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "Sicherung fehlgeschlagen", str(exc))
+                return False
+            if backup is None:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Sicherung",
+                    "Sicherungen sind deaktiviert oder es gibt noch keine gespeicherte Datei.",
+                )
+                return False
+            self.statusBar().showMessage(f"Sicherung erstellt: {backup}")
+            return True
+
+        def open_backup_dialog(self) -> bool:
+            """Open one of the legacy safety copies from the configured backup directory."""
+            if self.document.path is None:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Sicherung öffnen",
+                    "Erst eine ALX-Datei öffnen oder speichern, dann kann der Sicherungsordner ermittelt werden.",
+                )
+                return False
+            backup_dir = backup_directory_for(self.document.path)
+            if not backup_dir.exists():
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Sicherung öffnen",
+                    f"Noch keine Sicherungen vorhanden:\n{backup_dir}",
+                )
+                return False
+            backups = list_backups(self.document.path)
+            start = str(backups[-1].path if backups else backup_dir)
+            file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Sicherung öffnen",
+                start,
+                "ALX Sicherungen (*.alx);;Alle Dateien (*)",
+            )
+            if not file_name:
+                return False
+            if not self.maybe_save_changes():
+                return False
+            return self.load_path(Path(file_name))
 
         def autosave(self) -> None:
             if self.document.changed and self.document.path is not None:
@@ -1998,6 +2084,25 @@ if QtWidgets is not None:
                 self.tree.setCurrentItem(item)
                 self.tree.scrollToItem(item)
 
+        def default_desktop_note_state(self) -> DesktopNoteState:
+            """Return the Notizen.NET defaults for a newly created desktop note."""
+            try:
+                pos = QtGui.QCursor.pos()
+                x = int(pos.x())
+                y = int(pos.y())
+            except Exception:
+                x = 80
+                y = 80
+            return DesktopNoteState(
+                x=x,
+                y=y,
+                width=200,
+                height=200,
+                visible=True,
+                opacity=0.85,
+                argb=legacy_light_color_argb(),
+            )
+
         def show_desktop_note(self, node: NoteNode | None = None) -> None:
             node = node or self.current_node()
             if node is None:
@@ -2007,7 +2112,7 @@ if QtWidgets is not None:
                 win = DesktopNoteWindow(self, node)
                 self.desktop_windows[id(node)] = win
             if node.desktop_note is None:
-                node.desktop_note = DesktopNoteState(argb=legacy_light_color_argb())
+                node.desktop_note = self.default_desktop_note_state()
             node.desktop_note.visible = True
             win.reload_from_node()
             win.show()
@@ -2245,7 +2350,7 @@ if QtWidgets is not None:
             node = self.current_node()
             if node is None:
                 return
-            start = self.settings.last_directory or str(Path.home())
+            start = self.settings.last_directory or str(ensure_legacy_documents_notizen_dir())
             file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self,
                 "TXT importieren",
@@ -2267,7 +2372,7 @@ if QtWidgets is not None:
             node = self.current_node()
             if node is None:
                 return
-            start = self.settings.last_directory or str(Path.home())
+            start = self.settings.last_directory or str(ensure_legacy_documents_notizen_dir())
             file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self,
                 "RTF importieren",
@@ -2393,6 +2498,13 @@ if QtWidgets is not None:
                 self._configure_autosave()
                 self._apply_scrollbar_settings()
                 self.apply_language()
+                autostart = apply_windows_autostart_script(
+                    enabled=self.settings.autorun_enabled,
+                    minimized=self.settings.autorun_minimized,
+                    recent_files=self.settings.recent_files,
+                )
+                if autostart.message:
+                    self.statusBar().showMessage(autostart.message)
                 self.update_recent_menu()
                 self.statusBar().showMessage(f"Alt-Config importiert: {file_name}")
             except Exception as exc:
@@ -2577,7 +2689,12 @@ if QtWidgets is not None:
             autorun_minimized_check = QtWidgets.QCheckBox()
             autorun_minimized_check.setChecked(self.settings.autorun_minimized)
 
+            backup_folder = backup_directory_for(self.document.path) if self.document.path else "nach dem ersten Speichern"
+            backup_folder_label = QtWidgets.QLabel(str(backup_folder))
+            backup_folder_label.setTextInteractionFlags(_enum(QtCore.Qt, "TextInteractionFlag", "TextSelectableByMouse"))
+
             layout.addRow("Sicherungen behalten", backup_spin)
+            layout.addRow("Sicherungsordner", backup_folder_label)
             layout.addRow("Autosave alle Sekunden (0 = aus)", autosave_spin)
             layout.addRow("Sprache", language_combo)
             layout.addRow("Scrollleisten im Editor", scroll_combo)
@@ -2595,7 +2712,7 @@ if QtWidgets is not None:
             layout.addRow(buttons)
             if dialog.exec() == ACCEPTED:
                 self.settings.backup_keep = backup_spin.value()
-                self.settings.autosave_seconds = autosave_spin.value()
+                self.settings.autosave_seconds = normalize_autosave_seconds(autosave_spin.value())
                 self.settings.language = language_combo.currentData()
                 self.settings.scrollbars_choice = int(scroll_combo.currentData())
                 self.settings.show_desknote_borders = border_check.isChecked()
@@ -2606,12 +2723,19 @@ if QtWidgets is not None:
                 self._configure_autosave()
                 self._apply_scrollbar_settings()
                 self.apply_language()
+                autostart = apply_windows_autostart_script(
+                    enabled=self.settings.autorun_enabled,
+                    minimized=self.settings.autorun_minimized,
+                    recent_files=self.settings.recent_files,
+                )
+                if autostart.message:
+                    self.statusBar().showMessage(autostart.message)
 
         def show_about(self) -> None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.9.8"
+                __version__ = "0.10.1"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
@@ -2622,8 +2746,9 @@ if QtWidgets is not None:
                     "Sprachdateien, legacy Startparameter, alte Tastaturbedienung, "
                     "systemweites Knoten-Clipboard, wiederholende Wecker, "
                     "Qt-Druckpfade, TXT/RTF-Import, HTML-Export, Statistik, "
-                    "Knoten-Verschieben, Auf-/Zu-Funktionen, sichere Recent-Dateien "
-                    "und aktuelle/ganze Baum-Zusammenfassung.\n\n"
+                    "Knoten-Verschieben, Auf-/Zu-Funktionen, sichere Recent-Dateien, "
+                    "aktuelle/ganze Baum-Zusammenfassung, Sicherungsverwaltung "
+                    "und Desktop-Notiz-Startwerte nach Notizen.NET.\n\n"
                     f"Qt-Binding: {BINDING}"
                 ),
             )
@@ -2695,8 +2820,8 @@ def main(argv: list[str] | None = None) -> int:
     if not icon.isNull():
         app.setWindowIcon(icon)
     startup_file = args.file or legacy.file
-    start_minimized = bool(args.minimized or legacy.minimized)
     window = MainWindow(startup_file, password=args.password)
+    start_minimized = bool(args.minimized or legacy.minimized or normalize_window_state(window.settings.window_state) == "Minimized")
     if args.smoke_test:
         return 0
     if start_minimized:

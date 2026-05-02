@@ -1,17 +1,17 @@
-# Validierungsbericht Notizen.NET → Python/Qt 0.9.8
+# Validierungsbericht Notizen.NET → Python/Qt 0.10.1
 
-Datum: 2026-05-01
+Datum: 2026-05-02
 
 ## Zusammenfassung
 
-Der Stand 0.9.8 wurde syntaktisch, funktional und strukturell geprüft. Die GUI konnte in dieser Umgebung nicht visuell gestartet werden, weil weder PySide6 noch PyQt6 installiert ist. Die erwartete Fehlermeldung des Runtime-Probes wurde geprüft.
+Der Stand 0.10.1 wurde syntaktisch, funktional und strukturell geprüft. Die GUI konnte in dieser Umgebung nicht visuell gestartet werden, weil weder PySide6 noch PyQt6 installiert ist. Die Runtime-Prüfung ohne Qt-Import ist erfolgreich; die echte Qt-Bindung muss lokal installiert werden.
 
 ## Durchgeführte Prüfungen
 
 ### Python-Compile
 
 ```bash
-python3 -m compileall -q src tests scripts
+python -m compileall -q src tests
 ```
 
 Ergebnis: erfolgreich.
@@ -19,13 +19,13 @@ Ergebnis: erfolgreich.
 ### Pytest
 
 ```bash
-python3 -m pytest -q
+python -m pytest -q
 ```
 
 Ergebnis:
 
 ```text
-34 passed, 2 skipped
+51 passed, 2 skipped
 ```
 
 Die beiden übersprungenen Tests betreffen optionale externe Bedingungen, insbesondere nicht mitgelieferte Legacy-Fixtures beziehungsweise optionale Kryptografiebedingungen je nach Host.
@@ -41,19 +41,19 @@ Ergebnis: erfolgreich.
 ### Strenger aktiver Pfad-Scanner
 
 ```bash
-bash scripts/check_no_slint_strict.sh .
+bash scripts/check_no_slint_strict.sh
 ```
 
 Ergebnis:
 
 ```text
-OK: no old UI-framework references found in active source/build files under /mnt/data/work_notizen/pyqt/Notizen_py_qt.
+OK: no old UI-framework references found in active source/build files under /mnt/data/work_0101/Notizen_py_qt.
 ```
 
 ### Runtime-Probe ohne Qt-Import
 
 ```bash
-PYTHONPATH=src python3 scripts/probe_python_qt_runtime.py --skip-qt
+python scripts/probe_python_qt_runtime.py --skip-qt
 ```
 
 Ergebnis:
@@ -62,33 +62,22 @@ Ergebnis:
 RESULT: Python/Qt runtime probe passed.
 ```
 
-### Runtime-Probe mit Qt-Import, aber ohne Smoke-Test
+### Qt-Bindung
+
+In dieser Umgebung ist keine Qt-Bindung installiert. Erwarteter lokaler Installationspfad:
 
 ```bash
-PYTHONPATH=src python3 scripts/probe_python_qt_runtime.py --skip-smoke
+python -m pip install "PySide6>=6.6,<7"
+# oder
+python -m pip install "PyQt6>=6.6,<7"
 ```
 
-Ergebnis: erwarteter Fehler, da auf dem Validierungssystem keine Qt-Bindung installiert ist.
+## In 0.10.1 zusätzlich validiert
 
-```text
-Qt binding import failed: No Qt binding is installed. Install one of:
-  python -m pip install 'PySide6>=6.6,<7'
-  python -m pip install 'PyQt6>=6.6,<7'
-RESULT: 1 problem(s) found.
-```
-
-### Modul-Smoke-Test
-
-```bash
-PYTHONPATH=src python3 -m notizen_py_qt --smoke-test
-```
-
-Ergebnis: erwarteter Exit-Code 2 mit Installationshinweis für PySide6/PyQt6, weil keine Qt-Bindung installiert ist.
-
-## In 0.9.8 zusätzlich validiert
-
-- `unify_root_action` ist in der UI-Quelle verdrahtet.
-- `unify_root_tree()` nutzt die Dokumentwurzel und denselben Append-Pfad wie die Teilbaum-Zusammenfassung.
-- `open_recent_file()` prüft fehlende Dateien und ruft vor dem Laden `maybe_save_changes()` auf.
-- Such- und Exportpfade enthalten `save_current_editor_to_node()` vor der Modellauswertung.
-- Alte UI-Migrationsdateien liegen nicht mehr im aktiven Source-/Build-Pfad.
+- `Datei.vb`-Standardname `unbenannt.alx` ist als Konstante abgebildet.
+- Der alte Standardordner `MyDocuments\\Notizen` ist als `Documents/Notizen`-Fallback portiert.
+- Windows-Backslash-Pfade werden auch auf Linux/macOS korrekt in Verzeichnis und Dateiname getrennt.
+- Leere `open`-Configwerte fallen auf den Legacy-Standard zurück.
+- `AppSettings.remember_file(...)` nutzt das robuste Legacy-Splitting.
+- Desktop-Notiz-Transparenz aus `desknote_kontext_opacy.vb` wird als Transparenz, nicht als Deckkraft, interpretiert.
+- `minimized`-/`maximized`-Fensterzustände aus `xml_kram.vb` werden normalisiert und in der Startlogik berücksichtigt.
