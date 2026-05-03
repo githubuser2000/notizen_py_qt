@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.13**.
+Aktueller Stand dieses Archivs: **0.10.14**.
 
 ## Start
 
@@ -62,6 +62,25 @@ Eine Installation als Python-Paket funktioniert weiterhin:
 python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
+
+
+## Änderungen in 0.10.14
+
+- Der sichtbare GNOME-Startpfad aus 0.10.13 bleibt bewusst erhalten: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb`, kein pauschales Löschen von `DISPLAY`. Nur ein Bash-Syntaxfehler in der Display-Reparatur wurde korrigiert, damit die Startdateien nicht an einer ungültigen `[[ ... ]]`-Bedingung scheitern.
+- ALX-Roundtrips sind jetzt näher am alten Notizen.NET: unbekannte Attribute an `<Notiz>`-Elementen werden gelesen, im Modell konserviert und beim Speichern wieder ausgegeben. Das schützt alte oder externe Zusatzdaten vor stillem Verlust.
+- Alte sparse Desktop-Notiz-Attribute bleiben sparse: Wenn eine Legacy-ALX-Desktop-Notiz ursprünglich kein `opacity` oder `argb` hatte, fügt ein unveränderter Speichervorgang diese Werte nicht künstlich hinzu. Erst echte Änderungen schreiben die modernen Werte.
+- Dieselbe Attribut-Erhaltungslogik gilt jetzt auch für den Teilbaum-Zwischenablagepfad (`node_clipboard.py`).
+- Neues datenschutzarmes ALX-Prüfwerkzeug:
+
+```bash
+scripts/validate_legacy_alx.py alte_datei.alx
+NOTIZEN_ALX_PASSWORD='...' scripts/validate_legacy_alx.py --password-env NOTIZEN_ALX_PASSWORD alte_datei.alx
+```
+
+  Es prüft Laden → Speichern → erneutes Laden und meldet nur Zähler/Hashes, keine Notiztexte. Damit können echte alte Dateien geprüft werden, ohne Inhalte in Berichte zu schreiben.
+- RTF-Codepage-Parität wurde verbessert: `\ansicpgNNNN` wird ausgewertet, sodass alte RichTextBox-RTF-Fragmente mit hexadezimalen Escapes aus anderen Windows-Codepages, zum Beispiel `cp1251`, korrekt in Suche, Export und HTML-Brücke dekodiert werden.
+- Neue API-Helfer: `LegacyAlxSummary`, `LegacyAlxRoundtripResult`, `summarize_alx_file(...)`, `validate_alx_roundtrip_file(...)` und `rtf_ansi_encoding(...)`.
+- Die originale Debug-ALX-Datei aus dem Notizen.NET-Projekt wurde nur intern mit dem neuen Validator geprüft und **nicht** ins Paket übernommen.
 
 ## Änderungen in 0.10.13
 

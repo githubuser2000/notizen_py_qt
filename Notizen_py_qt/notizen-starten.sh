@@ -150,10 +150,12 @@ export PYTHONPATH="$APPDIR/src${PYTHONPATH:+:$PYTHONPATH}"
 if [[ "$SMOKE_TEST" != 1 ]]; then
     repair_display_from_session
 fi
-if [[ "$SMOKE_TEST" != 1 && -n "${WAYLAND_DISPLAY:-}" && "${XDG_CURRENT_DESKTOP,,}${XDG_SESSION_DESKTOP,,}" == *gnome* && ("${DISPLAY:-}" == ":1" || "${DISPLAY:-}" == ":1.0") && ! is_truthy "${NOTIZEN_KEEP_DISPLAY:-}" && ! is_truthy "${NOTIZEN_KEEP_SHELL_DISPLAY:-}" ]]; then
-    export NOTIZEN_ORIGINAL_DISPLAY="${NOTIZEN_ORIGINAL_DISPLAY:-$DISPLAY}"
-    export DISPLAY=":0"
-    export NOTIZEN_DISPLAY_REPAIRED="${NOTIZEN_DISPLAY_REPAIRED:-} DISPLAY:${NOTIZEN_ORIGINAL_DISPLAY}->:0"
+if [[ "$SMOKE_TEST" != 1 && -n "${WAYLAND_DISPLAY:-}" && "${XDG_CURRENT_DESKTOP,,}${XDG_SESSION_DESKTOP,,}" == *gnome* && ( "${DISPLAY:-}" == ":1" || "${DISPLAY:-}" == ":1.0" ) ]]; then
+    if ! is_truthy "${NOTIZEN_KEEP_DISPLAY:-}" && ! is_truthy "${NOTIZEN_KEEP_SHELL_DISPLAY:-}"; then
+        export NOTIZEN_ORIGINAL_DISPLAY="${NOTIZEN_ORIGINAL_DISPLAY:-$DISPLAY}"
+        export DISPLAY=":0"
+        export NOTIZEN_DISPLAY_REPAIRED="${NOTIZEN_DISPLAY_REPAIRED:-} DISPLAY:${NOTIZEN_ORIGINAL_DISPLAY}->:0"
+    fi
 fi
 sanitize_qt_env
 

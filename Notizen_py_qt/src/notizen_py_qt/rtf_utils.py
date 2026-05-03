@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import codecs
 from dataclasses import dataclass
 from html import escape
 from html.parser import HTMLParser
@@ -10,6 +11,7 @@ from typing import Iterable
 from urllib.parse import unquote, urlparse
 
 _HEX_RE = re.compile(r"\\'([0-9a-fA-F]{2})")
+_ANSICPG_RE = re.compile(r"\\ansicpg(\d+)")
 _COLOR_RE = re.compile(r"\\red(-?\d+)\\green(-?\d+)\\blue(-?\d+)")
 _DATA_IMAGE_RE = re.compile(r"^data:(image/[a-zA-Z0-9.+-]+)(?:;[^,]*)?;base64,(.*)$", re.DOTALL)
 _SKIP_DESTINATIONS = {
@@ -60,8 +62,28 @@ _TEXT_CONTROLS = {
 }
 
 
-def _decode_hex_byte(hex_text: str) -> str:
-    return bytes([int(hex_text, 16)]).decode("cp1252", errors="replace")
+def rtf_ansi_encoding(rtf: str) -> str:
+    """Return the Python codec implied by an RTF ``\ansicpg`` header.
+
+    Notizen.NET's WinForms RichTextBox usually wrote ``\ansicpg1252`` for
+    German/English text, but older Russian/Chinese content can contain escaped
+    bytes for other Windows code pages.  Falling back to cp1252 keeps malformed
+    fragments readable without throwing during search/export.
+    """
+
+    match = _ANSICPG_RE.search(rtf or "")
+    if not match:
+        return "cp1252"
+    codec = f"cp{match.group(1)}"
+    try:
+        codecs.lookup(codec)
+    except LookupError:
+        return "cp1252"
+    return codec
+
+
+def _decode_hex_byte(hex_text: str, encoding: str = "cp1252") -> str:
+    return bytes([int(hex_text, 16)]).decode(encoding, errors="replace")
 
 
 def _signed_16_to_char(value: int) -> str:
@@ -375,8 +397,8 @@ def _image_to_html(image: RtfImage) -> str:
     return "<img " + " ".join(attrs) + "/>"
 
 
-def _clean_font_name(raw: str) -> str:
-    raw = _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1)), raw)
+def _clean_font_name(raw: str, encoding: str = "cp1252") -> str:
+    raw = _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1), encoding), raw)
     raw = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", raw)
     raw = re.sub(r"\\.", " ", raw)
     raw = raw.replace(";", " ").replace("{", " ").replace("}", " ")
@@ -385,6 +407,7 @@ def _clean_font_name(raw: str) -> str:
 
 def extract_font_table(rtf: str) -> list[str]:
     r"""Return RTF font-table names by ``\fN`` index."""
+    encoding = rtf_ansi_encoding(rtf)
     group = _find_group(rtf, "fonttbl")
     fonts = [""]
     if not group:
@@ -394,7 +417,7 @@ def extract_font_table(rtf: str) -> list[str]:
             index = int(match.group(1))
         except ValueError:
             continue
-        name = _clean_font_name(match.group(2))
+        name = _clean_font_name(match.group(2), encoding)
         if not name:
             continue
         while len(fonts) <= index:
@@ -429,7 +452,7 @@ def extract_color_table(rtf: str) -> list[str]:
     return colors
 
 
-def _rtf_iter_plain(rtf: str) -> Iterable[str]:
+def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
     stack: list[_RtfState] = [_RtfState(skip=False, uc=1)]
     i = 0
     while i < len(rtf):
@@ -464,7 +487,7 @@ def _rtf_iter_plain(rtf: str) -> Iterable[str]:
                     yield nxt
                 continue
             if nxt == "'" and i + 3 < len(rtf):
-                text_ch = _decode_hex_byte(rtf[i + 2 : i + 4])
+                text_ch = _decode_hex_byte(rtf[i + 2 : i + 4], encoding)
                 i += 4
                 if state.skip:
                     continue
@@ -523,8 +546,10 @@ def rtf_to_plain_text(rtf: str) -> str:
         return ""
     if "{\\rtf" not in rtf[:32]:
         # Some legacy imports already contain plain text or malformed fragments.
-        return _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1)), rtf).replace("\r\n", "\n").replace("\r", "\n")
-    text = _combine_surrogate_pairs("".join(_rtf_iter_plain(rtf))).replace("\r\n", "\n").replace("\r", "\n")
+        encoding = rtf_ansi_encoding(rtf)
+        return _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1), encoding), rtf).replace("\r\n", "\n").replace("\r", "\n")
+    encoding = rtf_ansi_encoding(rtf)
+    text = _combine_surrogate_pairs("".join(_rtf_iter_plain(rtf, encoding))).replace("\r\n", "\n").replace("\r", "\n")
     lines = [line.rstrip() for line in text.split("\n")]
     collapsed: list[str] = []
     previous_blank = False
@@ -562,7 +587,7 @@ def _style_to_css(style: _RtfStyle, colors: list[str]) -> str:
     return "; ".join(rules)
 
 
-def _rtf_iter_html_tokens(rtf: str) -> Iterable[tuple[str | RtfImage, _RtfStyle]]:
+def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[str | RtfImage, _RtfStyle]]:
     fonts = extract_font_table(rtf)
     stack: list[_RtfState] = [_RtfState(skip=False, uc=1, style=_RtfStyle())]
     i = 0
@@ -602,7 +627,7 @@ def _rtf_iter_html_tokens(rtf: str) -> Iterable[tuple[str | RtfImage, _RtfStyle]
                         yield nxt, state.style.copy()
                 continue
             if nxt == "'" and i + 3 < len(rtf):
-                text_ch = _decode_hex_byte(rtf[i + 2 : i + 4])
+                text_ch = _decode_hex_byte(rtf[i + 2 : i + 4], encoding)
                 i += 4
                 if not state.skip and state.style is not None:
                     if state.fallback_chars_to_skip > 0:
@@ -671,8 +696,8 @@ def _rtf_iter_html_tokens(rtf: str) -> Iterable[tuple[str | RtfImage, _RtfStyle]
         yield ch, state.style.copy()
 
 
-def _rtf_iter_html(rtf: str) -> Iterable[tuple[str, _RtfStyle]]:
-    for token, style in _rtf_iter_html_tokens(rtf):
+def _rtf_iter_html(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[str, _RtfStyle]]:
+    for token, style in _rtf_iter_html_tokens(rtf, encoding):
         if isinstance(token, str):
             yield token, style
 
@@ -727,7 +752,7 @@ def rtf_to_content_parts(rtf: str) -> list[RtfContentPart]:
         else:
             parts.append(RtfTextSegment(text, current_style))
 
-    for token, style in _rtf_iter_html_tokens(rtf):
+    for token, style in _rtf_iter_html_tokens(rtf, rtf_ansi_encoding(rtf)):
         if isinstance(token, RtfImage):
             flush()
             parts.append(token)
@@ -774,7 +799,7 @@ def rtf_to_text_segments(rtf: str) -> list[RtfTextSegment]:
             else:
                 segments.append(RtfTextSegment(text, current_style))
 
-    for ch, style in _rtf_iter_html(rtf):
+    for ch, style in _rtf_iter_html(rtf, rtf_ansi_encoding(rtf)):
         resolved = _resolve_style(style, colors)
         if resolved != current_style:
             flush()
@@ -814,7 +839,7 @@ def rtf_to_html(rtf: str) -> str:
         else:
             out.append(text)
 
-    for token, style in _rtf_iter_html_tokens(rtf):
+    for token, style in _rtf_iter_html_tokens(rtf, rtf_ansi_encoding(rtf)):
         if isinstance(token, RtfImage):
             flush()
             out.append(_image_to_html(token))

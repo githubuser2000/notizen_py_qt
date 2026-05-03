@@ -13,6 +13,21 @@ from .rtf_utils import plain_text_to_rtf
 
 GZIP_MAGIC = b"\x1f\x8b"
 BLANK_PASSWORD_24 = " " * 24
+_NOTE_KNOWN_ATTRS = {
+    "name",
+    "title",
+    "isexpanded",
+    "bgcolor",
+    "fgcolor",
+    "visible",
+    "x",
+    "y",
+    "width",
+    "height",
+    "opacity",
+    "argb",
+}
+_DESKTOP_ATTRS = {"visible", "x", "y", "width", "height", "opacity", "argb"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,7 +258,9 @@ def _desktop_state_from_element(element: ET.Element) -> DesktopNoteState | None:
         height=_int_attr(element, "height", 220),
         visible=_bool_attr(element.get("visible"), True),
         opacity=_float_attr(element, "opacity", 0.85),
-        argb=_int_attr(element, "argb", legacy_light_color_argb()),
+        argb=_int_attr(element, "argb", 0) if element.get("argb") not in (None, "") else None,
+        legacy_sparse=True,
+        legacy_attr_names={key for key in _DESKTOP_ATTRS if element.get(key) not in (None, "")},
     )
 
 
@@ -255,6 +272,7 @@ def _parse_notiz(element: ET.Element) -> NoteNode:
         bg_argb=_int_attr(element, "bgcolor", 0),
         fg_argb=_int_attr(element, "fgcolor", 0),
         desktop_note=_desktop_state_from_element(element),
+        extra_attrs={key: value for key, value in element.attrib.items() if key not in _NOTE_KNOWN_ATTRS},
     )
     for child_element in element:
         if child_element.tag == "Notiz":
@@ -316,7 +334,7 @@ def load_alx(path: str | Path, password: str | None = None) -> NoteDocument:
 
 
 def _element_from_note(node: NoteNode) -> ET.Element:
-    element = ET.Element("Notiz")
+    element = ET.Element("Notiz", dict(node.extra_attrs))
     element.set("name", node.title)
     element.set("isexpanded", "True" if node.expanded else "False")
     element.set("bgcolor", str(node.bg_argb))
@@ -328,7 +346,8 @@ def _element_from_note(node: NoteNode) -> ET.Element:
         element.set("y", str(desk.y))
         element.set("width", str(desk.width))
         element.set("height", str(desk.height))
-        element.set("opacity", str(desk.opacity))
+        if (not desk.legacy_sparse) or "opacity" in desk.legacy_attr_names or desk.opacity != 0.85:
+            element.set("opacity", str(desk.opacity))
         if desk.argb is not None:
             element.set("argb", str(desk.argb))
     element.text = node.rtf or ""

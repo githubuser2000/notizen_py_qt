@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.13.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.14.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -70,3 +70,8 @@ Zusätzlich wurde die ALX-Testbasis datenschutzbewusst erweitert: Die echte alte
 Auf Basis der großen Rest-Transpilierungsuntersuchung wurden in dieser Runde mehrere der dort markierten Lücken gezielt geschlossen, ohne den zuletzt sichtbar funktionierenden GNOME-Menüstart wieder zu verändern. Die Startdateien bleiben sichtbar-first, `QT_QPA_PLATFORM=wayland;xcb` bleibt der konservative GNOME/Wayland-Pfad, und die Display-Umgebung wird nur so weit repariert, wie es der Nutzerbefund nötig machte.
 
 Zusätzlich wurden die Spracharrays aus `languages.vb` vollständig positionsgenau übernommen, reale alte `.alx`-Dateien aus dem Originalprojekt als Fixtures eingebaut, die alte Vierer-Recent-Dateiliste testbar gemacht, Desktop-Notiz-Opacity/Rand-/Klickzonenlogik weiter aus `desknote.vb` abgeleitet und der Info-/Hilfe-Text wieder aus dem alten `aboutinfotext` gespeist.
+
+
+## Weiterführung 0.10.14
+
+Der Nutzerwunsch war ausdrücklich, den sichtbar funktionierenden GNOME-Start nicht wieder umzubauen. Deshalb bleibt der Startpfad aus 0.10.13 erhalten; nur eine syntaktisch ungültige Bash-Bedingung im Starter wurde repariert. Die fachliche Weitertranspilierung greift den Audit-Block „echte alte ALX-Dateien und Roundtrip-Sicherheit“ auf: unbekannte Notizattribute werden konserviert, sparse Desktop-Notizattribute werden nicht künstlich aufgefüllt, ein datenschutzarmer ALX-Validator erlaubt Tests mit echten alten Dateien ohne Rohtextausgabe, und RTF-`\ansicpg`-Codepages werden für alte RichTextBox-Hex-Escapes berücksichtigt.

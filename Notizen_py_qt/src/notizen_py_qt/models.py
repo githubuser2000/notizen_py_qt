@@ -10,7 +10,11 @@ class DesktopNoteState:
     """Persisted state of a Notizen.NET floating desktop note.
 
     The legacy VB form serializes these values as attributes on a ``Notiz`` XML
-    element: x, y, width, height, visible, opacity and argb.
+    element: x, y, width, height, visible, opacity and argb.  Very old ALX
+    files sometimes omit optional desktop-note attributes.  ``legacy_sparse``
+    and ``legacy_attr_names`` let the serializer avoid inventing those optional
+    attributes on a no-op open/save roundtrip, while still writing them when the
+    user changes a note or creates a new desktop note in the PyQt port.
     """
 
     x: int = 80
@@ -20,6 +24,8 @@ class DesktopNoteState:
     visible: bool = True
     opacity: float = 0.85
     argb: int | None = None
+    legacy_sparse: bool = False
+    legacy_attr_names: set[str] = field(default_factory=set, repr=False, compare=False)
 
 
 @dataclass(slots=True)
@@ -38,6 +44,7 @@ class NoteNode:
     bg_argb: int = 0
     fg_argb: int = 0
     desktop_note: DesktopNoteState | None = None
+    extra_attrs: dict[str, str] = field(default_factory=dict)
     children: list["NoteNode"] = field(default_factory=list)
     parent: "NoteNode | None" = field(default=None, repr=False, compare=False)
 
@@ -68,6 +75,8 @@ class NoteNode:
                 visible=self.desktop_note.visible,
                 opacity=self.desktop_note.opacity,
                 argb=self.desktop_note.argb,
+                legacy_sparse=self.desktop_note.legacy_sparse,
+                legacy_attr_names=set(self.desktop_note.legacy_attr_names),
             )
         copied = NoteNode(
             title=self.title,
@@ -76,6 +85,7 @@ class NoteNode:
             bg_argb=self.bg_argb,
             fg_argb=self.fg_argb,
             desktop_note=desktop_note,
+            extra_attrs=dict(self.extra_attrs),
         )
         for child in self.children:
             copied.add_child(child.clone_deep(include_desktop_note=include_desktop_note))

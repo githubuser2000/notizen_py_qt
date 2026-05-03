@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.13**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.14**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -8,8 +8,8 @@ Aktiver Portierungsstand: **0.10.13**. Diese Datei beschreibt die aktuelle seman
 |---|---|---|
 | `Notizen.vb`, `Notizen.Designer.vb` | `src/notizen_py_qt/app.py` | Hauptfenster, Menüs, Toolbar, Baum, Editor, Dialoge und Legacy-Aktionen sind semantisch portiert. |
 | `Baum.vb`, `Baum_Kontext_.vb` | `app.py`, `models.py`, `node_clipboard.py` | Baumoperationen, Einfügen/Ausschneiden/Kopieren, Drag-and-drop-nahe Modellpflege, Doppelklick-Umbenennung, Knotenfarben, Auf-/Zu-Funktionen, `PrevVisibleNode`-Löschauswahl, alte `neu_neben_knoten`-Einfügeposition und Teilbaum-Zusammenfassung sind portiert. |
-| `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB-RTF-Brücke, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
-| `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting und die alte Autosave-Schutzbedingung sind portiert. |
+| `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB/WMF/EMF-RTF-Brücke, RTF-Codepage-Auswertung über `\ansicpg`, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
+| `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `legacy_validation.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting, unbekannte Notizattribute, sparse Desktop-Notizattribute, Datenschutz-Validator und die alte Autosave-Schutzbedingung sind portiert. |
 | `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
 | `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen, Farben inklusive exakt erreichbarer `get_lightcolor`-Zufallspalette, altes Transparenzmenü, Kontextmenü, Rücksprung ins Hauptfenster und WinForms-nahe Startgeometrie sind portiert. |
 | `einstellungen.vb` | `settings.py`, Settings-Dialog in `app.py` | Backups, Autosave, Sprache, Scrollleisten, Desktop-Notiz-Ränder, Autostart-Felder und zuletzt geöffnete Dateien sind portiert. |
@@ -21,6 +21,15 @@ Aktiver Portierungsstand: **0.10.13**. Diese Datei beschreibt die aktuelle seman
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
 
+
+
+## In 0.10.14 weitergeführt
+
+- Der sichtbare GNOME-Startpfad aus 0.10.13 wurde bewusst konserviert. Geändert wurde nur ein Bash-Syntaxfehler in `notizen-starten.sh`; `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb` und kein pauschales Entfernen von `DISPLAY` bleiben erhalten.
+- `alx_io.py` und `node_clipboard.py` konservieren jetzt unbekannte `<Notiz>`-Attribute über Laden/Speichern und Teilbaum-Zwischenablage hinweg. Das schützt alte oder externe Zusatzdaten im ALX-XML vor stillem Verlust.
+- `DesktopNoteState` merkt sich sparse Legacy-Desktop-Notizattribute. Ein unveränderter Roundtrip fügt fehlende `opacity`-/`argb`-Attribute nicht künstlich hinzu; echte Nutzeränderungen schreiben moderne Werte kontrolliert.
+- `legacy_validation.py` und `scripts/validate_legacy_alx.py` bilden den neuen Audit-Pfad für echte alte Dateien: Laden → Speichern → Laden mit datenschutzarmer Zusammenfassung aus Zählern und Hashes statt Rohtext.
+- `rtf_utils.py` wertet `\ansicpgNNNN` aus. Alte RichTextBox-Fragmente mit Codepage-gebundenen Hex-Escapes werden dadurch in Suche, Export, Zusammenfassung und HTML-Brücke korrekter dekodiert.
 
 ## In 0.10.13 weitergeführt
 

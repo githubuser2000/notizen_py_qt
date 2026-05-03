@@ -5,6 +5,21 @@ from xml.etree import ElementTree as ET
 from .models import DesktopNoteState, NoteNode
 
 NODE_MIME_TYPE = "application/x-notizen-pyqt-node+xml"
+_NOTE_KNOWN_ATTRS = {
+    "name",
+    "title",
+    "isexpanded",
+    "bgcolor",
+    "fgcolor",
+    "visible",
+    "x",
+    "y",
+    "width",
+    "height",
+    "opacity",
+    "argb",
+}
+_DESKTOP_ATTRS = {"visible", "x", "y", "width", "height", "opacity", "argb"}
 
 
 def _bool_attr(value: str | None, default: bool = True) -> bool:
@@ -44,6 +59,8 @@ def _desktop_state_from_element(element: ET.Element) -> DesktopNoteState | None:
         visible=_bool_attr(element.get("visible"), True),
         opacity=_float_attr(element, "opacity", 0.85),
         argb=_int_attr(element, "argb", 0) if element.get("argb") not in (None, "") else None,
+        legacy_sparse=True,
+        legacy_attr_names={key for key in _DESKTOP_ATTRS if element.get(key) not in (None, "")},
     )
 
 
@@ -57,6 +74,7 @@ def _node_from_element(element: ET.Element, *, include_desktop_note: bool = Fals
         bg_argb=_int_attr(element, "bgcolor", 0),
         fg_argb=_int_attr(element, "fgcolor", 0),
         desktop_note=_desktop_state_from_element(element) if include_desktop_note else None,
+        extra_attrs={key: value for key, value in element.attrib.items() if key not in _NOTE_KNOWN_ATTRS},
     )
     for child in element:
         if child.tag == "Notiz":
@@ -65,7 +83,7 @@ def _node_from_element(element: ET.Element, *, include_desktop_note: bool = Fals
 
 
 def _element_from_node(node: NoteNode, *, include_desktop_note: bool = False) -> ET.Element:
-    element = ET.Element("Notiz")
+    element = ET.Element("Notiz", dict(node.extra_attrs))
     element.set("name", node.title)
     element.set("isexpanded", "True" if node.expanded else "False")
     element.set("bgcolor", str(node.bg_argb))
@@ -77,7 +95,8 @@ def _element_from_node(node: NoteNode, *, include_desktop_note: bool = False) ->
         element.set("y", str(desk.y))
         element.set("width", str(desk.width))
         element.set("height", str(desk.height))
-        element.set("opacity", str(desk.opacity))
+        if (not desk.legacy_sparse) or "opacity" in desk.legacy_attr_names or desk.opacity != 0.85:
+            element.set("opacity", str(desk.opacity))
         if desk.argb is not None:
             element.set("argb", str(desk.argb))
     element.text = node.rtf or ""
