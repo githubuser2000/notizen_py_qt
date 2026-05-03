@@ -21,6 +21,7 @@ from .desktop_note_legacy import legacy_transparency_menu_options
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
 from .startup import apply_windows_autostart_script, parse_legacy_startup_args, validate_legacy_startup_target
 from .tray_support import decide_startup_tray_visibility, gnome_tray_install_hint
+from .window_visibility import env_requests_window_reset, legacy_window_state_is_restorable, sanitize_legacy_window_geometry, should_start_minimized
 from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
 from .search_results import SearchHitView, build_search_hit_views
@@ -578,10 +579,12 @@ if QtWidgets is not None:
             *,
             disable_tray: bool = False,
             force_tray_start: bool = False,
+            reset_window_geometry: bool = False,
         ) -> None:
             super().__init__()
             self.disable_tray = bool(disable_tray)
             self.force_tray_start = bool(force_tray_start)
+            self.reset_window_geometry = bool(reset_window_geometry)
             self.tray_icon = None
             self.tray_menu = None
             self.settings = AppSettings.load()
@@ -1173,20 +1176,76 @@ if QtWidgets is not None:
                 self.activateWindow()
 
         def _restore_window_settings(self) -> None:
-            self.resize(max(640, self.settings.window_width), max(420, self.settings.window_height))
-            x = int(self.settings.window_x)
-            y = int(self.settings.window_y)
+            x = self.settings.window_x
+            y = self.settings.window_y
+            width = self.settings.window_width
+            height = self.settings.window_height
+            screen_left = 0
+            screen_top = 0
+            screen_width = 1280
+            screen_height = 800
             try:
                 screen = QtGui.QGuiApplication.primaryScreen()
                 available = screen.availableGeometry() if screen is not None else None
-                if available is not None and (x > available.right() - 50 or y > available.bottom() - 50):
-                    x = max(available.left(), 60)
-                    y = max(available.top(), 60)
+                if available is not None:
+                    screen_left = int(available.left())
+                    screen_top = int(available.top())
+                    screen_width = int(available.width())
+                    screen_height = int(available.height())
             except Exception:
                 pass
-            self.move(x, y)
-            if normalize_window_state(self.settings.window_state) == "Maximized":
+            geometry = sanitize_legacy_window_geometry(
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                screen_left=screen_left,
+                screen_top=screen_top,
+                screen_width=screen_width,
+                screen_height=screen_height,
+                force_reset=self.reset_window_geometry,
+            )
+            self.resize(geometry.width, geometry.height)
+            self.move(geometry.x, geometry.y)
+            if geometry.reset:
+                self.settings.window_state = "Normal"
+            if (
+                legacy_window_state_is_restorable(self.settings.window_x, self.settings.window_y)
+                and normalize_window_state(self.settings.window_state) == "Maximized"
+                and not self.reset_window_geometry
+            ):
                 self.showMaximized()
+
+        def ensure_main_window_visible(self, *, reset_window: bool = False) -> None:
+            """Show the main window as a reachable normal window.
+
+            GNOME/Wayland may ignore focus stealing, but repeated show/raise calls
+            after the event loop starts reliably avoid a hidden/minimized/offscreen
+            startup state.  This is intentionally stronger than the old Windows
+            tray startup path.
+            """
+
+            if reset_window:
+                self.reset_window_geometry = True
+                self._restore_window_settings()
+            try:
+                no_state = _enum(QtCore.Qt, "WindowState", "WindowNoState")
+                self.setWindowState(no_state)
+            except Exception:
+                pass
+            try:
+                self.showNormal()
+            except Exception:
+                self.show()
+            self.show()
+            try:
+                self.raise_()
+            except Exception:
+                pass
+            try:
+                self.activateWindow()
+            except Exception:
+                pass
 
         def _store_window_settings(self) -> None:
             geo = self.geometry()
@@ -2875,7 +2934,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.9"
+                __version__ = "0.10.10"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
@@ -2961,6 +3020,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Sichtbar starten und gespeicherten/minimierten Startzustand ignorieren",
     )
     parser.add_argument("--no-tray", action="store_true", help="Trayicon deaktivieren und nie unsichtbar starten")
+    parser.add_argument("--reset-window", action="store_true", help="Fensterposition/-größe verwerfen und sichtbar im aktuellen Arbeitsbereich starten")
     parser.add_argument("--force-tray-start", action="store_true", help="Auch unter GNOME verborgen ins Tray starten")
     parser.add_argument("--smoke-test", action="store_true", help="Nur initialisieren und sofort beenden")
     if legacy.help_requested:
@@ -2982,10 +3042,16 @@ def main(argv: list[str] | None = None) -> int:
         password=args.password,
         disable_tray=args.no_tray,
         force_tray_start=args.force_tray_start,
+        reset_window_geometry=bool(args.reset_window or env_requests_window_reset()),
     )
-    start_minimized = bool(
-        not args.show
-        and (args.minimized or legacy.minimized or normalize_window_state(window.settings.window_state) == "Minimized")
+    reset_window = bool(args.reset_window or env_requests_window_reset())
+    start_minimized = should_start_minimized(
+        explicit_minimized=args.minimized,
+        legacy_minimized=legacy.minimized,
+        stored_window_state=normalize_window_state(window.settings.window_state),
+        force_visible=args.show,
+        reset_window=reset_window,
+        stored_state_restorable=legacy_window_state_is_restorable(window.settings.window_x, window.settings.window_y),
     )
     if args.smoke_test:
         return 0
@@ -2996,11 +3062,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             # GNOME often has no visible legacy tray.  Show the main window
             # instead of creating an inaccessible hidden process.
-            window.show()
+            window.ensure_main_window_visible(reset_window=reset_window)
             if decision.reason:
                 window.statusBar().showMessage(decision.reason)
     else:
-        window.show()
+        window.ensure_main_window_visible(reset_window=reset_window or args.show)
+    # A second pass after the event loop starts prevents GNOME/Wayland from
+    # keeping a restored/minimized legacy state invisible.
+    QtCore.QTimer.singleShot(150, lambda: window.ensure_main_window_visible(reset_window=False))
+    QtCore.QTimer.singleShot(750, lambda: window.ensure_main_window_visible(reset_window=False))
     return int(app.exec())
 
 

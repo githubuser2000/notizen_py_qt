@@ -1,67 +1,50 @@
-# Weitertranspilierung Notizen.NET → Python/Qt 0.10.9
+# Weitertranspilierung Notizen.NET → Python/Qt 0.10.10
 
 ## Ausgangspunkt
 
-Dieser Stand baut auf 0.10.8 auf. Der aktive Laufzeitpfad bleibt Python/Qt; alte Slint-/QML-/Rust-Zwischenschritte bleiben ausschließlich archiviertes Migrationsmaterial.
+Weitergeführt wurde der Stand 0.10.9. Der konkrete Nutzerfehler war: Unter GNOME erscheint nach dem Start weiterhin kein sichtbares Hauptfenster. Die bisherige Tray-Abschaltung allein reicht dafür nicht, weil auch gespeicherte Legacy-Fensterzustände und Offscreen-Koordinaten ein Fenster faktisch unsichtbar machen können.
 
-Für diese Runde wurden erneut konkrete WinForms-Stellen aus dem alten Notizen.NET-Code herangezogen:
+## Umgesetzte Änderungen in 0.10.10
 
-- `kontext_inhalt.vb`: Bildauswahl akzeptiert neben JPG/TIF/GIF ausdrücklich auch `*.bmp`.
-- `inhalt.vb`: Der Editor ist eine WinForms-`RichTextBox`, die gepastete oder eingefügte Bitmapbilder in RTF häufig als DIB/Bitmap-Payload schreibt.
-- `Baum.vb`: `BaumTyp_NodeMouseDoubleClick` startet bei Doppelklick direkt `BeginEdit()` auf dem Baumknoten.
+### Sichtbarer GNOME-Start
 
-## Umgesetzte Änderungen in 0.10.9
+- Die Startdatei `notizen-starten.sh` erzwingt jetzt neben `--show` und `--no-tray` auch `--reset-window`.
+- `Notizen starten.sh`, `Notizen PyQt.desktop` und der installierte Linux-Starter nutzen denselben sichtbaren Startpfad.
+- Beim Start aus einem Menü ohne Terminal schreibt `notizen-starten.sh` ein Protokoll nach `~/.local/state/notizen-py-qt/startup.log`.
+- Neu: `notizen-diagnose.sh` erzeugt zusätzlich `~/.local/state/notizen-py-qt/diagnose.log` mit Umgebung, Python-Version und Startausgabe.
 
-### Legacy-Bitmapbilder in RTF erhalten
+### Legacy-Fensterzustand genauer portiert
 
-Die RTF-Brücke konnte seit 0.10.4 PNG- und JPEG-`\pict`-Gruppen erhalten. Alte RichTextBox-Bitmapbilder wurden aber noch nicht zuverlässig als Bild übernommen, weil WinForms sie oft als `\pict\dibitmap...` ohne BMP-Dateikopf speichert.
+Das alte `xml_kram.on_load()` setzte `Location`, `Size` und `WindowState` nur, wenn sowohl X als auch Y ungleich 0 waren. Die alte Standardconfig schreibt jedoch `x="0"`, `y="0"` und `windowstate="minimized"`. Der PyQt-Port behandelte diesen minimierten Zustand bisher zu stark. 0.10.10 übernimmt die alte Bedingung:
 
-Neu in `rtf_utils.py`:
+- `legacy_window_state_is_restorable(...)` entscheidet, ob gespeicherter Fensterzustand angewendet werden darf.
+- `should_start_minimized(...)` ignoriert gespeichertes `Minimized`, wenn die Legacy-Position nicht restorable ist.
+- Explizite Startwünsche wie `--minimized` oder altes `-min` bleiben erhalten.
 
-- `dib_to_bmp_bytes(...)`: erzeugt aus einem RTF-DIB-Payload eine normale BMP-Datei mit `BM`-Header.
-- `bmp_to_dib_bytes(...)`: entfernt den BMP-Dateikopf wieder für RTF-`\dibitmap0`.
-- `_parse_pict_group(...)` erkennt jetzt `\dibitmap` und `\wbitmap` zusätzlich zu PNG/JPEG.
-- `rtf_to_html(...)` gibt alte DIB-Bilder als `data:image/bmp;base64,...` aus.
-- `html_to_rtf(...)` akzeptiert `image/bmp`-Data-URIs und lokale `.bmp`-Dateien.
+### Fensterpositionen auf aktuellen Arbeitsbereich klemmen
 
-Neu in `exporters.py`:
+- Neu: `sanitize_legacy_window_geometry(...)`.
+- Negative Koordinaten, ehemalige Zweitmonitor-Positionen und zu große Fenstergrößen werden sichtbar in den aktuellen Arbeitsbereich zurückgeholt.
+- `--reset-window` verwirft alte Position/Größe bewusst und setzt eine normale sichtbare Startgeometrie.
+- `MainWindow.ensure_main_window_visible(...)` zeigt das Fenster normal an, hebt es an und wiederholt die Sichtbarkeitsaktion kurz nach dem Start über Qt-Timer.
 
-- `RtfImage(mime_type="image/bmp", ...)` wird beim kombinierten RTF-Export als `\pict\dibitmap0` geschrieben.
-- „Teilbaum zusammenfassen“, „Ganzen Baum zusammenfassen“ und der kombinierte RTF-Export behalten dadurch alte Bitmapbilder statt sie durch `[Bild]` zu ersetzen.
+### API / Paket
 
-### Baum-Doppelklick wie `BaumTyp_NodeMouseDoubleClick`
+- Version auf `0.10.10` gesetzt.
+- Neues Modul: `src/notizen_py_qt/window_visibility.py`.
+- Neue Exports aus `notizen_py_qt.__init__`:
+  - `VisibleWindowGeometry`
+  - `sanitize_legacy_window_geometry`
+  - `legacy_window_state_is_restorable`
+  - `should_start_minimized`
+  - `env_requests_window_reset`
 
-Die alte WinForms-Baumansicht rief bei Doppelklick auf einen Knoten `BeginEdit()` auf. Der PyQt-Port verbindet jetzt `itemDoubleClicked` mit `edit_tree_item(...)`; `rename_node(...)` nutzt denselben Pfad.
+## Neue Tests
 
-Damit sind Menü-Aktion, Tastenkürzel und Doppelklick konsistent und näher am alten TreeView-Verhalten.
+- `tests/test_gnome_visible_start_1010.py`
 
-### Öffentliche API ergänzt
+Die Tests prüfen die Legacy-0/0-Minimized-Regel, die Geometrie-Klemmung, die neuen Starterargumente, Diagnoseprotokolle und die Shell-Syntax.
 
-Die neuen RTF-Bitmap-Helfer werden aus `notizen_py_qt.__init__` exportiert:
+## Weiterhin offen
 
-- `dib_to_bmp_bytes(...)`
-- `bmp_to_dib_bytes(...)`
-
-## Dateien mit relevanten Änderungen
-
-- `src/notizen_py_qt/rtf_utils.py`
-- `src/notizen_py_qt/exporters.py`
-- `src/notizen_py_qt/app.py`
-- `src/notizen_py_qt/__init__.py`
-- `tests/test_rtf_bmp_legacy_109.py`
-- `tests/test_legacy_ui_source_109.py`
-- `README.md`
-- `docs/MAPPING.md`
-- `docs/PROJECT_CONTEXT_IMPORTED.md`
-- `pyproject.toml`
-- `TRANSPILE_NET_TO_PYQT_REPORT.md`
-- `VALIDATION_NET_PORT.md`
-
-Zusätzlich wurden die 0.10.8-Berichte archiviert:
-
-- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.8.md`
-- `VALIDATION_NET_PORT_0.10.8.md`
-
-## Bewusst nicht geändert
-
-Die RTF-Brücke bleibt ein pragmatischer Notizen.NET-Kompatibilitätsadapter und kein vollständiger Microsoft-RTF-Renderer. Exotische binäre `\bin`-Bildpayloads, WMF/EMF-Objekte und komplexe OLE-Inhalte bleiben weiterhin zurückgestellt. Die GNOME-sicheren Startdateien bleiben sichtbar-first mit `--show --no-tray`.
+Eine echte visuelle GNOME-Prüfung ist in dieser Umgebung nicht möglich, weil keine Qt-Bindung und keine GNOME-Sitzung verfügbar sind. Der Codepfad ist aber so geändert, dass der normale Starter nicht mehr vom alten minimierten Configzustand oder Offscreen-Koordinaten abhängig ist.

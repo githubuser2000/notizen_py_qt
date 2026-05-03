@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.9**.
+Aktueller Stand dieses Archivs: **0.10.10**.
 
 ## Start
 
@@ -18,7 +18,7 @@ oder technisch gleichwertig:
 ./notizen-starten.sh
 ```
 
-Diese Startdatei setzt den Quellordner automatisch in `PYTHONPATH` und startet standardmäßig mit `--show --no-tray`, damit GNOME dich nicht durch ein unsichtbares Trayicon aussperrt. Eine `.alx`-Datei kann als Argument übergeben werden:
+Diese Startdatei setzt den Quellordner automatisch in `PYTHONPATH` und startet standardmäßig mit `--show --reset-window --no-tray`, damit GNOME dich weder durch ein unsichtbares Trayicon noch durch eine alte Offscreen-/Minimized-Fensterposition aussperrt. Eine `.alx`-Datei kann als Argument übergeben werden:
 
 ```bash
 ./Notizen\ starten.sh /pfad/zur/datei.alx
@@ -54,6 +54,14 @@ Eine Installation als Python-Paket funktioniert weiterhin:
 python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
+
+## Änderungen in 0.10.10
+
+- GNOME-Sichtbarkeitsfix verschärft: Die Startdateien erzwingen jetzt zusätzlich `--reset-window`. Gespeicherte Fensterpositionen/-größen werden beim Direktstart verworfen und auf den aktuellen Arbeitsbereich gesetzt.
+- Die alte Notizen.NET-Config-Regel aus `xml_kram.on_load()` wurde genauer portiert: Ein gespeicherter `windowstate="Minimized"` wird nur berücksichtigt, wenn die alte Hauptfensterposition überhaupt restorable ist. Die alte Standardconfig `x=0`, `y=0`, `windowstate=minimized` startet dadurch nicht mehr unsichtbar.
+- Alte/offscreen Fensterkoordinaten werden jetzt vollständig geklemmt: negative X/Y-Werte, ehemalige Zweitmonitor-Positionen und zu große Fenstergrößen landen wieder sichtbar im aktuellen Screen.
+- Beim GNOME-/Menüstart schreibt der Starter ein Diagnoseprotokoll nach `~/.local/state/notizen-py-qt/startup.log`, wenn kein Terminal vorhanden ist. Zusätzlich gibt es `./notizen-diagnose.sh`.
+- Neue Qt-unabhängige Sichtbarkeitshelfer: `sanitize_legacy_window_geometry(...)`, `legacy_window_state_is_restorable(...)`, `should_start_minimized(...)` und `env_requests_window_reset(...)`.
 
 ## Änderungen in 0.10.9
 
@@ -131,7 +139,7 @@ notizen-py-qt /pfad/zur/datei.alx
 - Fensterzustände aus `xml_kram.vb` werden robuster normalisiert; gespeicherte `minimized`-/`maximized`-Werte werden beim Start ausgewertet, und offensichtlich außerhalb des Arbeitsbereichs liegende Hauptfensterpositionen werden abgefangen.
 - RTF-Tabellenzellen aus alten RichTextBox-Inhalten werden in Suche, Statistik und Exporten nicht mehr zusammengeschoben, sondern als Tabulatoren und Zeilenumbrüche erhalten.
 - ZIP-Verzeichnisrechte und Skript-Ausführungsrechte werden beim Paketieren korrekt gesetzt: Verzeichnisse `755`, Shell-/Python-Build-Skripte `755`, Desktop-Starter `755`, normale Dateien `644`.
-- Neue Startdateien für Linux/GNOME: `Notizen starten.sh`, `notizen-starten.sh`, `Notizen PyQt.desktop` und `scripts/install_linux_launcher.sh`. Die Direktstarter setzen automatisch `PYTHONPATH` und starten sichtbar ohne Tray; das Installationsskript registriert zusätzlich `*.alx` als `application/x-notizen-alx` und setzt den Notizen-Starter als Standard-App für diesen Dateityp.
+- Neue Startdateien für Linux/GNOME: `Notizen starten.sh`, `notizen-starten.sh`, `notizen-diagnose.sh`, `Notizen PyQt.desktop` und `scripts/install_linux_launcher.sh`. Die Direktstarter setzen automatisch `PYTHONPATH`, setzen die Fensterposition zurück und starten sichtbar ohne Tray; das Installationsskript registriert zusätzlich `*.alx` als `application/x-notizen-alx` und setzt den Notizen-Starter als Standard-App für diesen Dateityp.
 - GNOME-Tray-Schutz verschärft: GNOME startet standardmäßig sichtbar, auch wenn eine Tray-/AppIndicator-Erweiterung erkannt wird. Ein versteckter Tray-Start ist nur noch bewusst per `--force-tray-start` beziehungsweise mit `--allow-tray` im Startskript sinnvoll. `--no-tray` deaktiviert das Trayicon vollständig.
 
 ## GNOME und Trayicons
@@ -144,7 +152,7 @@ Sicherster GNOME-Start aus dem entpackten Ordner:
 ./Notizen\ starten.sh
 ```
 
-Der Starter hängt automatisch `--show --no-tray` an. Dadurch wird ein gespeicherter minimierter Fensterzustand ignoriert und das Trayicon deaktiviert. Wer das Tray bewusst wieder nutzen will:
+Der Starter hängt automatisch `--show --reset-window --no-tray` an. Dadurch wird ein gespeicherter minimierter Fensterzustand ignoriert und das Trayicon deaktiviert. Wer das Tray bewusst wieder nutzen will:
 
 ```bash
 ./notizen-starten.sh --allow-tray --force-tray-start --minimized

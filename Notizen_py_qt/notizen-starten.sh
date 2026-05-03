@@ -68,9 +68,32 @@ done
 prefix=()
 if [[ "$force_visible" == 1 ]]; then
     prefix+=(--show)
+    prefix+=(--reset-window)
 fi
 if [[ "$force_no_tray" == 1 ]]; then
     prefix+=(--no-tray)
 fi
 
-exec "$PYTHON_BIN" -m notizen_py_qt "${prefix[@]}" "${args[@]}"
+STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+LOG_DIR="$STATE_HOME/notizen-py-qt"
+LOG_FILE="$LOG_DIR/startup.log"
+
+if [[ -t 1 ]]; then
+    exec "$PYTHON_BIN" -m notizen_py_qt "${prefix[@]}" "${args[@]}"
+fi
+
+mkdir -p "$LOG_DIR"
+set +e
+{
+    printf '%s\n' "--- Notizen PyQt startup $(date -Is 2>/dev/null || date) ---"
+    printf 'APPDIR=%s\nPYTHON=%s\nARGS=' "$APPDIR" "$PYTHON_BIN"
+    printf '%q ' "${prefix[@]}" "${args[@]}"
+    printf '\n'
+    "$PYTHON_BIN" -m notizen_py_qt "${prefix[@]}" "${args[@]}"
+} >>"$LOG_FILE" 2>&1
+status=$?
+set -e
+if [[ "$status" != 0 ]]; then
+    show_error "Notizen PyQt konnte nicht gestartet werden. Diagnoseprotokoll: $LOG_FILE"
+fi
+exit "$status"

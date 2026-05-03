@@ -22,6 +22,7 @@ from .legacy_paths import LEGACY_DEFAULT_FILENAME, legacy_documents_notizen_dir,
 from .search_results import SearchHitView, build_search_hit_views, legacy_search_result_label, legacy_search_snippet, node_path
 from .editor_legacy import legacy_clipboard_bullet_text, qt_bullet_insert_text
 from .rtf_utils import bmp_to_dib_bytes, dib_to_bmp_bytes
+from .window_visibility import VisibleWindowGeometry, env_requests_window_reset, legacy_window_state_is_restorable, sanitize_legacy_window_geometry, should_start_minimized
 
 __all__ = [
     "DesktopNoteState",
@@ -65,6 +66,11 @@ __all__ = [
     "SearchHitView",
     "bmp_to_dib_bytes",
     "dib_to_bmp_bytes",
+    "VisibleWindowGeometry",
+    "sanitize_legacy_window_geometry",
+    "legacy_window_state_is_restorable",
+    "should_start_minimized",
+    "env_requests_window_reset",
 ]
 
-__version__ = "0.10.9"
+__version__ = "0.10.10"

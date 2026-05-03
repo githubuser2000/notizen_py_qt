@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.9.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.10.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -43,3 +43,8 @@ Der nächste Paritätsschritt wurde wieder direkt aus dem alten WinForms-Code ab
 
 Der nächste Paritätsschritt greift zwei kleine, aber konkrete WinForms-Details auf: `kontext_inhalt.vb` erlaubte BMP-Bilder, die RichTextBox als DIB/Bitmap-RTF speichern kann, und `BaumTyp_NodeMouseDoubleClick` startete direkt die Knoten-Umbenennung. Der Port erhält jetzt alte `\dibitmap`-Bilder über HTML, Zusammenfassung und RTF-Export hinweg und startet die Titelbearbeitung per Baum-Doppelklick.
 
+
+
+## Weiterführung 0.10.10
+
+Diese Runde behebt den vom Nutzer gemeldeten GNOME-Start ohne sichtbares Fenster. Der Port wendet die alte `xml_kram.on_load()`-Bedingung genauer an: Der in der Legacy-Standardconfig gespeicherte minimierte Fensterzustand wird nicht mehr als echter Startwunsch behandelt, wenn die alte Position `0/0` ist. Zusätzlich erzwingen die Startdateien `--reset-window`, klemmen alte/offscreen Koordinaten auf den aktuellen Arbeitsbereich und schreiben ein Startprotokoll für Menüstarts.

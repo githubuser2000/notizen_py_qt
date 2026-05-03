@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.9**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.10**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -21,6 +21,12 @@ Aktiver Portierungsstand: **0.10.9**. Diese Datei beschreibt die aktuelle semant
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
 
+
+## In 0.10.10 weitergeführt
+
+- `xml_kram.on_load()` / Hauptfenster-Wiederherstellung: Der PyQt-Port übernimmt jetzt die alte Bedingung, dass `windowstate` nur aus der Config angewendet wird, wenn X und Y ungleich 0 sind. Dadurch erzeugt die alte Standardconfig kein unsichtbar minimiertes GNOME-Fenster mehr.
+- `Notizen.Designer.vb` / gespeicherte Fensterdaten: Position und Größe werden mit `sanitize_legacy_window_geometry(...)` auf den aktuellen Arbeitsbereich geklemmt, inklusive negativer/offscreen Koordinaten nach Monitorwechseln.
+- Linux-/GNOME-Starter: `notizen-starten.sh` startet sichtbar mit `--show --reset-window --no-tray` und schreibt bei Menüstarts ein Diagnoseprotokoll. `notizen-diagnose.sh` wurde ergänzt.
 
 ## In 0.10.9 weitergeführt
 
@@ -61,7 +67,7 @@ Aktiver Portierungsstand: **0.10.9**. Diese Datei beschreibt die aktuelle semant
 ## In 0.10.3 weitergeführt
 
 - Linux/GNOME-Direktstart ergänzt: `Notizen starten.sh` und `notizen-starten.sh` starten aus dem entpackten Ordner ohne vorheriges `python -m` und setzen automatisch `PYTHONPATH` auf `src/`.
-- Die Direktstarter hängen standardmäßig `--show --no-tray` an. Damit werden gespeicherte minimierte Fensterzustände ignoriert und das unter GNOME problematische Trayicon deaktiviert.
+- Die Direktstarter hängen standardmäßig `--show --reset-window --no-tray` an. Damit werden gespeicherte minimierte Fensterzustände ignoriert und das unter GNOME problematische Trayicon deaktiviert.
 - Ein Menü-/Desktop-Starter kann jetzt mit `scripts/install_linux_launcher.sh` installiert werden; mit `--desktop` wird zusätzlich eine anklickbare Desktop-/Schreibtisch-Datei erstellt und, soweit möglich, als vertrauenswürdig markiert.
 - `app.py` akzeptiert neu `--show`/`--visible`, damit sichtbarer Start Vorrang vor alter `/min`-/`-min`-Logik und gespeicherten `Minimized`-Fensterzuständen bekommt.
 - Die GNOME-Tray-Regel wurde verschärft: GNOME versteckt beim Start nicht mehr automatisch ins Tray, auch dann nicht, wenn eine bekannte AppIndicator/KStatusNotifier-Erweiterung erkannt wird. Ein versteckter Tray-Start bleibt nur per `--force-tray-start` beziehungsweise `NOTIZEN_FORCE_TRAY_START=1` möglich.
