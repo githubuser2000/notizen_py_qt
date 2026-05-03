@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.11**.
+Aktueller Stand dieses Archivs: **0.10.13**.
 
 ## Start
 
@@ -18,7 +18,9 @@ oder technisch gleichwertig:
 ./notizen-starten.sh
 ```
 
-Diese Startdatei setzt den Quellordner automatisch in `PYTHONPATH`, startet standardmäßig mit `--show --reset-window --no-tray` und bereinigt problematische Qt-Anzeigevariablen aus der Shell. Damit GNOME dich weder durch ein unsichtbares Trayicon, alte Offscreen-/Minimized-Fensterpositionen noch durch ein Terminal-`QT_QPA_PLATFORM=xcb/offscreen/minimal` aussperrt. Eine `.alx`-Datei kann als Argument übergeben werden:
+Diese Startdatei setzt den Quellordner automatisch in `PYTHONPATH` und startet standardmäßig mit `--show --reset-window --no-tray`. Das Fenster soll sichtbar bleiben: kein Tray-Verstecken, kein gespeicherter Minimized-Start und kein Offscreen-Fenster. In 0.10.13 wurde der Startpfad bewusst **nicht** weiter aggressiv verändert, sondern wieder am sichtbar funktionierenden GNOME-Menüstart ausgerichtet: `DISPLAY` wird nicht pauschal gelöscht, `QT_QPA_PLATFORM` bleibt bei `wayland;xcb`, und nur eindeutig störende Shell-Werte wie `GDK_BACKEND=x11` oder `QT_QPA_PLATFORMTHEME=gtk2/gtk3` werden entfernt.
+
+Eine `.alx`-Datei kann als Argument übergeben werden:
 
 ```bash
 ./Notizen\ starten.sh /pfad/zur/datei.alx
@@ -36,7 +38,7 @@ Für einen zusätzlichen Desktop-/Schreibtisch-Starter:
 ./scripts/install_linux_launcher.sh --desktop
 ```
 
-PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer ebenfalls akzeptiert, falls PyQt6 installiert oder lokal bevorzugt wird. Falls Qt für Python fehlt:
+PySide6 ist die bevorzugte Qt-Bindung. PyQt6 wird vom Kompatibilitätslayer ebenfalls akzeptiert. Falls Qt für Python fehlt:
 
 ```bash
 python3 -m pip install --user "PySide6>=6.6,<7"
@@ -48,7 +50,7 @@ Optional für alte verschlüsselte ALX-Dateien:
 python3 -m pip install --user pycryptodome
 ```
 
-Direkter Modulstart aus dem entpackten Projektordner funktioniert jetzt ebenfalls ohne Installation, weil ein kleiner Root-Shim auf `src/notizen_py_qt` verweist:
+Direkter Modulstart aus dem entpackten Projektordner funktioniert ebenfalls, weil ein kleiner Root-Shim auf `src/notizen_py_qt` verweist:
 
 ```bash
 python3 -m notizen_py_qt --no-tray --show --reset-window
@@ -60,6 +62,29 @@ Eine Installation als Python-Paket funktioniert weiterhin:
 python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
+
+## Änderungen in 0.10.13
+
+- Der Startpfad wurde auf den zuletzt sichtbar funktionierenden GNOME-Menüpfad zurückgeführt. Sichtbarer GNOME/Wayland-Start nutzt wieder `QT_QPA_PLATFORM=wayland;xcb`; `DISPLAY` wird nicht mehr pauschal entfernt.
+- Shell-Umgebungen mit offensichtlich problematischem `DISPLAY=:1` können auf den vom Menüstart bekannten Wert `:0` repariert werden. Gleichzeitig werden `GDK_BACKEND=x11` und GTK-Platform-Themes für sichtbare GNOME/Wayland-Starts entfernt.
+- Die Startdateien bleiben sichtbar-first mit `--show --reset-window --no-tray` und protokollieren Paketversion, Paketdatei und Python-Executable. Dadurch ist erkennbar, ob wirklich die frisch entpackte lokale Version gestartet wird.
+- Die Mehrsprachigkeit wurde positionsgenau aus `languages.vb` und `Notizen.vb Enum lang_keys` übernommen: alle 118 Legacy-Sprachschlüssel sind jetzt semantisch benannt und für Deutsch, Englisch, Französisch, Spanisch, Russisch und Chinesisch vollständig vorhanden.
+- Die früheren generischen `key_###`-Fallbacks für Französisch, Spanisch und Russisch wurden entfernt. Neue Helfer wie `LEGACY_LANGUAGE_KEY_ORDER`, `legacy_language_key_for_index(...)` und `legacy_language_translations(...)` machen die alte Array-Struktur testbar.
+- Die ALX-Fixtures wurden datenschutzbewusst bereinigt: Eine echte alte leere `legacy_unbenannt.alx` bleibt enthalten, und eine kleine sanitisierte Legacy-Desktop-Notiz-Fixture prüft Baum-/Desktop-Notiz-Roundtrips ohne persönliche Beispielnotizen aus dem Originalprojekt.
+- Die Vierer-Liste der zuletzt geöffneten Dateien folgt nun eigener Legacy-Logik für `files a/b/c/d`, inklusive Rotation beim erneuten Öffnen.
+- Desktop-Notizen haben neue Legacy-Helfer für Hover-/Randgeometrie, Titelstreifen-Klickzonen und aktive/inaktive Deckkraft. Die Qt-Desktop-Notiz wird beim Fokus/Hover voll sichtbar und stellt danach die gespeicherte Transparenz wieder her.
+- Der Info-/Hilfe-Dialog nutzt wieder den alten `aboutinfotext` aus der aktiven Sprachdatei.
+- Die alten `Notizen.vb/tastendruck`-Shortcuts sind jetzt als `keyboard_legacy.py` testbar und in `app.py` verdrahtet: globale Ctrl-Aktionen, baumbezogene Insert/Delete/Enter-Regeln sowie Shift+Insert/Shift+Delete.
+- Weitere `wecker.vb`-Details sind als Legacy-Helfer verfügbar: alte Wochentags-Checkbox-Reihenfolge, Intervall-Einheiten und deaktivierte Wecker-Spezifikation.
+- Unbekannte Legacy-Config-Root-Attribute und Zusatz-Elemente bleiben beim Speichern erhalten; RTF-`\wmetafile`- und `\emfblip`-Bilder werden nun ebenfalls in HTML/Zusammenfassung/kombiniertem RTF-Export bewahrt.
+
+## Änderungen in 0.10.12
+
+- Der gemeldete GNOME/Shell-Fehler wurde zunächst als hartes Wayland-Problem behandelt: Shellstarts mit `DISPLAY=:1` und `GDK_BACKEND=x11` sollten nicht mehr in Qt/GDK übernommen werden, wenn gleichzeitig eine GNOME/Wayland-Sitzung mit `WAYLAND_DISPLAY=wayland-0` vorhanden ist.
+- Diese Strategie wurde in 0.10.13 bewusst wieder entschärft, weil der Nutzer bestätigt hatte, dass der GNOME-Menüstart mit reparierter Menü-Umgebung sichtbar war.
+- `scripts/build_python_qt.sh` startet am Ende keine dauerhafte GUI mehr. Der headless Smoke-Test ist optional mit `--with-smoke` und dann auf 10 Sekunden begrenzt.
+- `notizen-diagnose.sh` beendet sich standardmäßig wieder selbst: Es sammelt Diagnose, führt nur einen begrenzten Offscreen-Smoke-Test aus und startet die sichtbare GUI nur noch bei `--launch`.
+- Das Startlog enthält vor dem Qt-Import eine `PRE_QT_ENV`-Zeile mit `DISPLAY`, `WAYLAND_DISPLAY`, `GDK_BACKEND` und der tatsächlich angewendeten Normalisierung.
 
 ## Änderungen in 0.10.11
 

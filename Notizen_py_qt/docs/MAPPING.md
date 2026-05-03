@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.11**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.13**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -14,13 +14,32 @@ Aktiver Portierungsstand: **0.10.11**. Diese Datei beschreibt die aktuelle seman
 | `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen, Farben inklusive exakt erreichbarer `get_lightcolor`-Zufallspalette, altes Transparenzmenü, Kontextmenü, Rücksprung ins Hauptfenster und WinForms-nahe Startgeometrie sind portiert. |
 | `einstellungen.vb` | `settings.py`, Settings-Dialog in `app.py` | Backups, Autosave, Sprache, Scrollleisten, Desktop-Notiz-Ränder, Autostart-Felder und zuletzt geöffnete Dateien sind portiert. |
 | `ftpkram.vb` | `ftp_sync.py`, FTP-Dialog in `app.py` | FTP-Öffnen/Speichern der ALX-Datei ist portiert. |
-| `wecker.vb` | `alarms.py`, Alarm-Dialog in `app.py` | Einmalige und wiederholende Wecker sind portiert. |
-| `languages.vb`, `.resx`-Sprachdaten | `i18n.py`, dynamische Aktionsbeschriftungen in `app.py` | Wichtige Legacy-Sprachen und Menütexte sind importiert und umschaltbar. |
+| `wecker.vb`, `wecker.Designer.vb` | `alarms.py`, Alarm-Dialog in `app.py` | Einmalige und wiederholende Wecker sind portiert; 0.10.13 ergänzt die alte Aktiviert-Checkbox, Wochentags-Checkbox-Zuordnung und Intervall-Einheiten. |
+| `languages.vb`, `.resx`-Sprachdaten | `i18n.py`, dynamische Aktionsbeschriftungen in `app.py` | Die sechs alten Spracharrays sind positionsgenau aus `languages.vb`/`lang_keys` übernommen; 118 semantische Legacy-Schlüssel sind testbar und umschaltbar. |
 | `ApplicationEvents.vb` | `startup.py`, `app.py` | Legacy-Startargumente wie minimierter Start und direkte Datei-/FTP-Ziele sind portiert. |
 | `passwort_dialog*.vb`, `wanna_save.vb`, `wanna_restart.vb`, `AboutBox1.vb` | Qt-Dialoge in `app.py` | Passwort-, Speicher-, Einstellungs- und Info-Dialoge sind in Qt nachgebildet. |
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
 
+
+## In 0.10.13 weitergeführt
+
+- Der GNOME-Startpfad wurde auf das vom Nutzer bestätigte sichtbare Verhalten zurückgestellt: `display_env.py` baut jetzt die grafische Sitzungsumgebung beziehungsweise den GNOME-Menüstart nach, statt `DISPLAY` für sichtbare Starts zu löschen.
+- `apply_graphical_session_environment(...)` übernimmt `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP` und `DISPLAY` aus der grafischen Sitzung. Falls die Shell weiterhin `DISPLAY=:1` liefert und keine Sitzungskopie verfügbar ist, wird für sichtbaren GNOME/Wayland-Start auf den sichtbar funktionierenden Menüwert `DISPLAY=:0` gewechselt.
+- `notizen-starten.sh` und der direkte Modulstart verwenden wieder `QT_QPA_PLATFORM=wayland;xcb`; ein geerbtes `GDK_BACKEND=x11` wird entfernt, ohne die gesamte Anzeigeumgebung hart auf Pure-Wayland zu zwingen. Startlogs enthalten jetzt Paketversion, Paketdatei und Python-Executable.
+- Die ALX-Testbasis wurde datenschutzbewusst erweitert: Eine echte alte leere `unbenannt.alx` prüft den originalen Minimalfall, während eine sanitisierte Legacy-Desktop-Notiz-Fixture Baumstruktur und Desktop-Notiz-Attribute ohne persönliche Altinhalte testet.
+- `settings.py` konserviert unbekannte alte Config-XML-Zweige als `legacy_passthrough_elements`, damit noch nicht vollständig semantisch portierte Einstellungen beim Speichern nicht verschwinden.
+- Die alte Vierer-Recent-Liste aus `xml_kram.vb` ist als `LEGACY_RECENT_FILE_SLOTS`, `legacy_recent_files_from_slots(...)`, `legacy_recent_slots_from_files(...)`, `legacy_remember_recent_file(...)` und `legacy_activate_recent_file(...)` testbar.
+- `desktop_note_legacy.py` ergänzt die alte Desktop-Notiz-Randgeometrie, Titelstreifen-Klickzonen sowie aktive/inaktive Opacity-Regeln. Die Qt-Fenster speichern nicht mehr versehentlich die temporäre Vollsichtbarkeit als dauerhafte Transparenz.
+- `i18n.py` legt die aus `languages.vb` übernommene positionsgenaue Reihenfolge über `LEGACY_LANGUAGE_KEY_ORDER` offen und stellt testbare Legacy-Übersetzungshelfer bereit. Der Info-/Hilfe-Dialog nutzt wieder `aboutinfotext`.
+- `alarms.py` bildet die alten Wecker-Wochentagscheckboxen (`CheckBox15` bis `CheckBox13`) und den Aktiviert/Deaktiviert-Zustand aus `wecker.Designer.vb` ab. Der Dialog verwendet diese Legacy-Daten und plant deaktivierte Alarme nicht.
+
+- `keyboard_legacy.py` bildet die alten `Notizen.vb/tastendruck`-Shortcuts Qt-unabhängig ab; `app.py` verwendet diese Zuordnung für globale Ctrl-Aktionen und baumbezogene Insert/Delete/Enter-Regeln.
+
+## In 0.10.12 weitergeführt
+
+- Die Nutzerdiagnose zeigte, dass der GNOME-Menüstart sichtbar war, während Terminalstarts mit `DISPLAY=:1`, `GDK_BACKEND=x11` und vorhandener `WAYLAND_DISPLAY=wayland-0` hängen oder unsichtbar bleiben konnten. 0.10.12 behandelte diesen Fall zunächst als harte Wayland-Bereinigung.
+- `build_python_qt.sh` und `notizen-diagnose.sh` wurden entkoppelt vom dauerhaften GUI-Start: Build validiert standardmäßig ohne Smoke-GUI, Diagnose startet nur bounded/offscreen und eine sichtbare GUI nur explizit per `--launch`.
 
 ## In 0.10.11 weitergeführt
 

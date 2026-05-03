@@ -216,8 +216,12 @@ def _emit_image(image: RtfImage) -> str:
     elif mime_type in {"image/bmp", "image/x-ms-bmp"}:
         # RTF stores BMP pictures as DIB payloads, not with the BMP file header.
         # This keeps old WinForms RichTextBox bitmap pictures roundtrippable.
-        blip = "dibitmap0"
+        blip = image.rtf_control if image.rtf_control.startswith("dibitmap") else "dibitmap0"
         payload = bmp_to_dib_bytes(image.data)
+    elif mime_type in {"image/wmf", "image/x-wmf"}:
+        blip = image.rtf_control if image.rtf_control.startswith("wmetafile") else "wmetafile8"
+    elif mime_type in {"image/x-emf", "image/emf"}:
+        blip = "emfblip"
     else:
         return _rtf_escape_text("[Bild]")
 

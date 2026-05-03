@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from notizen_py_qt.display_env import normalize_qt_display_environment, visible_start_requested
+from notizen_py_qt.display_env import apply_graphical_session_environment, normalize_qt_display_environment, visible_start_requested
 
 
 def test_visible_start_flags_include_show_reset_and_no_tray() -> None:
@@ -10,7 +10,7 @@ def test_visible_start_flags_include_show_reset_and_no_tray() -> None:
     assert visible_start_requested([], {"NOTIZEN_FORCE_VISIBLE": "yes"}) is True
 
 
-def test_gnome_wayland_terminal_prefers_wayland_over_xcb() -> None:
+def test_gnome_wayland_terminal_uses_menu_compatible_qpa() -> None:
     env = {
         "XDG_CURRENT_DESKTOP": "GNOME",
         "WAYLAND_DISPLAY": "wayland-0",
@@ -20,6 +20,9 @@ def test_gnome_wayland_terminal_prefers_wayland_over_xcb() -> None:
     decision = normalize_qt_display_environment(["--show", "--no-tray"], env)
     assert decision.changed is True
     assert env["QT_QPA_PLATFORM"] == "wayland;xcb"
+    assert env["DISPLAY"] == ":0"
+    assert env["NOTIZEN_ORIGINAL_DISPLAY"] == ":1"
+    assert "GDK_BACKEND" not in env
     assert "xcb" in decision.platform_before
 
 
@@ -31,6 +34,8 @@ def test_offscreen_platform_is_removed_for_visible_start() -> None:
     decision = normalize_qt_display_environment(["--show"], env)
     assert decision.changed is True
     assert env["QT_QPA_PLATFORM"] == "wayland;xcb"
+    assert "DISPLAY" not in env
+    assert "GDK_BACKEND" not in env
 
 
 def test_gtk_platform_theme_is_unset_on_gnome_wayland_visible_start() -> None:
@@ -73,3 +78,28 @@ def test_root_python_m_shim_points_to_src_package() -> None:
     assert "src" in shim
     assert "notizen_py_qt" in shim
     assert "from .app import main" in main
+
+
+def test_graphical_session_env_replaces_stale_shell_display() -> None:
+    env = {
+        "XDG_CURRENT_DESKTOP": "GNOME",
+        "WAYLAND_DISPLAY": "wayland-0",
+        "DISPLAY": ":1",
+        "GDK_BACKEND": "x11",
+    }
+    notes: list[str] = []
+    changed = apply_graphical_session_environment(
+        env,
+        {
+            "XDG_CURRENT_DESKTOP": "GNOME",
+            "XDG_SESSION_DESKTOP": "gnome",
+            "WAYLAND_DISPLAY": "wayland-0",
+            "DISPLAY": ":0",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+        },
+        notes,
+    )
+    assert changed is True
+    assert env["DISPLAY"] == ":0"
+    assert env["XDG_SESSION_DESKTOP"] == "gnome"
+    assert any("DISPLAY" in note and ":0" in note for note in notes)

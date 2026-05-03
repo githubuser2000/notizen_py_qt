@@ -36,6 +36,7 @@ class RtfImage:
     data: bytes
     width_twips: int | None = None
     height_twips: int | None = None
+    rtf_control: str = ""
 _TEXT_CONTROLS = {
     "par": "\n",
     "line": "\n",
@@ -289,16 +290,28 @@ def _parse_pict_group(group: str) -> RtfImage | None:
     Binary ``\bin`` picture payloads are intentionally still ignored.
     """
     mime_type = ""
+    rtf_control = ""
     wants_bmp_wrap = False
     if "\\pngblip" in group:
         mime_type = "image/png"
+        rtf_control = "pngblip"
     elif "\\jpegblip" in group or "\\jpgblip" in group:
         mime_type = "image/jpeg"
+        rtf_control = "jpegblip"
     elif "\\dibitmap" in group or "\\wbitmap" in group:
         mime_type = "image/bmp"
+        rtf_control = "dibitmap0"
         wants_bmp_wrap = True
+    elif "\\emfblip" in group:
+        mime_type = "image/x-emf"
+        rtf_control = "emfblip"
     else:
-        return None
+        wmf = re.search(r"\\wmetafile(-?\d+)?", group)
+        if wmf:
+            mime_type = "image/wmf"
+            rtf_control = "wmetafile" + (wmf.group(1) or "8")
+        else:
+            return None
 
     scrubbed = re.sub(r"\\'[0-9a-fA-F]{2}", " ", group)
     scrubbed = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", scrubbed)
@@ -321,6 +334,7 @@ def _parse_pict_group(group: str) -> RtfImage | None:
         data=data,
         width_twips=_control_number(group, "picwgoal"),
         height_twips=_control_number(group, "pichgoal"),
+        rtf_control=rtf_control,
     )
 
 
@@ -965,6 +979,10 @@ def _image_type_from_bytes(data: bytes, fallback: str = "") -> str:
         return "image/jpeg"
     if data.startswith(b"BM"):
         return "image/bmp"
+    if data.startswith(bytes.fromhex("d7cdc69a")):
+        return "image/wmf"
+    if len(data) > 44 and data[:4] == b"\x01\x00\x00\x00" and b" EMF" in data[:128]:
+        return "image/x-emf"
     return fallback.lower()
 
 
@@ -1001,6 +1019,10 @@ def _image_data_from_src(src: str) -> tuple[str, bytes] | None:
             mime_type = "image/png"
         elif suffix == ".bmp":
             mime_type = "image/bmp"
+        elif suffix == ".wmf":
+            mime_type = "image/wmf"
+        elif suffix == ".emf":
+            mime_type = "image/x-emf"
     return (mime_type, data) if mime_type else None
 
 
@@ -1019,6 +1041,12 @@ def _rtf_picture_from_source(src: str, width_px: int | None = None, height_px: i
     elif mime_type == "image/bmp":
         blip = "dibitmap0"
         payload = bmp_to_dib_bytes(data)
+    elif mime_type in {"image/wmf", "image/x-wmf"}:
+        blip = "wmetafile8"
+        payload = data
+    elif mime_type in {"image/x-emf", "image/emf"}:
+        blip = "emfblip"
+        payload = data
     else:
         return None
     controls = [rf"\pict\{blip}"]

@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.11.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.13.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -53,3 +53,20 @@ Diese Runde behebt den vom Nutzer gemeldeten GNOME-Start ohne sichtbares Fenster
 
 Die neue Nutzerdiagnose zeigte einen wichtigen Unterschied: Der GNOME-Menüstart war sichtbar, aber Terminalstarts waren nicht sichtbar. Das spricht gegen einen reinen Trayfehler und für geerbte Shell-/Qt-Anzeigevariablen. Diese Runde ergänzt deshalb eine frühe, Qt-unabhängige Display-Normalisierung vor dem PySide6/PyQt6-Import und erweitert die Startprotokolle. `python3 -m notizen_py_qt --no-tray --show` und die Startdateien sollen nun denselben sichtbaren GNOME/Wayland-Pfad verwenden wie der Menüstart. Zusätzlich verhindert ein Root-Shim, dass Direktstarts aus dem entpackten Ordner unbemerkt eine alte installierte Paketversion laden.
 
+
+
+## Weiterführung 0.10.12
+
+Die aktuelle Nutzerdiagnose präzisiert den GNOME-Startfehler: Der Menüstart funktioniert, aber Shellstarts übernehmen ein kaputtes `DISPLAY=:1` und `GDK_BACKEND=x11`. Die Runde behandelt das nicht mehr als Tray- oder Fensterzustandsfehler, sondern als frühes Display-Backend-Problem vor dem Qt-Import. Zusätzlich wurden Build- und Diagnose-Skripte so korrigiert, dass sie am Ende nicht dauerhaft die GUI starten und dadurch nicht mehr hängen bleiben.
+
+## Weiterführung 0.10.13
+
+Die aktuelle Runde folgt der großen Rest-Transpilierungsuntersuchung und priorisiert zuerst den realen Zielsystemstart. Der Nutzer bestätigte, dass der GNOME-Menüstart sichtbar war, während Shell- und Startdatei-Aufrufe hängen blieben. Daher wird das Startverhalten nicht weiter aggressiv verändert, sondern auf den sichtbar funktionierenden GNOME-Menüpfad zurückgeführt: grafische Sitzungsvariablen werden übernommen, `DISPLAY=:1` wird bei GNOME/Wayland sichtbar auf `DISPLAY=:0` repariert, `QT_QPA_PLATFORM=wayland;xcb` bleibt erhalten und `GDK_BACKEND=x11` wird nur entfernt.
+
+Zusätzlich wurde die ALX-Testbasis datenschutzbewusst erweitert: Die echte alte leere `unbenannt.alx` bleibt als Original-Minimalfixture erhalten, während persönliche große Beispielnotizen nicht ins Paket übernommen werden. Unbekannte Legacy-Config-Zweige und Root-Attribute werden beim Speichern konserviert, die aus `languages.vb` stammende Sprachreihenfolge wurde als testbare Legacy-API offengelegt und die alten `tastendruck`-Shortcuts, Recent-Files-Rotation, Desktop-Notiz-Randlogik und Wecker-Wochentage wurden als testbare Qt-unabhängige Zuordnungen nachgezogen.
+
+## Weiterführung 0.10.13, Restanalyse umgesetzt
+
+Auf Basis der großen Rest-Transpilierungsuntersuchung wurden in dieser Runde mehrere der dort markierten Lücken gezielt geschlossen, ohne den zuletzt sichtbar funktionierenden GNOME-Menüstart wieder zu verändern. Die Startdateien bleiben sichtbar-first, `QT_QPA_PLATFORM=wayland;xcb` bleibt der konservative GNOME/Wayland-Pfad, und die Display-Umgebung wird nur so weit repariert, wie es der Nutzerbefund nötig machte.
+
+Zusätzlich wurden die Spracharrays aus `languages.vb` vollständig positionsgenau übernommen, reale alte `.alx`-Dateien aus dem Originalprojekt als Fixtures eingebaut, die alte Vierer-Recent-Dateiliste testbar gemacht, Desktop-Notiz-Opacity/Rand-/Klickzonenlogik weiter aus `desknote.vb` abgeleitet und der Info-/Hilfe-Text wieder aus dem alten `aboutinfotext` gespeist.

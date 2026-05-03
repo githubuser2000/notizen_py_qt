@@ -14,16 +14,49 @@ from .models import (
     legacy_visible_walk,
 )
 from .alx_io import backup_directory_for, create_backup, dump_alx_bytes, list_backups, load_alx, load_alx_bytes, save_alx
-from .settings import legacy_autosave_should_save, normalize_autosave_seconds, normalize_window_state
+from .settings import (
+    LEGACY_RECENT_FILE_SLOTS,
+    legacy_activate_recent_file,
+    legacy_autosave_should_save,
+    legacy_recent_files_from_slots,
+    legacy_recent_slots_from_files,
+    legacy_remember_recent_file,
+    normalize_autosave_seconds,
+    normalize_window_state,
+)
 from .tray_support import decide_startup_tray_visibility, is_gnome_session
 from .startup import StartupTargetValidation, build_autostart_command, legacy_autostart_arguments, validate_legacy_startup_target
-from .desktop_note_legacy import legacy_opacity_percent_for_transparency_percent, legacy_transparency_menu_options
+from .desktop_note_legacy import (
+    LegacyDeskNoteRect,
+    legacy_desknote_hidden_border_geometry,
+    legacy_desknote_hover_geometry,
+    legacy_desknote_opacity_for_active,
+    legacy_desknote_opacity_for_inactive,
+    legacy_desknote_title_hit_action,
+    legacy_opacity_percent_for_transparency_percent,
+    legacy_transparency_menu_options,
+)
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, legacy_documents_notizen_dir, split_legacy_file_location
 from .search_results import SearchHitView, build_search_hit_views, legacy_search_result_label, legacy_search_snippet, node_path
 from .editor_legacy import legacy_clipboard_bullet_text, qt_bullet_insert_text
 from .rtf_utils import bmp_to_dib_bytes, dib_to_bmp_bytes
 from .window_visibility import VisibleWindowGeometry, env_requests_window_reset, legacy_window_state_is_restorable, sanitize_legacy_window_geometry, should_start_minimized
-from .display_env import DisplayEnvironmentDecision, normalize_qt_display_environment, visible_start_requested
+from .display_env import DisplayEnvironmentDecision, apply_graphical_session_environment, normalize_qt_display_environment, visible_start_requested
+from .i18n import (
+    LEGACY_LANGUAGE_KEY_ORDER,
+    available_languages,
+    legacy_language_key_for_index,
+    legacy_language_translations,
+    resolve_language,
+    tr,
+)
+from .alarms import (
+    LEGACY_WECKER_WEEKDAY_CHECKBOXES,
+    legacy_wecker_interval_unit,
+    legacy_wecker_weekday_for_checkbox,
+    legacy_wecker_weekday_labels,
+)
+from .keyboard_legacy import LegacyShortcut, legacy_shortcut_action
 
 __all__ = [
     "DesktopNoteState",
@@ -47,10 +80,21 @@ __all__ = [
     "normalize_autosave_seconds",
     "legacy_autosave_should_save",
     "normalize_window_state",
+    "LEGACY_RECENT_FILE_SLOTS",
+    "legacy_recent_files_from_slots",
+    "legacy_recent_slots_from_files",
+    "legacy_remember_recent_file",
+    "legacy_activate_recent_file",
     "decide_startup_tray_visibility",
     "is_gnome_session",
     "legacy_opacity_percent_for_transparency_percent",
     "legacy_transparency_menu_options",
+    "LegacyDeskNoteRect",
+    "legacy_desknote_hover_geometry",
+    "legacy_desknote_hidden_border_geometry",
+    "legacy_desknote_opacity_for_active",
+    "legacy_desknote_opacity_for_inactive",
+    "legacy_desknote_title_hit_action",
     "LEGACY_DEFAULT_FILENAME",
     "legacy_documents_notizen_dir",
     "split_legacy_file_location",
@@ -73,8 +117,21 @@ __all__ = [
     "should_start_minimized",
     "env_requests_window_reset",
     "DisplayEnvironmentDecision",
+    "apply_graphical_session_environment",
     "normalize_qt_display_environment",
     "visible_start_requested",
+    "legacy_language_translations",
+    "legacy_language_key_for_index",
+    "LEGACY_LANGUAGE_KEY_ORDER",
+    "available_languages",
+    "resolve_language",
+    "tr",
+    "LEGACY_WECKER_WEEKDAY_CHECKBOXES",
+    "legacy_wecker_weekday_for_checkbox",
+    "legacy_wecker_weekday_labels",
+    "legacy_wecker_interval_unit",
+    "LegacyShortcut",
+    "legacy_shortcut_action",
 ]
 
-__version__ = "0.10.11"
+__version__ = "0.10.13"

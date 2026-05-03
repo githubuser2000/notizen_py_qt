@@ -2,25 +2,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import MutableMapping, Sequence
+from typing import Mapping, MutableMapping, Sequence
 import os
+import subprocess
 import sys
 
 _TRUE_VALUES = {"1", "true", "yes", "on", "ja"}
 _DANGEROUS_QPA_ROOTS = {"offscreen", "minimal", "minimalegl", "vnc", "eglfs", "linuxfb", "directfb", "webgl"}
 _GTK_PLATFORM_THEMES = {"gtk2", "gtk3"}
+_GNOME_MENU_COMPAT_QPA = "wayland;xcb"
 _VISIBLE_FLAGS = {"--show", "--visible", "--reset-window", "--no-tray"}
+_SMOKE_FLAGS = {"--smoke-test"}
+_SESSION_ENV_KEYS = {"DISPLAY", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "XDG_RUNTIME_DIR"}
 
 
 @dataclass(frozen=True, slots=True)
 class DisplayEnvironmentDecision:
-    """Qt display-environment changes made before importing Qt.
+    """Qt/GNOME display-environment changes made before importing Qt.
 
-    The shell problem reported for GNOME was not a tray problem anymore: the
-    menu launcher showed a window, but terminal starts inherited a display
-    environment that could make Qt use an invisible/broken backend.  This
-    structure is intentionally tiny and testable so the decision can run before
-    PySide/PyQt is imported.
+    GNOME menu starts and shell starts can inherit different display variables.
+    The failing user log showed exactly this split: the menu launch was visible
+    with ``DISPLAY=:0``, while the shell inherited ``DISPLAY=:1`` and
+    ``GDK_BACKEND=x11`` although the session was GNOME/Wayland.  The decision is
+    intentionally testable and runs before PySide/PyQt is imported.
     """
 
     changed: bool
@@ -28,6 +32,12 @@ class DisplayEnvironmentDecision:
     platform_after: str
     theme_before: str
     theme_after: str
+    display_before: str = ""
+    display_after: str = ""
+    wayland_before: str = ""
+    wayland_after: str = ""
+    gdk_before: str = ""
+    gdk_after: str = ""
     notes: tuple[str, ...] = ()
 
     def summary(self) -> str:
@@ -35,6 +45,9 @@ class DisplayEnvironmentDecision:
             f"changed={int(self.changed)}",
             f"QT_QPA_PLATFORM={self.platform_after or '<unset>'}",
             f"QT_QPA_PLATFORMTHEME={self.theme_after or '<unset>'}",
+            f"DISPLAY={self.display_after or '<unset>'}",
+            f"WAYLAND_DISPLAY={self.wayland_after or '<unset>'}",
+            f"GDK_BACKEND={self.gdk_after or '<unset>'}",
         ]
         if self.notes:
             items.append("notes=" + "; ".join(self.notes))
@@ -55,14 +68,14 @@ def _desktop_is_gnome(env: MutableMapping[str, str]) -> bool:
     return "gnome" in desktop
 
 
-def visible_start_requested(argv: Sequence[str] | None = None, env: MutableMapping[str, str] | None = None) -> bool:
-    """Return whether startup must prefer a real visible window.
+def _smoke_start_requested(argv: Sequence[str] | None = None, env: MutableMapping[str, str] | None = None) -> bool:
+    env = env if env is not None else os.environ
+    args = list(sys.argv[1:] if argv is None else argv)
+    return any(arg in _SMOKE_FLAGS for arg in args) or _truthy(env.get("NOTIZEN_QT_SMOKE_TEST"))
 
-    ``--no-tray`` is included because a terminal user who disables the tray must
-    not end up with a headless/offscreen Qt platform.  The launcher also sets
-    ``NOTIZEN_FORCE_VISIBLE`` so shell scripts and direct module starts share the
-    same safety path.
-    """
+
+def visible_start_requested(argv: Sequence[str] | None = None, env: MutableMapping[str, str] | None = None) -> bool:
+    """Return whether startup must prefer a real visible window."""
 
     env = env if env is not None else os.environ
     args = list(sys.argv[1:] if argv is None else argv)
@@ -71,57 +84,201 @@ def visible_start_requested(argv: Sequence[str] | None = None, env: MutableMappi
     return _truthy(env.get("NOTIZEN_FORCE_VISIBLE")) or _truthy(env.get("NOTIZEN_RESET_WINDOW")) or _truthy(env.get("NOTIZEN_SAFE_DISPLAY"))
 
 
+def _read_systemd_user_environment() -> dict[str, str]:
+    """Best-effort copy of the graphical session environment from systemd."""
+
+    try:
+        proc = subprocess.run(
+            ["systemctl", "--user", "show-environment"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=1.0,
+            check=False,
+        )
+    except Exception:
+        return {}
+    if proc.returncode != 0:
+        return {}
+    result: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in _SESSION_ENV_KEYS and value:
+            result[key] = value
+    return result
+
+
+def apply_graphical_session_environment(
+    env: MutableMapping[str, str],
+    session: Mapping[str, str],
+    notes: list[str] | None = None,
+) -> bool:
+    """Clone the graphical session variables used by the GNOME menu launcher.
+
+    The user's failing log showed two different environments: the GNOME menu
+    launch used ``DISPLAY=:0`` and showed a window, while the interactive shell
+    inherited ``DISPLAY=:1`` and hung in GTK.  The safest default is therefore
+    not to delete ``DISPLAY``.  Instead, clone the display variables from the
+    desktop session when they are available.
+    """
+
+    changed = False
+    notes = notes if notes is not None else []
+    for key in ("XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DISPLAY"):
+        value = session.get(key, "")
+        if not value:
+            continue
+        old = env.get(key, "")
+        if old != value:
+            env[key] = value
+            changed = True
+            notes.append(f"{key} {old or '<unset>'!r} -> {value!r} from graphical session")
+    return changed
+
+
+def _repair_display_from_systemd(env: MutableMapping[str, str], notes: list[str]) -> None:
+    """Repair stale shell display variables using the desktop session env.
+
+    This is only used for the real process environment.  Unit tests pass a plain
+    dict and must not depend on the host's systemd state.
+    """
+
+    if env is not os.environ:
+        return
+    if _truthy(env.get("NOTIZEN_KEEP_QT_ENV")) or _truthy(env.get("NOTIZEN_KEEP_DISPLAY")):
+        return
+    session = _read_systemd_user_environment()
+    if session:
+        apply_graphical_session_environment(env, session, notes)
+
+
+def _set_or_unset(env: MutableMapping[str, str], key: str, value: str | None, notes: list[str]) -> None:
+    old = env.get(key, "")
+    if value is None:
+        if key in env:
+            env.pop(key, None)
+            notes.append(f"{key} {old!r} unset")
+    elif old != value:
+        env[key] = value
+        notes.append(f"{key} {old or '<unset>'!r} -> {value!r}")
+
+
 def normalize_qt_display_environment(
     argv: Sequence[str] | None = None,
     env: MutableMapping[str, str] | None = None,
 ) -> DisplayEnvironmentDecision:
     """Sanitize Qt display variables before importing PySide/PyQt.
 
-    GNOME menu launches and terminal launches can inherit different environment
-    variables.  A terminal can contain ``QT_QPA_PLATFORM=xcb`` while only the
-    Wayland socket is usable, or ``QT_QPA_PLATFORM=offscreen/minimal`` from a
-    previous debug session.  Either case makes ``--show`` powerless because Qt
-    never creates a visible platform window.  The old Notizen.NET application had
-    no equivalent backend choice, so the Python port should choose the visible
-    GNOME backend unless the user explicitly opts out with ``NOTIZEN_KEEP_QT_ENV``.
+    The 0.10.13 policy deliberately mirrors the GNOME menu launch that was
+    observed to work on the user's machine: clone the graphical session
+    variables from systemd when available, keep the repaired ``DISPLAY`` and use
+    ``wayland;xcb`` instead of deleting X11 entirely.  Users can still opt out
+    with ``NOTIZEN_KEEP_QT_ENV=1`` or set ``NOTIZEN_QPA_PLATFORM`` explicitly.
     """
 
     env = env if env is not None else os.environ
     platform_before = env.get("QT_QPA_PLATFORM", "")
     theme_before = env.get("QT_QPA_PLATFORMTHEME", "")
+    display_before = env.get("DISPLAY", "")
+    wayland_before = env.get("WAYLAND_DISPLAY", "")
+    gdk_before = env.get("GDK_BACKEND", "")
     notes: list[str] = []
 
     if _truthy(env.get("NOTIZEN_KEEP_QT_ENV")):
-        return DisplayEnvironmentDecision(False, platform_before, platform_before, theme_before, theme_before, ("kept by NOTIZEN_KEEP_QT_ENV",))
+        return DisplayEnvironmentDecision(
+            False,
+            platform_before,
+            platform_before,
+            theme_before,
+            theme_before,
+            display_before,
+            display_before,
+            wayland_before,
+            wayland_before,
+            gdk_before,
+            gdk_before,
+            ("kept by NOTIZEN_KEEP_QT_ENV",),
+        )
 
-    wants_visible = visible_start_requested(argv, env)
-    gnome = _desktop_is_gnome(env)
-    has_wayland = bool(env.get("WAYLAND_DISPLAY"))
-    has_x11 = bool(env.get("DISPLAY"))
-    platform_root = _root(platform_before)
+    smoke = _smoke_start_requested(argv, env)
+    if smoke:
+        # Validation must be bounded and headless.  Do not inherit a user's stale
+        # DISPLAY/GDK variables into the smoke QApplication constructor.
+        _set_or_unset(env, "QT_QPA_PLATFORM", "offscreen", notes)
+        _set_or_unset(env, "DISPLAY", None, notes)
+        _set_or_unset(env, "WAYLAND_DISPLAY", None, notes)
+        _set_or_unset(env, "GDK_BACKEND", None, notes)
+        if _root(theme_before) in _GTK_PLATFORM_THEMES:
+            _set_or_unset(env, "QT_QPA_PLATFORMTHEME", None, notes)
+    else:
+        _repair_display_from_systemd(env, notes)
+        wants_visible = visible_start_requested(argv, env)
+        gnome = _desktop_is_gnome(env)
+        has_wayland = bool(env.get("WAYLAND_DISPLAY"))
+        if (
+            gnome
+            and has_wayland
+            and wants_visible
+            and env.get("DISPLAY", "") in {":1", ":1.0"}
+            and not _truthy(env.get("NOTIZEN_KEEP_DISPLAY"))
+            and not _truthy(env.get("NOTIZEN_KEEP_SHELL_DISPLAY"))
+        ):
+            env.setdefault("NOTIZEN_ORIGINAL_DISPLAY", env.get("DISPLAY", ""))
+            _set_or_unset(env, "DISPLAY", ":0", notes)
+        has_x11 = bool(env.get("DISPLAY"))
+        platform_root = _root(env.get("QT_QPA_PLATFORM", ""))
 
-    if has_wayland and (wants_visible or gnome):
-        if not platform_before or platform_root in _DANGEROUS_QPA_ROOTS or platform_root == "xcb":
-            env["QT_QPA_PLATFORM"] = "wayland;xcb"
-            if platform_before:
-                notes.append(f"QT_QPA_PLATFORM {platform_before!r} -> 'wayland;xcb'")
-            else:
-                notes.append("QT_QPA_PLATFORM set to 'wayland;xcb'")
-    elif has_x11 and platform_root in _DANGEROUS_QPA_ROOTS and wants_visible:
-        env["QT_QPA_PLATFORM"] = "xcb"
-        notes.append(f"QT_QPA_PLATFORM {platform_before!r} -> 'xcb'")
+        if has_wayland and (wants_visible or gnome):
+            # 0.10.13 deliberately mirrors the GNOME menu launch again.  The
+            # menu path was confirmed visible by the user with DISPLAY=:0 and
+            # QT_QPA_PLATFORM=wayland;xcb.  Earlier pure-Wayland forcing could
+            # make shell starts worse on systems where the shell had a stale
+            # DISPLAY but the session manager had the right one.
+            desired_platform = env.get("NOTIZEN_QPA_PLATFORM") or _GNOME_MENU_COMPAT_QPA
+            if not env.get("QT_QPA_PLATFORM") or platform_root in _DANGEROUS_QPA_ROOTS or env.get("QT_QPA_PLATFORM") != desired_platform:
+                _set_or_unset(env, "QT_QPA_PLATFORM", desired_platform, notes)
+            if _root(env.get("GDK_BACKEND", "")) == "x11":
+                _set_or_unset(env, "GDK_BACKEND", None, notes)
+        elif has_x11 and platform_root in _DANGEROUS_QPA_ROOTS and wants_visible:
+            _set_or_unset(env, "QT_QPA_PLATFORM", "xcb", notes)
 
-    theme_root = _root(theme_before)
-    if has_wayland and (wants_visible or gnome) and theme_root in _GTK_PLATFORM_THEMES:
-        env.pop("QT_QPA_PLATFORMTHEME", None)
-        notes.append(f"QT_QPA_PLATFORMTHEME {theme_before!r} unset")
+        theme_root = _root(env.get("QT_QPA_PLATFORMTHEME", ""))
+        if has_wayland and (wants_visible or gnome) and theme_root in _GTK_PLATFORM_THEMES:
+            _set_or_unset(env, "QT_QPA_PLATFORMTHEME", None, notes)
 
     platform_after = env.get("QT_QPA_PLATFORM", "")
     theme_after = env.get("QT_QPA_PLATFORMTHEME", "")
-    changed = platform_before != platform_after or theme_before != theme_after
+    display_after = env.get("DISPLAY", "")
+    wayland_after = env.get("WAYLAND_DISPLAY", "")
+    gdk_after = env.get("GDK_BACKEND", "")
+    changed = any(
+        before != after
+        for before, after in (
+            (platform_before, platform_after),
+            (theme_before, theme_after),
+            (display_before, display_after),
+            (wayland_before, wayland_after),
+            (gdk_before, gdk_after),
+        )
+    )
     if notes:
         env["NOTIZEN_DISPLAY_ENV_NOTES"] = "; ".join(notes)
-    return DisplayEnvironmentDecision(changed, platform_before, platform_after, theme_before, theme_after, tuple(notes))
+    return DisplayEnvironmentDecision(
+        changed,
+        platform_before,
+        platform_after,
+        theme_before,
+        theme_after,
+        display_before,
+        display_after,
+        wayland_before,
+        wayland_after,
+        gdk_before,
+        gdk_after,
+        tuple(notes),
+    )
 
 
 def default_startup_log_path(env: MutableMapping[str, str] | None = None) -> Path:
@@ -131,11 +288,7 @@ def default_startup_log_path(env: MutableMapping[str, str] | None = None) -> Pat
 
 
 def append_startup_log(message: str, env: MutableMapping[str, str] | None = None) -> None:
-    """Best-effort append for launcher/app diagnostics.
-
-    The function is intentionally silent on failure; startup logging must never
-    be the reason the notes window does not open.
-    """
+    """Best-effort append for launcher/app diagnostics."""
 
     env = env if env is not None else os.environ
     target = env.get("NOTIZEN_STARTUP_LOG") or str(default_startup_log_path(env))

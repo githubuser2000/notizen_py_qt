@@ -11,7 +11,9 @@ from notizen_py_qt.rtf_utils import plain_text_to_rtf, rtf_to_plain_text
 from notizen_py_qt.search_logic import find_in_text, search_nodes
 
 
-FIXTURE = Path(__file__).resolve().parents[1] / ".." / "Notizen.NET" / "Notizen" / "bin" / "Debug" / "unbenannt.alx"
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "legacy_alx"
+FIXTURE = FIXTURE_DIR / "unbenannt.alx"
+LEGACY_TEST_FIXTURE = FIXTURE_DIR / "test.alx"
 
 
 def test_parse_v2_nested_xml_roundtrip(tmp_path: Path) -> None:
@@ -40,6 +42,18 @@ def test_load_legacy_unencrypted_fixture_if_present() -> None:
     doc = load_alx(FIXTURE)
     assert doc.root is not None
     assert doc.root.title == "start"
+
+
+def test_load_real_notizen_net_test_fixture() -> None:
+    if not LEGACY_TEST_FIXTURE.exists():
+        pytest.skip("legacy Notizen.NET test.alx fixture not included")
+    doc = load_alx(LEGACY_TEST_FIXTURE)
+    assert doc.root is not None
+    assert doc.root.title == "Notes"
+    assert len(doc.root.children) == 8
+    desktop_notes = sum(1 for node in doc.root.walk() if node.desktop_note is not None)
+    assert desktop_notes == 3
+    assert sum(1 for _ in doc.root.walk()) == 65
 
 
 def test_parse_legacy_notes_doc() -> None:

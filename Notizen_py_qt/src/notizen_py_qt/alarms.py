@@ -7,6 +7,53 @@ from typing import Literal
 
 RecurrenceKind = Literal["none", "daily", "weekly", "monthly", "yearly"]
 
+# Ported from wecker.Designer.vb. The old dialog did not create the
+# weekday checkboxes in calendar order, but the labels mapped to Monday..Sunday
+# like this. Keeping the legacy control names makes old UI/source audits
+# reproducible without importing Qt.
+LEGACY_WECKER_WEEKDAY_CHECKBOXES: tuple[tuple[str, int, str], ...] = (
+    ("CheckBox15", 0, "Montag"),
+    ("CheckBox12", 1, "Dienstag"),
+    ("CheckBox9", 2, "Mittwoch"),
+    ("CheckBox14", 3, "Donnerstag"),
+    ("CheckBox11", 4, "Freitag"),
+    ("CheckBox10", 5, "Samstag"),
+    ("CheckBox13", 6, "Sonntag"),
+)
+
+_LEGACY_WECKER_WEEKDAY_BY_CONTROL = {
+    name.casefold(): weekday for name, weekday, _label in LEGACY_WECKER_WEEKDAY_CHECKBOXES
+}
+
+LEGACY_WECKER_INTERVAL_UNITS: dict[str, str] = {
+    "daily": "Tage",
+    "weekly": "Wochen",
+    "monthly": "Monate",
+    "yearly": "Jahre",
+}
+
+
+def legacy_wecker_weekday_for_checkbox(control_name: str) -> int | None:
+    """Return Python weekday index for a legacy ``wecker.vb`` checkbox name.
+
+    Monday is ``0`` and Sunday is ``6``. Unknown control names return ``None``
+    instead of raising so legacy config/source probes stay tolerant.
+    """
+
+    return _LEGACY_WECKER_WEEKDAY_BY_CONTROL.get((control_name or "").casefold())
+
+
+def legacy_wecker_weekday_labels() -> tuple[str, ...]:
+    """Return the old weekly checkbox labels in calendar order."""
+
+    return tuple(label for _name, _weekday, label in LEGACY_WECKER_WEEKDAY_CHECKBOXES)
+
+
+def legacy_wecker_interval_unit(recurrence: str) -> str:
+    """Return the unit label used by the old interval textbox context."""
+
+    return LEGACY_WECKER_INTERVAL_UNITS.get((recurrence or "").casefold(), "")
+
 
 @dataclass(frozen=True, slots=True)
 class AlarmSpec:
@@ -23,6 +70,7 @@ class AlarmSpec:
     recurrence: RecurrenceKind = "none"
     interval: int = 1
     weekdays: tuple[int, ...] = ()
+    enabled: bool = True
 
     def normalized(self) -> "AlarmSpec":
         interval = max(1, int(self.interval or 1))
@@ -35,6 +83,7 @@ class AlarmSpec:
             recurrence=recurrence,
             interval=interval,
             weekdays=weekdays,
+            enabled=bool(self.enabled),
         )
 
 
@@ -64,6 +113,8 @@ def next_occurrence(spec: AlarmSpec, after: datetime | None = None) -> datetime 
     """
 
     normalized = spec.normalized()
+    if not normalized.enabled:
+        return None
     after = (after or datetime.now()).replace(microsecond=0)
     start = normalized.start
     if normalized.recurrence == "none":
@@ -127,6 +178,8 @@ def next_occurrence(spec: AlarmSpec, after: datetime | None = None) -> datetime 
 
 def describe_recurrence(spec: AlarmSpec) -> str:
     normalized = spec.normalized()
+    if not normalized.enabled:
+        return "deaktiviert"
     if normalized.recurrence == "none":
         return "einmalig"
     label = {

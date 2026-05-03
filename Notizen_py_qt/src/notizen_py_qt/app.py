@@ -2,22 +2,28 @@ from __future__ import annotations
 
 import argparse
 import base64
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .alarms import AlarmSpec, describe_recurrence, next_occurrence
+from .alarms import AlarmSpec, describe_recurrence, legacy_wecker_weekday_labels, next_occurrence
 from .alx_io import AlxError, InvalidPassword, PasswordRequired, backup_directory_for, create_backup, dump_alx_bytes, list_backups, load_alx, load_alx_bytes, save_alx, normalize_password
 from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf, tree_to_text_bytes
 from .editor_legacy import qt_bullet_insert_text
 from .html_export import HtmlExportOptions, tree_to_html_bytes
 from .ftp_sync import FtpSyncError, FtpTarget
 from .i18n import available_languages, tr
+from .keyboard_legacy import legacy_shortcut_action
 from .legacy_colors import legacy_light_color_argb
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, ensure_legacy_documents_notizen_dir
 from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_can_move_before_target, legacy_delete_fallback_node, legacy_move_before_target, legacy_new_next_node, legacy_paste_clone
-from .desktop_note_legacy import legacy_transparency_menu_options
+from .desktop_note_legacy import (
+    legacy_desknote_opacity_for_active,
+    legacy_desknote_opacity_for_inactive,
+    legacy_transparency_menu_options,
+)
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
 from .startup import apply_windows_autostart_script, parse_legacy_startup_args, validate_legacy_startup_target
 from .tray_support import decide_startup_tray_visibility, gnome_tray_install_hint
@@ -30,6 +36,10 @@ from .settings import AppSettings, legacy_autosave_should_save, normalize_autosa
 from .stats import collect_tree_stats
 
 _DISPLAY_ENV_DECISION = normalize_qt_display_environment(sys.argv[1:])
+append_startup_log(
+    "PRE_QT_ENV %s"
+    % _DISPLAY_ENV_DECISION.summary()
+)
 
 try:  # Importing is optional so tests and CLI helpers work without Qt installed.
     from .qt_compat import load_qt
@@ -84,6 +94,7 @@ if QtWidgets is not None:
     FRAMELESS = _enum(QtCore.Qt, "WindowType", "FramelessWindowHint")
     CTRL = _enum(QtCore.Qt, "KeyboardModifier", "ControlModifier")
     SHIFT = _enum(QtCore.Qt, "KeyboardModifier", "ShiftModifier")
+    ALT = _enum(QtCore.Qt, "KeyboardModifier", "AltModifier")
     CUSTOM_CONTEXT_MENU = _enum(QtCore.Qt, "ContextMenuPolicy", "CustomContextMenu")
 
     def color_from_argb(argb: int) -> Any:
@@ -183,6 +194,7 @@ if QtWidgets is not None:
             self.setWindowTitle(node.title)
             self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_DeleteOnClose"), False)
             self._loading = False
+            self._desired_opacity = 0.85
 
             layout = QtWidgets.QVBoxLayout(self)
             layout.setContentsMargins(6, 6, 6, 6)
@@ -215,8 +227,9 @@ if QtWidgets is not None:
         def _restore_geometry(self) -> None:
             state = self.node.desktop_note or DesktopNoteState()
             self.setGeometry(state.x, state.y, max(120, state.width), max(100, state.height))
+            self._desired_opacity = legacy_desknote_opacity_for_inactive(state.opacity)
             try:
-                self.setWindowOpacity(float(state.opacity))
+                self.setWindowOpacity(self._desired_opacity)
             except Exception:
                 pass
             self._apply_background()
@@ -230,10 +243,7 @@ if QtWidgets is not None:
             self.node.desktop_note.width = geo.width()
             self.node.desktop_note.height = geo.height()
             self.node.desktop_note.visible = self.isVisible()
-            try:
-                self.node.desktop_note.opacity = float(self.windowOpacity())
-            except Exception:
-                pass
+            self.node.desktop_note.opacity = legacy_desknote_opacity_for_inactive(self._desired_opacity)
 
         def reload_from_node(self) -> None:
             self._loading = True
@@ -274,7 +284,8 @@ if QtWidgets is not None:
         def _set_opacity_percent(self, value: int) -> None:
             if self.node.desktop_note is None:
                 self.node.desktop_note = DesktopNoteState()
-            opacity = max(0.1, min(1.0, value / 100.0))
+            opacity = legacy_desknote_opacity_for_inactive(value / 100.0)
+            self._desired_opacity = opacity
             self.node.desktop_note.opacity = opacity
             try:
                 self.setWindowOpacity(opacity)
@@ -282,6 +293,18 @@ if QtWidgets is not None:
                 pass
             self.main_window.document.mark_changed()
             self.main_window.update_title()
+
+        def _set_active_opacity(self) -> None:
+            try:
+                self.setWindowOpacity(legacy_desknote_opacity_for_active(self._desired_opacity))
+            except Exception:
+                pass
+
+        def _restore_inactive_opacity(self) -> None:
+            try:
+                self.setWindowOpacity(legacy_desknote_opacity_for_inactive(self._desired_opacity))
+            except Exception:
+                pass
 
         def _activate_main_window_node(self) -> None:
             self.main_window.show()
@@ -293,6 +316,22 @@ if QtWidgets is not None:
             self.main_window.close_desktop_note(self.node)
             self.main_window.document.mark_changed()
             self.main_window.update_title()
+
+        def enterEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            self._set_active_opacity()
+            super().enterEvent(event)
+
+        def leaveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            self._restore_inactive_opacity()
+            super().leaveEvent(event)
+
+        def focusInEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            self._set_active_opacity()
+            super().focusInEvent(event)
+
+        def focusOutEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            self._restore_inactive_opacity()
+            super().focusOutEvent(event)
 
         def mouseDoubleClickEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             self._activate_main_window_node()
@@ -447,6 +486,8 @@ if QtWidgets is not None:
             self.main_window = main_window
             self.setWindowTitle("Wecker")
             layout = QtWidgets.QFormLayout(self)
+            self.enabled_check = QtWidgets.QCheckBox("Wecker aktiviert")
+            self.enabled_check.setChecked(True)
             self.when = QtWidgets.QDateTimeEdit(QtCore.QDateTime.currentDateTime().addSecs(5 * 60))
             self.when.setCalendarPopup(True)
             self.message = QtWidgets.QLineEdit("Notizen-Wecker")
@@ -464,13 +505,14 @@ if QtWidgets is not None:
             weekday_layout.setContentsMargins(0, 0, 0, 0)
             self.weekday_checks: list[Any] = []
             current_day = QtCore.QDate.currentDate().dayOfWeek() - 1
-            for index, label in enumerate(("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")):
-                box = QtWidgets.QCheckBox(label)
+            for index, label in enumerate(legacy_wecker_weekday_labels()):
+                box = QtWidgets.QCheckBox(label[:2])
                 box.setChecked(index == current_day)
                 self.weekday_checks.append(box)
                 weekday_layout.addWidget(box)
             weekday_layout.addStretch(1)
 
+            layout.addRow(self.enabled_check)
             layout.addRow("Zeitpunkt", self.when)
             layout.addRow("Meldung", self.message)
             layout.addRow("Wiederholung", self.repeat)
@@ -487,14 +529,24 @@ if QtWidgets is not None:
             buttons.rejected.connect(self.reject)
             layout.addRow(buttons)
             self.repeat.currentIndexChanged.connect(self._update_repeat_controls)
+            self.enabled_check.toggled.connect(self._update_repeat_controls)
             self._update_repeat_controls()
 
         def _update_repeat_controls(self) -> None:
+            active = self.enabled_check.isChecked()
             kind = self.repeat.currentData()
-            self.interval.setEnabled(kind != "none")
+            self.when.setEnabled(active)
+            self.message.setEnabled(active)
+            self.repeat.setEnabled(active)
+            self.interval.setEnabled(active and kind != "none")
+            self.weekday_container.setEnabled(active)
             self.weekday_container.setVisible(kind == "weekly")
 
         def accept(self) -> None:  # noqa: N802 - Qt override
+            if not self.enabled_check.isChecked():
+                self.main_window.statusBar().showMessage("Wecker deaktiviert.")
+                super().accept()
+                return
             when = self.when.dateTime()
             try:
                 start = datetime.fromtimestamp(int(when.toSecsSinceEpoch()))
@@ -508,6 +560,7 @@ if QtWidgets is not None:
                 recurrence=kind,  # type: ignore[arg-type]
                 interval=self.interval.value(),
                 weekdays=weekdays,
+                enabled=True,
             ).normalized()
             self.main_window.schedule_alarm_spec(spec)
             super().accept()
@@ -1088,7 +1141,7 @@ if QtWidgets is not None:
 
         def apply_language(self) -> None:
             """Apply the legacy language table to visible Qt menus and actions."""
-            self.tree.setHeaderLabel(self.tr("Info1", "Notizen"))
+            self.tree.setHeaderLabel(self.tr("info1", "Notizen"))
             if hasattr(self, "quick_search_edit"):
                 self.quick_search_edit.setPlaceholderText(self.tr("kontext5", "Suchen"))
                 self.quick_search_next_button.setText("Weiter")
@@ -1160,7 +1213,7 @@ if QtWidgets is not None:
             self.stats_action.setText("Statistik")
             self.cycle_scrollbars_action.setText("Scrollleisten wechseln")
             self.import_config_action.setText("Alt-Config importieren")
-            self.about_action.setText("Info")
+            self.about_action.setText(self.tr("Strip1_20", "Info + Hilfe + Feedback"))
             self.update_recent_menu()
             self.update_tray_menu()
 
@@ -1288,12 +1341,17 @@ if QtWidgets is not None:
                 action.triggered.connect(lambda checked=False, p=path_text: self.open_recent_file(p))
 
         def open_recent_file(self, path_text: str) -> bool:
-            """Open a legacy recent-file entry after the same save prompt as the old menu."""
-            path = Path(path_text)
+            """Open and rotate a legacy recent-file entry like the old menu."""
+            requested_path = Path(path_text)
+            selected = self.settings.activate_recent_file(path_text) or path_text
+            self.update_recent_menu()
+            path = Path(selected) if selected else requested_path
             if not path.exists():
                 QtWidgets.QMessageBox.warning(self, "Zuletzt geöffnet", f"Datei nicht gefunden:\n{path}")
+                self.settings.save()
                 return False
             if not self.maybe_save_changes():
+                self.settings.save()
                 return False
             return self.load_path(path)
 
@@ -2937,12 +2995,13 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.11"
+                __version__ = "0.10.13"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
                 (
                     f"Notizen.NET Weitertranspilierung nach Python/Qt {__version__}\n\n"
+                    f"{self.tr('aboutinfotext', '')}\n\n"
                     "Portiert: ALX-Dateiformat, Notizbaum, lokale/FTP-Speicherung, Suche, "
                     "Knotenoperationen, Desktop-Notizen, RichText-Brücke, Teilbaum-Export, "
                     "Sprachdateien, legacy Startparameter, alte Tastaturbedienung, "
@@ -2955,31 +3014,83 @@ if QtWidgets is not None:
                 ),
             )
 
+        def _legacy_shortcut_key_name(self, key: Any) -> str:
+            key_values = {
+                "Space": _enum(QtCore.Qt, "Key", "Key_Space"),
+                "S": _enum(QtCore.Qt, "Key", "Key_S"),
+                "O": _enum(QtCore.Qt, "Key", "Key_O"),
+                "N": _enum(QtCore.Qt, "Key", "Key_N"),
+                "Q": _enum(QtCore.Qt, "Key", "Key_Q"),
+                "C": _enum(QtCore.Qt, "Key", "Key_C"),
+                "V": _enum(QtCore.Qt, "Key", "Key_V"),
+                "X": _enum(QtCore.Qt, "Key", "Key_X"),
+                "U": _enum(QtCore.Qt, "Key", "Key_U"),
+                "F": _enum(QtCore.Qt, "Key", "Key_F"),
+                "Insert": _enum(QtCore.Qt, "Key", "Key_Insert"),
+                "Delete": _enum(QtCore.Qt, "Key", "Key_Delete"),
+                "Return": _enum(QtCore.Qt, "Key", "Key_Return"),
+                "Enter": _enum(QtCore.Qt, "Key", "Key_Enter"),
+                "Plus": _enum(QtCore.Qt, "Key", "Key_Plus"),
+                "=": _enum(QtCore.Qt, "Key", "Key_Equal"),
+                "Minus": _enum(QtCore.Qt, "Key", "Key_Minus"),
+            }
+            for name, qt_key in key_values.items():
+                if key == qt_key:
+                    return name
+            return ""
+
+        def _perform_legacy_shortcut_action(self, action: str) -> None:
+            if action == "alarm":
+                self.show_alarm_dialog()
+            elif action == "save":
+                self.save_file()
+            elif action == "open":
+                self.open_dialog()
+            elif action == "new_document":
+                self.new_document()
+            elif action == "quit":
+                self.close()
+            elif action == "copy":
+                self.copy_anything()
+            elif action == "paste":
+                self.paste_anything()
+            elif action == "cut":
+                self.cut_anything()
+            elif action == "rename":
+                self.rename_node()
+            elif action == "search":
+                self.show_search()
+            elif action == "font_bigger":
+                self.change_font_size(+1)
+            elif action == "font_smaller":
+                self.change_font_size(-1)
+            elif action == "paste_node":
+                self.paste_node()
+            elif action == "cut_node":
+                self.cut_node()
+            elif action == "add_child":
+                self.add_child_node()
+            elif action == "delete_node":
+                self.delete_node()
+            elif action == "add_sibling":
+                self.add_sibling_node()
+
         def keyPressEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             # Keep legacy shortcuts from Notizen.vb/tastendruck focus-aware.
-            key = event.key()
+            key_name = self._legacy_shortcut_key_name(event.key())
             modifiers = event.modifiers()
-            if modifiers & CTRL:
-                if key == _enum(QtCore.Qt, "Key", "Key_Space"):
-                    self.show_alarm_dialog()
-                    return
-            if self.tree.hasFocus() and modifiers & SHIFT and not (modifiers & CTRL):
-                if key == _enum(QtCore.Qt, "Key", "Key_Insert"):
-                    self.paste_node()
-                    return
-                if key == _enum(QtCore.Qt, "Key", "Key_Delete"):
-                    self.cut_node()
-                    return
-            if self.tree.hasFocus() and not (modifiers & (CTRL | SHIFT)):
-                if key == _enum(QtCore.Qt, "Key", "Key_Insert"):
-                    self.add_child_node()
-                    return
-                if key == _enum(QtCore.Qt, "Key", "Key_Delete"):
-                    self.delete_node()
-                    return
-                if key in {_enum(QtCore.Qt, "Key", "Key_Return"), _enum(QtCore.Qt, "Key", "Key_Enter")}:
-                    self.add_sibling_node()
-                    return
+            shortcut = legacy_shortcut_action(
+                key_name,
+                control=bool(modifiers & CTRL),
+                shift=bool(modifiers & SHIFT),
+                alt=bool(modifiers & ALT),
+                tree_focus=self.tree.hasFocus(),
+                editor_focus=self._editor_active(),
+            )
+            if shortcut is not None:
+                self._perform_legacy_shortcut_action(shortcut.action)
+                event.accept()
+                return
             super().keyPressEvent(event)
 
         def changeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
@@ -3037,13 +3148,19 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
     try:
+        try:
+            from . import __version__ as _runtime_version
+        except Exception:
+            _runtime_version = "?"
         append_startup_log(
-            "APP_RUNTIME binding=%s qpa=%s display=%s wayland=%s env=%s"
+            "APP_RUNTIME version=%s module=%s binding=%s qpa=%s display=%s wayland=%s env=%s"
             % (
+                _runtime_version,
+                Path(__file__).resolve(),
                 BINDING,
                 app.platformName() if hasattr(app, "platformName") else "",
-                __import__("os").environ.get("DISPLAY", ""),
-                __import__("os").environ.get("WAYLAND_DISPLAY", ""),
+                os.environ.get("DISPLAY", ""),
+                os.environ.get("WAYLAND_DISPLAY", ""),
                 _DISPLAY_ENV_DECISION.summary(),
             )
         )

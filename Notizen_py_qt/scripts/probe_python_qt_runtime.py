@@ -29,12 +29,35 @@ def find_project_root(start: Path) -> Path:
         cur = cur.parent
 
 
-def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> tuple[int, str]:
+def run(
+    cmd: list[str],
+    cwd: Path,
+    env: dict[str, str] | None = None,
+    *,
+    unset: tuple[str, ...] = (),
+    timeout: float | None = None,
+) -> tuple[int, str]:
     merged = os.environ.copy()
+    for key in unset:
+        merged.pop(key, None)
     if env:
         merged.update(env)
-    proc = subprocess.run(cmd, cwd=str(cwd), env=merged, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return proc.returncode, proc.stdout
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            env=merged,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+        return proc.returncode, proc.stdout
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        return 124, output + f"\nTIMEOUT after {timeout} seconds\n"
 
 
 def print_block(title: str, body: str) -> None:
@@ -117,8 +140,14 @@ except Exception as exc:
         print_block("Qt binding import", "SKIPPED (--skip-qt)")
 
     if not args.skip_smoke and not args.skip_qt:
-        env = {"QT_QPA_PLATFORM": "offscreen", "NOTIZEN_QT_SMOKE_TEST": "1"}
-        rc, out = run(_python_cmd("-m", "notizen_py_qt", "--smoke-test"), cwd=root, env=env)
+        env = {"QT_QPA_PLATFORM": "offscreen", "NOTIZEN_QT_SMOKE_TEST": "1", "NOTIZEN_NO_GUI_ERROR": "1"}
+        rc, out = run(
+            _python_cmd("-m", "notizen_py_qt", "--smoke-test"),
+            cwd=root,
+            env=env,
+            unset=("DISPLAY", "WAYLAND_DISPLAY", "GDK_BACKEND", "QT_QPA_PLATFORMTHEME"),
+            timeout=10.0,
+        )
         print_block("Qt smoke test", out)
         if rc != 0:
             errors += 1

@@ -127,3 +127,25 @@ def test_rtf_table_cell_and_row_controls_survive_plain_text_and_html_conversion(
     assert "B" in html
     assert "C" in html
     assert "D" in html
+
+
+def test_legacy_config_unknown_elements_are_preserved(tmp_path: Path) -> None:
+    config = tmp_path / "notizen.config.xml"
+    config.write_text(
+        """<?xml version="1.0" encoding="utf-16"?>
+<notizen-alx>
+  <language choice="Deutsch" />
+  <legacy-extra alpha="1"><nested value="old" /></legacy-extra>
+</notizen-alx>
+""",
+        encoding="utf-16",
+    )
+    settings = AppSettings.load(tmp_path)
+    assert any("legacy-extra" in xml for xml in settings.legacy_passthrough_elements)
+    settings.language = "English"
+    settings.save()
+    root = ET.parse(config).getroot()
+    extra = root.find("legacy-extra")
+    assert extra is not None
+    assert extra.get("alpha") == "1"
+    assert extra.find("nested").get("value") == "old"  # type: ignore[union-attr]

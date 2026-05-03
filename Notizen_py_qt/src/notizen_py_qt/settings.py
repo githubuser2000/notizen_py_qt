@@ -8,6 +8,9 @@ from xml.etree import ElementTree as ET
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, legacy_documents_notizen_dir, split_legacy_file_location
 
 
+LEGACY_RECENT_FILE_SLOTS: tuple[str, ...] = ("a", "b", "c", "d")
+
+
 def default_config_dir() -> Path:
     if os.name == "nt":
         base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
@@ -76,6 +79,67 @@ def normalize_window_state(value: str | None) -> str:
         return "Minimized"
     return "Normal"
 
+
+
+def legacy_recent_files_from_slots(slots: dict[str, str] | object) -> list[str]:
+    """Return the old four-file ``<files a=... b=... c=... d=...>`` list.
+
+    ``xml_kram.vb`` stored exactly four recent-file attributes. Empty slots are
+    ignored on read, but their order is preserved. The helper accepts either a
+    mapping-like object or an ``Element`` with ``.get`` so the XML parser and
+    tests use the same tiny piece of legacy logic.
+    """
+
+    getter = getattr(slots, "get")
+    result: list[str] = []
+    for key in LEGACY_RECENT_FILE_SLOTS:
+        value = getter(key, "")
+        if value:
+            result.append(str(value))
+    return result
+
+
+def legacy_recent_slots_from_files(recent_files: list[str] | tuple[str, ...]) -> dict[str, str]:
+    """Serialize recent files back to the four legacy XML attributes."""
+
+    values = [str(path) for path in recent_files if str(path)]
+    values = values[-len(LEGACY_RECENT_FILE_SLOTS) :]
+    return {
+        key: values[index] if index < len(values) else ""
+        for index, key in enumerate(LEGACY_RECENT_FILE_SLOTS)
+    }
+
+
+def legacy_remember_recent_file(recent_files: list[str] | tuple[str, ...], path: str | Path) -> list[str]:
+    """Move ``path`` to the newest slot using the Notizen.NET four-entry cap."""
+
+    value = os.fspath(path)
+    result = [entry for entry in recent_files if entry and entry != value]
+    result.append(value)
+    return result[-len(LEGACY_RECENT_FILE_SLOTS) :]
+
+
+def legacy_activate_recent_file(
+    recent_files: list[str] | tuple[str, ...], path_or_index: str | Path | int
+) -> tuple[str | None, list[str]]:
+    """Return the selected recent file and the rotated legacy menu order.
+
+    The original menu handlers made the clicked recent file the latest entry.
+    The selected path is returned separately so callers can open it before
+    saving the updated order.
+    """
+
+    files = [entry for entry in recent_files if entry]
+    if isinstance(path_or_index, int):
+        if not (0 <= path_or_index < len(files)):
+            return None, files[-len(LEGACY_RECENT_FILE_SLOTS) :]
+        selected = files[path_or_index]
+    else:
+        selected = os.fspath(path_or_index)
+        if selected not in files:
+            return None, files[-len(LEGACY_RECENT_FILE_SLOTS) :]
+    return selected, legacy_remember_recent_file(files, selected)
+
 def default_toolstrip_positions() -> dict[str, tuple[int, int]]:
     """Legacy toolbar position map from ``xml_kram.vb``/``Notizen.Designer.vb``."""
 
@@ -114,6 +178,8 @@ class AppSettings:
     window_width: int = 1000
     window_height: int = 700
     window_state: str = "Normal"
+    legacy_root_attributes: dict[str, str] = field(default_factory=dict)
+    legacy_passthrough_elements: list[str] = field(default_factory=list)
 
     @property
     def path(self) -> Path:
@@ -150,6 +216,29 @@ class AppSettings:
         def child(name: str) -> ET.Element | None:
             return root.find(name)
 
+        known_top_level = {
+            "scrolls",
+            "language",
+            "open",
+            "files",
+            "ftp",
+            "saftycopies",
+            "autosave",
+            "x",
+            "tool-stripes",
+            "autorun",
+            "desknotes",
+            "minimized-show-in",
+            "tray",
+            "main-form",
+        }
+        self.legacy_root_attributes = dict(root.attrib)
+        self.legacy_passthrough_elements = [
+            ET.tostring(element, encoding="unicode")
+            for element in list(root)
+            if element.tag not in known_top_level
+        ]
+
         scrolls = child("scrolls")
         if scrolls is not None:
             self.scrollbars_choice = _as_int(scrolls.get("choice"), self.scrollbars_choice)
@@ -174,7 +263,7 @@ class AppSettings:
 
         files = child("files")
         if files is not None:
-            self.recent_files = [files.get(k, "") for k in ("a", "b", "c", "d") if files.get(k, "")]
+            self.recent_files = legacy_recent_files_from_slots(files)
 
         ftp = child("ftp")
         if ftp is not None:
@@ -264,13 +353,18 @@ class AppSettings:
     def remember_file(self, path: str | Path) -> None:
         p = os.fspath(path)
         self.last_directory, self.last_file = split_legacy_file_location(p, self.last_directory)
-        self.recent_files = [x for x in self.recent_files if x != p]
-        self.recent_files.append(p)
-        self.recent_files = self.recent_files[-4:]
+        self.recent_files = legacy_remember_recent_file(self.recent_files, p)
+
+    def activate_recent_file(self, path_or_index: str | Path | int) -> str | None:
+        """Mark a legacy recent-file menu entry as the latest one."""
+
+        selected, recent = legacy_activate_recent_file(self.recent_files, path_or_index)
+        self.recent_files = recent
+        return selected
 
     def save(self) -> None:
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        root = ET.Element("notizen-alx")
+        root = ET.Element("notizen-alx", dict(self.legacy_root_attributes))
         ET.SubElement(root, "scrolls", {"choice": str(self.scrollbars_choice)})
         ET.SubElement(root, "saftycopies", {"amount": str(self.backup_keep)})
         ET.SubElement(
@@ -291,9 +385,7 @@ class AppSettings:
                 "path": self.ftp_path,
             },
         )
-        recent = {key: value for key, value in zip(("a", "b", "c", "d"), self.recent_files[-4:])}
-        for key in ("a", "b", "c", "d"):
-            recent.setdefault(key, "")
+        recent = legacy_recent_slots_from_files(self.recent_files)
         ET.SubElement(root, "files", recent)
         ET.SubElement(root, "language", {"choice": self.language})
         opened = ET.SubElement(root, "open", {"file": self.last_file, "directory": self.last_directory})
@@ -323,5 +415,15 @@ class AppSettings:
             x, y = positions[name]
             ET.SubElement(tool_stripes, name, {"x": str(x), "y": str(y)})
         ET.SubElement(root, "x", {"y": "0", "z": "0", "a": str(normalize_autosave_seconds(self.autosave_seconds))})
+        existing_tags = {element.tag for element in list(root)}
+        for xml_text in self.legacy_passthrough_elements:
+            try:
+                element = ET.fromstring(xml_text)
+            except ET.ParseError:
+                continue
+            if element.tag in existing_tags:
+                continue
+            root.append(element)
+            existing_tags.add(element.tag)
         tree = ET.ElementTree(root)
         tree.write(self.path, encoding="utf-16", xml_declaration=True)
