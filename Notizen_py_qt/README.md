@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.8**.
+Aktueller Stand dieses Archivs: **0.10.9**.
 
 ## Start
 
@@ -55,6 +55,14 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+## Änderungen in 0.10.9
+
+- Alte WinForms-RichTextBox-Bitmapbilder werden besser erhalten: RTF-`\pict\dibitmap`/`\pict\wbitmap`-Gruppen werden als BMP-Daten erkannt, in HTML-`img`-Data-URIs übernommen und beim kombinierten RTF-Export wieder als `\dibitmap0` geschrieben.
+- Damit gehen BMP-/DIB-Bilder aus alten Notizen.NET-Dateien bei „Teilbaum zusammenfassen“, „Ganzen Baum zusammenfassen“ und HTML-/RTF-Brücken nicht mehr als `[Bild]` oder leere Stelle verloren.
+- HTML-`img`-Quellen mit `image/bmp` sowie lokale `.bmp`-Dateien können jetzt wieder in RTF übernommen werden.
+- Baum-Doppelklick folgt jetzt `BaumTyp_NodeMouseDoubleClick`: Ein Doppelklick auf einen Knoten startet direkt die Titelbearbeitung, wie im alten WinForms-TreeView.
+- Neue Qt-unabhängige RTF-Helfer: `dib_to_bmp_bytes(...)` und `bmp_to_dib_bytes(...)`.
+
 ## Änderungen in 0.10.8
 
 - Baum-Drag-and-drop folgt jetzt dem alten `Baum_MouseUp`-Prinzip: Ein gezogener Nicht-Wurzelknoten wird als Geschwister **vor** dem Zielknoten eingefügt, nicht als Kind darunter. Drops auf die Wurzel, auf sich selbst oder in eigene Nachfahren werden wie im WinForms-Original blockiert.
@@ -89,7 +97,7 @@ notizen-py-qt /pfad/zur/datei.alx
 - Baumansicht, Editor, Knotenoperationen, WinForms-nahe Drag-and-drop-Regel, Suche, Export und Notizen.NET-kompatible Sicherheitskopien.
 - WinForms-nahe Hauptansicht mit sichtbarem Baumfeld `txt1` über dem Baum, Titel-Textfeld `txt2` über dem Editor und dauerhaft sichtbarem RichText-Editor `Inhalt`.
 - RTF-zu-HTML-Bridge für den Qt-Editor mit Fett/Kursiv/Unterstrichen/Durchgestrichen, Schriftgröße, Schriftfamilie, Textfarbe, Markierung und Unicode.
-- RTF-Bild-Roundtrip für übliche WinForms/Qt-`\pict`-Bilder mit PNG/JPEG-Hexdaten sowie HTML-`img`-Data-URIs; kombinierte Teilbaum-/Gesamtbaum-RTF-Exporte und Zusammenfassungsnotizen behalten eingebettete Bilder jetzt ebenfalls.
+- RTF-Bild-Roundtrip für übliche WinForms/Qt-`\pict`-Bilder mit PNG/JPEG-Hexdaten und alte RichTextBox-Bitmapbilder (`\dibitmap`/BMP) sowie HTML-`img`-Data-URIs; kombinierte Teilbaum-/Gesamtbaum-RTF-Exporte und Zusammenfassungsnotizen behalten eingebettete Bilder jetzt ebenfalls.
 - Editor-Kontextfunktionen aus Notizen.NET: Text löschen, Bild einfügen, Datum einfügen, Suche und Zwischenablageaktionen.
 - Teilbaum-Export nach RTF/TXT mit alter Notizen.NET-Nummerierung sowie „Teilbaum zusammenfassen“ und „Ganzen Baum zusammenfassen“ als neue Notiz.
 - Fokusabhängiges Ausschneiden/Kopieren/Einfügen/Löschen wie im alten WinForms-Programm.
@@ -100,7 +108,7 @@ notizen-py-qt /pfad/zur/datei.alx
 - Importiertes Notizen-Icon als Paketressource plus `.qrc`.
 - Importierte Sprachdateien aus `languages.vb` für Deutsch, English, Chinese, français, spanish und russian; Menü-/Aktionsbeschriftungen werden zur Laufzeit umgeschaltet.
 - Legacy-Startparameter aus `ApplicationEvents.vb`: `/min`, `-min`, `min`, Hilfe-Flags, lokale `.alx`-Dateien mit Existenzprüfung und direkte `ftp://...alx`-Startziele.
-- WinForms-nahe Knoten-Einfügelogik: Kopierte/ausgeschnittene Teilbäume werden wie in `paste_anything(False)` vor dem markierten Geschwisterknoten bzw. als erster Root-Unterknoten eingefügt; „Neu daneben“/Enter hängt wie `neu_neben_knoten` ans Ende der Elternebene; Drag-and-drop verschiebt wie `Baum_MouseUp` vor den Ziel-Geschwisterknoten.
+- WinForms-nahe Knoten-Einfügelogik: Kopierte/ausgeschnittene Teilbäume werden wie in `paste_anything(False)` vor dem markierten Geschwisterknoten bzw. als erster Root-Unterknoten eingefügt; „Neu daneben“/Enter hängt wie `neu_neben_knoten` ans Ende der Elternebene; Drag-and-drop verschiebt wie `Baum_MouseUp` vor den Ziel-Geschwisterknoten; Baum-Doppelklick startet wie `BaumTyp_NodeMouseDoubleClick` die Titelbearbeitung.
 - Erweiterte Export-Parität: aktueller Teilbaum oder ganzer Baum als RTF, UTF-8-TXT, ANSI-TXT oder Unicode-TXT sowie Roh-RTF des aktuellen Knotens.
 - Desktop-Notizen synchronisieren laufende Editoränderungen jetzt live und erhalten bei fehlender Alt-Farbe eine zufällige helle Legacy-Farbe aus der tatsächlich erreichbaren `get_lightcolor()`-Palette.
 - Knoten-Kopieren/Ausschneiden nutzt zusätzlich zur internen Ablage ein eigenes systemweites XML-MIME-Format, damit Teilbäume zwischen zwei laufenden Programmfenstern eingefügt werden können.

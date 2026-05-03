@@ -639,6 +639,8 @@ if QtWidgets is not None:
             self.tree.setMinimumSize(240, 260)
             self.tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
             self.tree.itemChanged.connect(self.on_item_changed)
+            # Legacy BaumTyp_NodeMouseDoubleClick: double-click starts label editing.
+            self.tree.itemDoubleClicked.connect(self.edit_tree_item)
             self.tree.itemExpanded.connect(lambda item: self.on_tree_expansion_changed(item, True))
             self.tree.itemCollapsed.connect(lambda item: self.on_tree_expansion_changed(item, False))
             try:
@@ -1929,10 +1931,14 @@ if QtWidgets is not None:
             self.document.mark_changed()
             self.update_title()
 
+        def edit_tree_item(self, item: Any | None = None, column: int = 0) -> None:
+            target = item or self.tree.currentItem()
+            if target is not None:
+                self.tree.setCurrentItem(target)
+                self.tree.editItem(target, 0)
+
         def rename_node(self) -> None:
-            item = self.tree.currentItem()
-            if item is not None:
-                self.tree.editItem(item, 0)
+            self.edit_tree_item()
 
         def delete_node(self) -> None:
             node = self.current_node()
@@ -2869,7 +2875,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.8"
+                __version__ = "0.10.9"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",

@@ -1,60 +1,55 @@
-# Transpilationsbericht Notizen.NET → Python/Qt 0.10.8
+# Weitertranspilierung Notizen.NET → Python/Qt 0.10.9
 
 ## Ausgangspunkt
 
-Diese Runde baut auf dem geprüften Stand 0.10.7 auf. Der aktive Pfad bleibt Python/Qt; alte Slint-/QML-Migrationsdaten bleiben nur archivierte Metadaten. Nach der 0.10.7-Korrektur für `neu_neben_knoten` und `get_lightcolor()` lag der nächste sinnvolle Block bei weiteren kleinen, aber konkreten WinForms-Verhaltensregeln aus `Baum.vb`, `Notizen.vb` und `ApplicationEvents.vb`.
+Dieser Stand baut auf 0.10.8 auf. Der aktive Laufzeitpfad bleibt Python/Qt; alte Slint-/QML-/Rust-Zwischenschritte bleiben ausschließlich archiviertes Migrationsmaterial.
 
-## Umgesetzte Änderungen in 0.10.8
+Für diese Runde wurden erneut konkrete WinForms-Stellen aus dem alten Notizen.NET-Code herangezogen:
 
-### Drag-and-drop wie `Baum_MouseUp`
+- `kontext_inhalt.vb`: Bildauswahl akzeptiert neben JPG/TIF/GIF ausdrücklich auch `*.bmp`.
+- `inhalt.vb`: Der Editor ist eine WinForms-`RichTextBox`, die gepastete oder eingefügte Bitmapbilder in RTF häufig als DIB/Bitmap-Payload schreibt.
+- `Baum.vb`: `BaumTyp_NodeMouseDoubleClick` startet bei Doppelklick direkt `BeginEdit()` auf dem Baumknoten.
 
-Das alte TreeView-Drag-and-drop verschob einen Knoten nicht als Kind des Zielknotens. `Baum_MouseUp` fügte den gezogenen Teilbaum als Geschwister direkt vor dem anvisierten Zielknoten ein und entfernte danach den ursprünglichen Knoten. Drops auf die Wurzel, auf den Quellknoten selbst oder in einen eigenen Nachfahren wurden verhindert.
+## Umgesetzte Änderungen in 0.10.9
 
-Neu in `models.py`:
+### Legacy-Bitmapbilder in RTF erhalten
 
-- `legacy_can_move_before_target(...)`,
-- `legacy_move_before_target(...)`.
+Die RTF-Brücke konnte seit 0.10.4 PNG- und JPEG-`\pict`-Gruppen erhalten. Alte RichTextBox-Bitmapbilder wurden aber noch nicht zuverlässig als Bild übernommen, weil WinForms sie oft als `\pict\dibitmap...` ohne BMP-Dateikopf speichert.
 
-Neu in `app.py`:
+Neu in `rtf_utils.py`:
 
-- `LegacyTreeWidget`, eine `QTreeWidget`-Ableitung mit genau dieser Drop-Regel.
+- `dib_to_bmp_bytes(...)`: erzeugt aus einem RTF-DIB-Payload eine normale BMP-Datei mit `BM`-Header.
+- `bmp_to_dib_bytes(...)`: entfernt den BMP-Dateikopf wieder für RTF-`\dibitmap0`.
+- `_parse_pict_group(...)` erkennt jetzt `\dibitmap` und `\wbitmap` zusätzlich zu PNG/JPEG.
+- `rtf_to_html(...)` gibt alte DIB-Bilder als `data:image/bmp;base64,...` aus.
+- `html_to_rtf(...)` akzeptiert `image/bmp`-Data-URIs und lokale `.bmp`-Dateien.
 
-Der Port bewegt im Modell das bestehende `NoteNode`-Objekt statt Clone+Remove zu verwenden. Sichtbare Reihenfolge und Blockierregeln entsprechen dem alten Programm, während Referenzen für Desktop-Notizen und Tests stabil bleiben.
+Neu in `exporters.py`:
 
-### Bullet-Button wie `ToolStrip_dot_Click`
+- `RtfImage(mime_type="image/bmp", ...)` wird beim kombinierten RTF-Export als `\pict\dibitmap0` geschrieben.
+- „Teilbaum zusammenfassen“, „Ganzen Baum zusammenfassen“ und der kombinierte RTF-Export behalten dadurch alte Bitmapbilder statt sie durch `[Bild]` zu ersetzen.
 
-Der bisherige Port fügte `•   ` nur bedingt mit führendem Zeilenumbruch ein. Das alte `ToolStrip_dot_Click` kopierte dagegen immer `Chr(13) + ChrW(8226) + "   "` in die Zwischenablage und paste-te diesen Text in die RichTextBox.
+### Baum-Doppelklick wie `BaumTyp_NodeMouseDoubleClick`
 
-Neu in `editor_legacy.py`:
+Die alte WinForms-Baumansicht rief bei Doppelklick auf einen Knoten `BeginEdit()` auf. Der PyQt-Port verbindet jetzt `itemDoubleClicked` mit `edit_tree_item(...)`; `rename_node(...)` nutzt denselben Pfad.
 
-- `legacy_clipboard_bullet_text(...)`,
-- `qt_bullet_insert_text(...)`.
-
-`MainWindow.insert_bullet(...)` nutzt diese Qt-normalisierte Legacy-Sequenz jetzt immer und speichert den sichtbaren Editorinhalt danach sofort zurück ins Modell.
-
-### Startdateien aus `ApplicationEvents.vb` abgesichert
-
-Die alte Anwendung akzeptierte `.alx`-Startargumente, verwarf lokale Dateien aber wieder, wenn sie nicht existierten. FTP-Ziele waren davon ausgenommen.
-
-Neu in `startup.py`:
-
-- `StartupTargetValidation`,
-- `validate_legacy_startup_target(...)`.
-
-`main(...)` prüft die alten Startargumente jetzt vor dem Öffnen. Fehlende lokale `.alx`-Ziele erzeugen keinen verwirrenden Ladeversuch mehr; `ftp://...alx` bleibt zulässig.
+Damit sind Menü-Aktion, Tastenkürzel und Doppelklick konsistent und näher am alten TreeView-Verhalten.
 
 ### Öffentliche API ergänzt
 
-Die neuen Baum-, Bullet- und Startup-Helfer werden aus `notizen_py_qt.__init__` exportiert, damit sie Qt-unabhängig testbar und für Folgewerkzeuge nutzbar sind.
+Die neuen RTF-Bitmap-Helfer werden aus `notizen_py_qt.__init__` exportiert:
+
+- `dib_to_bmp_bytes(...)`
+- `bmp_to_dib_bytes(...)`
 
 ## Dateien mit relevanten Änderungen
 
-- `src/notizen_py_qt/models.py`
+- `src/notizen_py_qt/rtf_utils.py`
+- `src/notizen_py_qt/exporters.py`
 - `src/notizen_py_qt/app.py`
-- `src/notizen_py_qt/startup.py`
-- `src/notizen_py_qt/editor_legacy.py`
 - `src/notizen_py_qt/__init__.py`
-- `tests/test_legacy_drag_startup_bullet_108.py`
+- `tests/test_rtf_bmp_legacy_109.py`
+- `tests/test_legacy_ui_source_109.py`
 - `README.md`
 - `docs/MAPPING.md`
 - `docs/PROJECT_CONTEXT_IMPORTED.md`
@@ -62,11 +57,11 @@ Die neuen Baum-, Bullet- und Startup-Helfer werden aus `notizen_py_qt.__init__` 
 - `TRANSPILE_NET_TO_PYQT_REPORT.md`
 - `VALIDATION_NET_PORT.md`
 
-Zusätzlich wurden die 0.10.7-Berichte archiviert:
+Zusätzlich wurden die 0.10.8-Berichte archiviert:
 
-- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.7.md`
-- `VALIDATION_NET_PORT_0.10.7.md`
+- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.8.md`
+- `VALIDATION_NET_PORT_0.10.8.md`
 
 ## Bewusst nicht geändert
 
-Die GNOME-sicheren Startdateien bleiben sichtbar-first mit `--show --no-tray`. Die Autostart-Voreinstellungen werden weiterhin nicht aggressiver gemacht, damit der Port keine unerwarteten Autostart-Einträge erzeugt.
+Die RTF-Brücke bleibt ein pragmatischer Notizen.NET-Kompatibilitätsadapter und kein vollständiger Microsoft-RTF-Renderer. Exotische binäre `\bin`-Bildpayloads, WMF/EMF-Objekte und komplexe OLE-Inhalte bleiben weiterhin zurückgestellt. Die GNOME-sicheren Startdateien bleiben sichtbar-first mit `--show --no-tray`.

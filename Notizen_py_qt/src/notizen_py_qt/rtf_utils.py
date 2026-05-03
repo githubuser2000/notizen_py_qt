@@ -228,20 +228,75 @@ def _control_number(group: str, name: str) -> int | None:
         return None
 
 
+
+def dib_to_bmp_bytes(dib: bytes) -> bytes | None:
+    r"""Wrap a DIB payload from an RTF ``\dibitmap`` picture as a BMP file.
+
+    WinForms RichTextBox commonly serializes pasted bitmap clipboard images as
+    ``{\pict\dibitmap...}``. RTF stores only the DIB payload there, while HTML
+    and Qt's image bridge need an ordinary BMP file header. The calculation below
+    covers the BITMAPCOREHEADER and BITMAPINFOHEADER variants used by old
+    RichTextBox content and degrades safely for uncommon headers.
+    """
+    if not dib:
+        return None
+    if dib.startswith(b"BM"):
+        return dib
+    if len(dib) < 4:
+        return None
+    header_size = int.from_bytes(dib[:4], "little", signed=False)
+    if header_size < 12 or header_size > len(dib):
+        return None
+
+    palette_size = 0
+    if header_size == 12:  # BITMAPCOREHEADER, RGBTRIPLE palette entries.
+        if len(dib) < 12:
+            return None
+        bit_count = int.from_bytes(dib[10:12], "little", signed=False)
+        if 0 < bit_count <= 8:
+            palette_size = (1 << bit_count) * 3
+    else:  # BITMAPINFOHEADER and later, RGBQUAD palette entries.
+        bit_count = int.from_bytes(dib[14:16], "little", signed=False) if len(dib) >= 16 else 0
+        compression = int.from_bytes(dib[16:20], "little", signed=False) if len(dib) >= 20 else 0
+        colors_used = int.from_bytes(dib[32:36], "little", signed=False) if len(dib) >= 36 else 0
+        if colors_used:
+            palette_size = colors_used * 4
+        elif 0 < bit_count <= 8:
+            palette_size = (1 << bit_count) * 4
+        if compression == 3 and header_size == 40 and bit_count in {16, 32}:
+            # BI_BITFIELDS masks are stored directly after a 40-byte header.
+            palette_size += 12
+
+    pixel_offset = 14 + min(len(dib), header_size + palette_size)
+    file_size = 14 + len(dib)
+    return b"BM" + file_size.to_bytes(4, "little") + b"\x00\x00\x00\x00" + pixel_offset.to_bytes(4, "little") + dib
+
+
+def bmp_to_dib_bytes(data: bytes) -> bytes:
+    r"""Return the DIB payload used by RTF ``\dibitmap`` from BMP-like bytes."""
+    if len(data) >= 14 and data.startswith(b"BM"):
+        return data[14:]
+    return data
+
+
 def _parse_pict_group(group: str) -> RtfImage | None:
     r"""Parse a practical WinForms/Qt-compatible RTF picture group.
 
-    Notizen.NET inserted clipboard images into a WinForms RichTextBox, which
-    serializes them as ``{\pict\pngblip ...}`` or ``{\pict\jpegblip ...}``
-    in the common cases. The parser deliberately ignores exotic binary ``\bin``
-    payloads, but keeps the ordinary hex payloads used by RichTextBox and by the
-    Python/Qt export path in this port.
+    Notizen.NET inserted images through a WinForms RichTextBox. PNG/JPEG RTF
+    pictures were already handled by the port; 0.10.9 also accepts legacy
+    ``\dibitmap``/``\wbitmap`` payloads so old BMP clipboard pictures survive
+    HTML display, search-independent tree summaries and combined RTF export.
+    Binary ``\bin`` picture payloads are intentionally still ignored.
     """
     mime_type = ""
+    wants_bmp_wrap = False
     if "\\pngblip" in group:
         mime_type = "image/png"
     elif "\\jpegblip" in group or "\\jpgblip" in group:
         mime_type = "image/jpeg"
+    elif "\\dibitmap" in group or "\\wbitmap" in group:
+        mime_type = "image/bmp"
+        wants_bmp_wrap = True
     else:
         return None
 
@@ -256,6 +311,11 @@ def _parse_pict_group(group: str) -> RtfImage | None:
         data = bytes.fromhex(hex_text)
     except ValueError:
         return None
+    if wants_bmp_wrap:
+        wrapped = dib_to_bmp_bytes(data)
+        if wrapped is None:
+            return None
+        data = wrapped
     return RtfImage(
         mime_type=mime_type,
         data=data,
@@ -903,6 +963,8 @@ def _image_type_from_bytes(data: bytes, fallback: str = "") -> str:
         return "image/png"
     if data.startswith(b"\xff\xd8\xff"):
         return "image/jpeg"
+    if data.startswith(b"BM"):
+        return "image/bmp"
     return fallback.lower()
 
 
@@ -937,6 +999,8 @@ def _image_data_from_src(src: str) -> tuple[str, bytes] | None:
             mime_type = "image/jpeg"
         elif suffix == ".png":
             mime_type = "image/png"
+        elif suffix == ".bmp":
+            mime_type = "image/bmp"
     return (mime_type, data) if mime_type else None
 
 
@@ -948,8 +1012,13 @@ def _rtf_picture_from_source(src: str, width_px: int | None = None, height_px: i
     mime_type = _image_type_from_bytes(data, mime_type)
     if mime_type == "image/png":
         blip = "pngblip"
+        payload = data
     elif mime_type == "image/jpeg":
         blip = "jpegblip"
+        payload = data
+    elif mime_type == "image/bmp":
+        blip = "dibitmap0"
+        payload = bmp_to_dib_bytes(data)
     else:
         return None
     controls = [rf"\pict\{blip}"]
@@ -957,7 +1026,7 @@ def _rtf_picture_from_source(src: str, width_px: int | None = None, height_px: i
         controls.append(rf"\picwgoal{max(1, int(round(width_px * 15)))}")
     if height_px:
         controls.append(rf"\pichgoal{max(1, int(round(height_px * 15)))}")
-    hex_data = data.hex()
+    hex_data = payload.hex()
     lines = [hex_data[i : i + 64] for i in range(0, len(hex_data), 64)]
     return "{" + "".join(controls) + "\n" + "\n".join(lines) + "}"
 

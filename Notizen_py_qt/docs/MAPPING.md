@@ -1,14 +1,14 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.8**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.9**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
 | Notizen.NET-Quelle | Python/Qt-Ziel | Stand |
 |---|---|---|
 | `Notizen.vb`, `Notizen.Designer.vb` | `src/notizen_py_qt/app.py` | Hauptfenster, Menüs, Toolbar, Baum, Editor, Dialoge und Legacy-Aktionen sind semantisch portiert. |
-| `Baum.vb`, `Baum_Kontext_.vb` | `app.py`, `models.py`, `node_clipboard.py` | Baumoperationen, Einfügen/Ausschneiden/Kopieren, Drag-and-drop-nahe Modellpflege, Knotenfarben, Auf-/Zu-Funktionen, `PrevVisibleNode`-Löschauswahl, alte `neu_neben_knoten`-Einfügeposition und Teilbaum-Zusammenfassung sind portiert. |
-| `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
+| `Baum.vb`, `Baum_Kontext_.vb` | `app.py`, `models.py`, `node_clipboard.py` | Baumoperationen, Einfügen/Ausschneiden/Kopieren, Drag-and-drop-nahe Modellpflege, Doppelklick-Umbenennung, Knotenfarben, Auf-/Zu-Funktionen, `PrevVisibleNode`-Löschauswahl, alte `neu_neben_knoten`-Einfügeposition und Teilbaum-Zusammenfassung sind portiert. |
+| `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB-RTF-Brücke, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
 | `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting und die alte Autosave-Schutzbedingung sind portiert. |
 | `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
 | `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen, Farben inklusive exakt erreichbarer `get_lightcolor`-Zufallspalette, altes Transparenzmenü, Kontextmenü, Rücksprung ins Hauptfenster und WinForms-nahe Startgeometrie sind portiert. |
@@ -20,6 +20,13 @@ Aktiver Portierungsstand: **0.10.8**. Diese Datei beschreibt die aktuelle semant
 | `passwort_dialog*.vb`, `wanna_save.vb`, `wanna_restart.vb`, `AboutBox1.vb` | Qt-Dialoge in `app.py` | Passwort-, Speicher-, Einstellungs- und Info-Dialoge sind in Qt nachgebildet. |
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
+
+
+## In 0.10.9 weitergeführt
+
+- `kontext_inhalt.vb` akzeptierte Bilddateien inklusive `*.bmp`; WinForms-RichTextBox speichert solche eingefügten oder gepasteten Bitmapbilder häufig als RTF-`\pict\dibitmap`. `rtf_utils.py` erkennt diese DIB-Payloads jetzt, erzeugt daraus BMP-Dateien für HTML/Qt und schreibt sie beim Export wieder als `\dibitmap0`.
+- Kombinierte RTF-Exporte, „Teilbaum zusammenfassen“ und „Ganzen Baum zusammenfassen“ behalten damit neben PNG/JPEG nun auch alte RichTextBox-Bitmapbilder. Neue reine Helfer sind `dib_to_bmp_bytes(...)` und `bmp_to_dib_bytes(...)`.
+- `Baum.vb` / `BaumTyp_NodeMouseDoubleClick` ist in der Oberfläche nachgezogen: Ein Doppelklick auf einen `QTreeWidgetItem` ruft `edit_tree_item(...)` auf und startet die Titelbearbeitung wie im alten TreeView.
 
 ## In 0.10.8 weitergeführt
 

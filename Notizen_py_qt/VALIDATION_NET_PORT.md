@@ -1,10 +1,10 @@
-# Validierungsbericht Notizen.NET → Python/Qt 0.10.8
+# Validierungsbericht Notizen.NET → Python/Qt 0.10.9
 
 ## Prüfumfang
 
-Der Stand 0.10.8 wurde aus dem entpackten Archiv 0.10.7 weitergeführt. Geprüft wurden die neue Drag-and-drop-Modellregel nach `Baum_MouseUp`, die Bullet-Einfügefolge nach `ToolStrip_dot_Click`, die Startup-Zielprüfung aus `ApplicationEvents.vb`, die bisherigen Regressionstests, der paketweite Import und die ZIP-Berechtigungen.
+Der Stand 0.10.9 wurde aus dem entpackten Archiv 0.10.8 weitergeführt. Geprüft wurden die neue DIB/BMP-RTF-Brücke, der HTML/RTF-Roundtrip für BMP-Bilder, kombinierter RTF-Export mit alten RichTextBox-Bitmapbildern, die Baum-Doppelklick-Anbindung, die bisherigen Regressionstests, der paketweite Import und die ZIP-Berechtigungen.
 
-Die GUI konnte in dieser Umgebung weiterhin nicht visuell gestartet werden, weil keine Qt-Bindung installiert ist. Die neue Drop-Regel ist aber als reine Modellfunktion getestet; die Qt-Oberfläche verwendet diese Regel über `LegacyTreeWidget`.
+Die GUI konnte in dieser Umgebung weiterhin nicht visuell gestartet werden, weil keine Qt-Bindung installiert ist. Die neue Doppelklick-Anbindung ist als Quelltest abgesichert; die neue Bildlogik ist vollständig Qt-unabhängig getestet.
 
 ## Ausgeführte Prüfungen
 
@@ -15,7 +15,7 @@ bash -n scripts/*.sh *.sh
 bash scripts/check_no_slint_strict.sh
 PYTHONPATH=src python3 -c "import notizen_py_qt; print(notizen_py_qt.__version__)"
 PYTHONPATH=src python3 scripts/probe_python_qt_runtime.py --skip-qt
-python3 scripts/package_zip.py . /mnt/data/notizenPyQt_0.10.8.zip --root-name Notizen_py_qt
+python3 scripts/package_zip.py . /mnt/data/notizenPyQt_0.10.9.zip --root-name Notizen_py_qt
 ZIP permission check
 package recheck
 ```
@@ -23,27 +23,31 @@ package recheck
 ## Ergebnis
 
 ```text
-pytest: 84 passed, 2 skipped
+pytest: 90 passed, 2 skipped
 compileall: OK
 bash -n scripts/*.sh *.sh: OK
 check_no_slint_strict.sh: OK
-API probe: OK, Version 0.10.8
+API probe: OK, Version 0.10.9
 Qt binding import: erwarteter Hinweis, weil PySide6/PyQt6 in dieser Umgebung nicht installiert ist
 ZIP permission check: OK
 package recheck: OK
 ```
 
-## Neue Tests in 0.10.8
+## Neue Tests in 0.10.9
 
-`tests/test_legacy_drag_startup_bullet_108.py` prüft:
+`tests/test_rtf_bmp_legacy_109.py` prüft:
 
-- Root-Knoten können nicht per Drag-and-drop verschoben werden.
-- Drops auf die Wurzel, auf sich selbst oder in einen eigenen Nachfahren werden abgelehnt.
-- Ein gezogener Knoten landet als Geschwister direkt vor dem Zielknoten.
-- Same-parent-Indexverschiebungen behalten die korrekte Reihenfolge.
-- Cross-parent-Moves behalten das bestehende `NoteNode`-Objekt und seine Unterstruktur.
-- Der alte Bullet-Clipboard-Text ist `\r•   ` und wird für Qt zu `\n•   ` normalisiert.
-- Fehlende lokale `.alx`-Startziele werden verworfen; existierende lokale Dateien und FTP-Ziele bleiben erhalten.
+- Ein DIB-Payload wird zu einer gültigen BMP-Datei mit `BM`-Header und korrektem Offset gewrappt.
+- `bmp_to_dib_bytes(...)` liefert den RTF-DIB-Payload zurück.
+- RTF-`\pict\dibitmap0` wird als `RtfImage(mime_type="image/bmp")` extrahiert.
+- `rtf_to_html(...)` erzeugt `data:image/bmp;base64,...`.
+- Der kombinierte RTF-Export schreibt BMP-Bilder wieder als `\dibitmap0`.
+- HTML-`image/bmp`-Data-URIs und lokale `.bmp`-Dateien werden in RTF übernommen.
+
+`tests/test_legacy_ui_source_109.py` prüft:
+
+- `itemDoubleClicked` ist mit `edit_tree_item(...)` verbunden.
+- `rename_node(...)` verwendet denselben Editierpfad.
 
 ## ZIP-Rechte
 
@@ -65,9 +69,9 @@ Lokal sollte zusätzlich geprüft werden:
 
 ```bash
 python3 -m pip install --user "PySide6>=6.6,<7"
-unzip notizenPyQt_0.10.8.zip
+unzip notizenPyQt_0.10.9.zip
 cd Notizen_py_qt
 ./Notizen\ starten.sh
 ```
 
-Praktisch zu prüfen: Mehrere Geschwisterknoten anlegen und einen Knoten per Maus auf einen anderen ziehen. Der gezogene Knoten sollte vor dem Ziel-Geschwisterknoten erscheinen und nicht als Kind darunter. Zusätzlich den Bullet-Button im Editor testen: Er sollte immer einen neuen Bullet-Absatz einfügen.
+Praktisch zu prüfen: Auf einen Baumknoten doppelklicken; der Titel sollte sofort editierbar sein. Zusätzlich eine alte `.alx` mit eingefügtem BMP-/DIB-Bild öffnen und „Teilbaum zusammenfassen“ sowie RTF-/HTML-Export prüfen.

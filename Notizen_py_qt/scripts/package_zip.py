@@ -25,11 +25,13 @@ def unix_zip_mode_for_path(path: Path, rel: Path | None = None) -> int:
     ``0600``/``drw-------``.  Directories must be searchable/executable, and
     actual launcher/helper scripts should be executable after extraction on
     Unix-like systems.  Archived migration metadata is deliberately kept as
-    normal data, even when it contains old ``scripts/*.py`` files.
+    normal data, even when it contains old helper scripts.
     """
 
     if path.is_dir():
         return stat.S_IFDIR | 0o755
+    if rel is not None and rel.parts and rel.parts[0] == "legacy_build_metadata":
+        return stat.S_IFREG | 0o644
     if path.suffix in EXECUTABLE_SUFFIXES or path.name in EXECUTABLE_NAMES:
         return stat.S_IFREG | 0o755
     if rel is not None and len(rel.parts) == 2 and rel.parts[0] == "scripts" and path.suffix == ".py":

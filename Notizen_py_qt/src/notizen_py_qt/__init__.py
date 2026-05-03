@@ -21,6 +21,7 @@ from .desktop_note_legacy import legacy_opacity_percent_for_transparency_percent
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, legacy_documents_notizen_dir, split_legacy_file_location
 from .search_results import SearchHitView, build_search_hit_views, legacy_search_result_label, legacy_search_snippet, node_path
 from .editor_legacy import legacy_clipboard_bullet_text, qt_bullet_insert_text
+from .rtf_utils import bmp_to_dib_bytes, dib_to_bmp_bytes
 
 __all__ = [
     "DesktopNoteState",
@@ -62,6 +63,8 @@ __all__ = [
     "legacy_search_result_label",
     "build_search_hit_views",
     "SearchHitView",
+    "bmp_to_dib_bytes",
+    "dib_to_bmp_bytes",
 ]
 
-__version__ = "0.10.8"
+__version__ = "0.10.9"

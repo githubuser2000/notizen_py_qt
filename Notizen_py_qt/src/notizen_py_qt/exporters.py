@@ -7,6 +7,7 @@ from .rtf_utils import (
     RtfImage,
     RtfTextSegment,
     RtfTextStyle,
+    bmp_to_dib_bytes,
     _rtf_escape_text,
     rtf_to_content_parts,
     rtf_to_plain_text,
@@ -207,10 +208,16 @@ def _emit_segment(segment: RtfTextSegment, color_indexes: dict[str, int], font_i
 
 def _emit_image(image: RtfImage) -> str:
     mime_type = image.mime_type.casefold()
+    payload = image.data
     if mime_type == "image/png":
         blip = "pngblip"
     elif mime_type in {"image/jpeg", "image/jpg"}:
         blip = "jpegblip"
+    elif mime_type in {"image/bmp", "image/x-ms-bmp"}:
+        # RTF stores BMP pictures as DIB payloads, not with the BMP file header.
+        # This keeps old WinForms RichTextBox bitmap pictures roundtrippable.
+        blip = "dibitmap0"
+        payload = bmp_to_dib_bytes(image.data)
     else:
         return _rtf_escape_text("[Bild]")
 
@@ -219,7 +226,7 @@ def _emit_image(image: RtfImage) -> str:
         controls.append(rf"\picwgoal{image.width_twips}")
     if image.height_twips and image.height_twips > 0:
         controls.append(rf"\pichgoal{image.height_twips}")
-    hex_data = image.data.hex()
+    hex_data = payload.hex()
     lines = [hex_data[index : index + 64] for index in range(0, len(hex_data), 64)]
     return "{" + "".join(controls) + "\n" + "\n".join(lines) + "}"
 
