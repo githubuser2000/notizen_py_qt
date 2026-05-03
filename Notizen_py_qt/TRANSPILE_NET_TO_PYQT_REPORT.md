@@ -1,52 +1,60 @@
-# Transpilationsbericht Notizen.NET → Python/Qt 0.10.7
+# Transpilationsbericht Notizen.NET → Python/Qt 0.10.8
 
 ## Ausgangspunkt
 
-Diese Runde baut auf dem geprüften Stand 0.10.6 auf. Der Projekt-/Chat-Kontext wurde weitergeführt: Ziel bleibt eine semantische Portierung des alten VB.NET/WinForms-Projekts nach Python/Qt, ohne Rückfall auf die früheren Slint-/QML-Zwischenstände. Nach der Lösch-/Autosave-Parität aus 0.10.6 lag der nächste sinnvolle Block bei kleinen, aber gut belegbaren WinForms-Verhaltensdetails aus `Notizen.vb`.
+Diese Runde baut auf dem geprüften Stand 0.10.7 auf. Der aktive Pfad bleibt Python/Qt; alte Slint-/QML-Migrationsdaten bleiben nur archivierte Metadaten. Nach der 0.10.7-Korrektur für `neu_neben_knoten` und `get_lightcolor()` lag der nächste sinnvolle Block bei weiteren kleinen, aber konkreten WinForms-Verhaltensregeln aus `Baum.vb`, `Notizen.vb` und `ApplicationEvents.vb`.
 
-## Umgesetzte Änderungen in 0.10.7
+## Umgesetzte Änderungen in 0.10.8
 
-### „Neu daneben“ wie `neu_neben_knoten`
+### Drag-and-drop wie `Baum_MouseUp`
 
-Im bisherigen Qt-Port wurde **Neu daneben** als modernes „nach dem aktuell markierten Knoten einfügen“ umgesetzt. Das alte Notizen.NET verhielt sich anders: `neu_neben_knoten` wählte bei Nicht-Wurzelknoten zuerst den Elternknoten aus und rief danach `Baum.element_dazu` auf. Da `element_dazu` immer ein Kind am Ende des ausgewählten Knotens anhängt, landet der neue Geschwisterknoten im Original am Ende der Elternebene.
+Das alte TreeView-Drag-and-drop verschob einen Knoten nicht als Kind des Zielknotens. `Baum_MouseUp` fügte den gezogenen Teilbaum als Geschwister direkt vor dem anvisierten Zielknoten ein und entfernte danach den ursprünglichen Knoten. Drops auf die Wurzel, auf den Quellknoten selbst oder in einen eigenen Nachfahren wurden verhindert.
 
 Neu in `models.py`:
 
-- `legacy_new_next_parent(...)`,
-- `legacy_new_next_node(...)`.
+- `legacy_can_move_before_target(...)`,
+- `legacy_move_before_target(...)`.
 
-`MainWindow.add_sibling_node(...)` nutzt diese Helfer jetzt. Enter beziehungsweise **Neu daneben** hängt damit wie im alten WinForms-Programm ans Ende der aktuellen Geschwisterebene. Ist die Wurzel markiert, wird der neue Knoten wie früher als letztes Kind der Wurzel angelegt.
+Neu in `app.py`:
 
-### Zufallsfarbe neuer Desktop-Notizen präzisiert
+- `LegacyTreeWidget`, eine `QTreeWidget`-Ableitung mit genau dieser Drop-Regel.
 
-`get_lightcolor()` im VB-Code enthält Fälle für `0` bis `14` sowie einen `Else`-Fallback. Die Zufallszahl wird jedoch mit `Random.Next(0, 14)` erzeugt; in .NET bedeutet das Werte `0` bis `13`. Dadurch waren `Case 14` und `Else` für automatisch erzeugte Desktop-Notizen praktisch nicht erreichbar.
+Der Port bewegt im Modell das bestehende `NoteNode`-Objekt statt Clone+Remove zu verwenden. Sichtbare Reihenfolge und Blockierregeln entsprechen dem alten Programm, während Referenzen für Desktop-Notizen und Tests stabil bleiben.
 
-`legacy_colors.py` dokumentiert jetzt weiterhin die vollständige alte Fallliste, nutzt für automatische Zufallsfarben aber nur die tatsächlich erreichbaren 14 Farben:
+### Bullet-Button wie `ToolStrip_dot_Click`
 
-- `LEGACY_RANDOM_LIGHT_COLOR_COUNT`,
-- `LEGACY_RANDOM_LIGHT_COLOR_ARGB`,
-- aktualisiertes `legacy_light_color_argb(...)`.
+Der bisherige Port fügte `•   ` nur bedingt mit führendem Zeilenumbruch ein. Das alte `ToolStrip_dot_Click` kopierte dagegen immer `Chr(13) + ChrW(8226) + "   "` in die Zwischenablage und paste-te diesen Text in die RichTextBox.
 
-Damit werden neue Desktop-Notiz-Hintergründe nicht mehr zufällig Magenta oder LightGray, wenn das alte Programm diese Fälle über seine Zufallslogik nicht erreichen konnte.
+Neu in `editor_legacy.py`:
 
+- `legacy_clipboard_bullet_text(...)`,
+- `qt_bullet_insert_text(...)`.
 
-### ZIP-Rechte für aktive Starter und Legacy-Metadaten geschärft
+`MainWindow.insert_bullet(...)` nutzt diese Qt-normalisierte Legacy-Sequenz jetzt immer und speichert den sichtbaren Editorinhalt danach sofort zurück ins Modell.
 
-Die Verpackungslogik bleibt auf Unix-Rechte ausgerichtet, unterscheidet jetzt aber präziser zwischen aktiven Start-/Hilfsskripten und historisch archivierten Migrationsskripten. Direkt unter `scripts/` liegende aktive Python-Helfer bleiben ausführbar; alte `legacy_build_metadata/.../scripts/*.py`-Dateien werden als normale Archivdaten mit `644` gepackt. Dadurch bleiben die Startdateien nutzbar, ohne alten Metadaten unnötige Ausführungsrechte zu geben.
+### Startdateien aus `ApplicationEvents.vb` abgesichert
+
+Die alte Anwendung akzeptierte `.alx`-Startargumente, verwarf lokale Dateien aber wieder, wenn sie nicht existierten. FTP-Ziele waren davon ausgenommen.
+
+Neu in `startup.py`:
+
+- `StartupTargetValidation`,
+- `validate_legacy_startup_target(...)`.
+
+`main(...)` prüft die alten Startargumente jetzt vor dem Öffnen. Fehlende lokale `.alx`-Ziele erzeugen keinen verwirrenden Ladeversuch mehr; `ftp://...alx` bleibt zulässig.
 
 ### Öffentliche API ergänzt
 
-Die neuen Baum-Helfer werden aus `notizen_py_qt.__init__` exportiert, damit die Legacy-Einfügeposition ohne Qt testbar bleibt und für spätere Werkzeuge nutzbar ist.
+Die neuen Baum-, Bullet- und Startup-Helfer werden aus `notizen_py_qt.__init__` exportiert, damit sie Qt-unabhängig testbar und für Folgewerkzeuge nutzbar sind.
 
 ## Dateien mit relevanten Änderungen
 
 - `src/notizen_py_qt/models.py`
 - `src/notizen_py_qt/app.py`
-- `src/notizen_py_qt/legacy_colors.py`
+- `src/notizen_py_qt/startup.py`
+- `src/notizen_py_qt/editor_legacy.py`
 - `src/notizen_py_qt/__init__.py`
-- `tests/test_legacy_new_next_colors_107.py`
-- `tests/test_tray_permissions_102.py`
-- `scripts/package_zip.py`
+- `tests/test_legacy_drag_startup_bullet_108.py`
 - `README.md`
 - `docs/MAPPING.md`
 - `docs/PROJECT_CONTEXT_IMPORTED.md`
@@ -54,11 +62,11 @@ Die neuen Baum-Helfer werden aus `notizen_py_qt.__init__` exportiert, damit die 
 - `TRANSPILE_NET_TO_PYQT_REPORT.md`
 - `VALIDATION_NET_PORT.md`
 
-Zusätzlich wurden die 0.10.6-Berichte archiviert:
+Zusätzlich wurden die 0.10.7-Berichte archiviert:
 
-- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.6.md`
-- `VALIDATION_NET_PORT_0.10.6.md`
+- `TRANSPILE_NET_TO_PYQT_REPORT_0.10.7.md`
+- `VALIDATION_NET_PORT_0.10.7.md`
 
 ## Bewusst nicht geändert
 
-Die GNOME-sicheren Startdateien und der sichtbare Start ohne Tray bleiben unverändert. Die Änderung betrifft Baum-Einfügeparität und Desktop-Notiz-Farblogik. Das alte Drag-and-drop-Verhalten aus `Baum_MouseUp` bleibt ein separater Folgeblock, weil Qt-Drag-and-drop visuell geprüft werden sollte.
+Die GNOME-sicheren Startdateien bleiben sichtbar-first mit `--show --no-tray`. Die Autostart-Voreinstellungen werden weiterhin nicht aggressiver gemacht, damit der Port keine unerwarteten Autostart-Einträge erzeugt.

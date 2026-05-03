@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.7.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.8.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -33,3 +33,8 @@ In 0.10.6 zusätzlich übernommen: Der nächste Paritätsschritt greift `Baum.el
 ## Weiterführung 0.10.7
 
 Der importierte Projekt-/Chat-Kontext bleibt maßgeblich: semantische Portierung statt Slint/QML-Rückfall. In dieser Runde wurde eine kleine, aber konkrete WinForms-Abweichung korrigiert: `neu_neben_knoten` hängt neue Geschwister ans Ende der Elternebene. Zusätzlich wurde die erreichbare `get_lightcolor`-Zufallspalette auf die alte `Random.Next(0, 14)`-Reichweite eingeschränkt.
+
+
+## Weiterführung 0.10.8
+
+Der nächste Paritätsschritt wurde wieder direkt aus dem alten WinForms-Code abgeleitet: `Baum_MouseUp` verschiebt per Drag-and-drop nicht in den Zielknoten hinein, sondern vor den Ziel-Geschwisterknoten. Außerdem wurde `ToolStrip_dot_Click` für den Bullet-Button übernommen und die lokale `.alx`-Existenzprüfung aus `ApplicationEvents.vb` ergänzt.

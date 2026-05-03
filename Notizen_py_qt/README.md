@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.7**.
+Aktueller Stand dieses Archivs: **0.10.8**.
 
 ## Start
 
@@ -55,6 +55,14 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+## Änderungen in 0.10.8
+
+- Baum-Drag-and-drop folgt jetzt dem alten `Baum_MouseUp`-Prinzip: Ein gezogener Nicht-Wurzelknoten wird als Geschwister **vor** dem Zielknoten eingefügt, nicht als Kind darunter. Drops auf die Wurzel, auf sich selbst oder in eigene Nachfahren werden wie im WinForms-Original blockiert.
+- Neue Qt-unabhängige Helfer: `legacy_can_move_before_target(...)` und `legacy_move_before_target(...)`. Die sichtbare `QTreeWidget`-Oberfläche nutzt diese Regel jetzt über `LegacyTreeWidget`.
+- Der Bullet-Button folgt `ToolStrip_dot_Click`: Es wird immer ein neuer Absatz mit `•   ` eingefügt. Der Editorinhalt wird danach sofort zurück ins Modell synchronisiert.
+- Alte Startargumente prüfen lokale `.alx`-Ziele jetzt wie `ApplicationEvents.vb`: Fehlende lokale Dateien werden verworfen und gemeldet, `ftp://`-Ziele bleiben unverändert zulässig.
+- Neue Helfer: `legacy_clipboard_bullet_text(...)`, `qt_bullet_insert_text(...)` und `validate_legacy_startup_target(...)`.
+
 ## Änderungen in 0.10.7
 
 - „Neu daneben“/Enter folgt jetzt genauer `Notizen.vb`/`neu_neben_knoten`: Bei einem Nicht-Wurzelknoten wird der neue Geschwisterknoten ans Ende der Elternebene angehängt, statt direkt hinter dem markierten Knoten eingefügt zu werden.
@@ -78,7 +86,7 @@ notizen-py-qt /pfad/zur/datei.alx
 ## Enthalten
 
 - ALX-Dateiformat mit GZip, UTF-16-XML und Legacy-DES-Passwortmodus.
-- Baumansicht, Editor, Knotenoperationen, Drag-and-drop, Suche, Export und Notizen.NET-kompatible Sicherheitskopien.
+- Baumansicht, Editor, Knotenoperationen, WinForms-nahe Drag-and-drop-Regel, Suche, Export und Notizen.NET-kompatible Sicherheitskopien.
 - WinForms-nahe Hauptansicht mit sichtbarem Baumfeld `txt1` über dem Baum, Titel-Textfeld `txt2` über dem Editor und dauerhaft sichtbarem RichText-Editor `Inhalt`.
 - RTF-zu-HTML-Bridge für den Qt-Editor mit Fett/Kursiv/Unterstrichen/Durchgestrichen, Schriftgröße, Schriftfamilie, Textfarbe, Markierung und Unicode.
 - RTF-Bild-Roundtrip für übliche WinForms/Qt-`\pict`-Bilder mit PNG/JPEG-Hexdaten sowie HTML-`img`-Data-URIs; kombinierte Teilbaum-/Gesamtbaum-RTF-Exporte und Zusammenfassungsnotizen behalten eingebettete Bilder jetzt ebenfalls.
@@ -91,8 +99,8 @@ notizen-py-qt /pfad/zur/datei.alx
 - FTP-Öffnen/Speichern wie im alten `ftpkram.vb`.
 - Importiertes Notizen-Icon als Paketressource plus `.qrc`.
 - Importierte Sprachdateien aus `languages.vb` für Deutsch, English, Chinese, français, spanish und russian; Menü-/Aktionsbeschriftungen werden zur Laufzeit umgeschaltet.
-- Legacy-Startparameter aus `ApplicationEvents.vb`: `/min`, `-min`, `min`, Hilfe-Flags und direkte `ftp://...alx`-Startziele.
-- WinForms-nahe Knoten-Einfügelogik: Kopierte/ausgeschnittene Teilbäume werden wie in `paste_anything(False)` vor dem markierten Geschwisterknoten bzw. als erster Root-Unterknoten eingefügt; „Neu daneben“/Enter hängt wie `neu_neben_knoten` ans Ende der Elternebene.
+- Legacy-Startparameter aus `ApplicationEvents.vb`: `/min`, `-min`, `min`, Hilfe-Flags, lokale `.alx`-Dateien mit Existenzprüfung und direkte `ftp://...alx`-Startziele.
+- WinForms-nahe Knoten-Einfügelogik: Kopierte/ausgeschnittene Teilbäume werden wie in `paste_anything(False)` vor dem markierten Geschwisterknoten bzw. als erster Root-Unterknoten eingefügt; „Neu daneben“/Enter hängt wie `neu_neben_knoten` ans Ende der Elternebene; Drag-and-drop verschiebt wie `Baum_MouseUp` vor den Ziel-Geschwisterknoten.
 - Erweiterte Export-Parität: aktueller Teilbaum oder ganzer Baum als RTF, UTF-8-TXT, ANSI-TXT oder Unicode-TXT sowie Roh-RTF des aktuellen Knotens.
 - Desktop-Notizen synchronisieren laufende Editoränderungen jetzt live und erhalten bei fehlender Alt-Farbe eine zufällige helle Legacy-Farbe aus der tatsächlich erreichbaren `get_lightcolor()`-Palette.
 - Knoten-Kopieren/Ausschneiden nutzt zusätzlich zur internen Ablage ein eigenes systemweites XML-MIME-Format, damit Teilbäume zwischen zwei laufenden Programmfenstern eingefügt werden können.

@@ -10,15 +10,16 @@ from typing import Any
 from .alarms import AlarmSpec, describe_recurrence, next_occurrence
 from .alx_io import AlxError, InvalidPassword, PasswordRequired, backup_directory_for, create_backup, dump_alx_bytes, list_backups, load_alx, load_alx_bytes, save_alx, normalize_password
 from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf, tree_to_text_bytes
+from .editor_legacy import qt_bullet_insert_text
 from .html_export import HtmlExportOptions, tree_to_html_bytes
 from .ftp_sync import FtpSyncError, FtpTarget
 from .i18n import available_languages, tr
 from .legacy_colors import legacy_light_color_argb
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, ensure_legacy_documents_notizen_dir
-from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_delete_fallback_node, legacy_new_next_node, legacy_paste_clone
+from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_can_move_before_target, legacy_delete_fallback_node, legacy_move_before_target, legacy_new_next_node, legacy_paste_clone
 from .desktop_note_legacy import legacy_transparency_menu_options
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
-from .startup import apply_windows_autostart_script, parse_legacy_startup_args
+from .startup import apply_windows_autostart_script, parse_legacy_startup_args, validate_legacy_startup_target
 from .tray_support import decide_startup_tray_visibility, gnome_tray_install_hint
 from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
@@ -73,6 +74,7 @@ if QtWidgets is not None:
     ITEM_ENABLED = _enum(QtCore.Qt, "ItemFlag", "ItemIsEnabled")
     ITEM_DRAG = _enum(QtCore.Qt, "ItemFlag", "ItemIsDragEnabled")
     ITEM_DROP = _enum(QtCore.Qt, "ItemFlag", "ItemIsDropEnabled")
+    LEFT_BUTTON = _enum(QtCore.Qt, "MouseButton", "LeftButton")
     WINDOW = _enum(QtCore.Qt, "WindowType", "Window")
     TOOL = _enum(QtCore.Qt, "WindowType", "Tool")
     FRAMELESS = _enum(QtCore.Qt, "WindowType", "FramelessWindowHint")
@@ -120,6 +122,49 @@ if QtWidgets is not None:
         except Exception:
             pass
         return QtGui.QIcon()
+
+    def _event_pos(event: Any) -> Any:
+        try:
+            return event.position().toPoint()
+        except Exception:
+            return event.pos()
+
+    class LegacyTreeWidget(QtWidgets.QTreeWidget):
+        """QTreeWidget with the old Notizen.NET sibling-before-target drop rule."""
+
+        def __init__(self, main_window: "MainWindow") -> None:
+            super().__init__(main_window)
+            self.main_window = main_window
+            self._legacy_drag_source_item: Any | None = None
+
+        def mousePressEvent(self, event: Any) -> None:
+            if event.button() == LEFT_BUTTON:
+                self._legacy_drag_source_item = self.itemAt(_event_pos(event))
+            super().mousePressEvent(event)
+
+        def dropEvent(self, event: Any) -> None:
+            source_item = self._legacy_drag_source_item or self.currentItem()
+            target_item = self.itemAt(_event_pos(event))
+            source = source_item.data(0, USER_ROLE) if source_item is not None else None
+            target = target_item.data(0, USER_ROLE) if target_item is not None else None
+            if not isinstance(source, NoteNode) or not isinstance(target, NoteNode):
+                event.ignore()
+                return
+            if not legacy_can_move_before_target(source, target):
+                event.ignore()
+                return
+            self.main_window.save_current_editor_to_node()
+            moved = legacy_move_before_target(source, target)
+            if moved is None:
+                event.ignore()
+                return
+            self.main_window.build_tree()
+            self.main_window.select_node(moved)
+            self.main_window.document.mark_changed()
+            self.main_window.update_title()
+            self.main_window.update_tray_menu()
+            self._legacy_drag_source_item = None
+            event.acceptProposedAction()
 
     class DesktopNoteWindow(QtWidgets.QWidget):
         def __init__(self, main_window: "MainWindow", node: NoteNode) -> None:
@@ -583,7 +628,7 @@ if QtWidgets is not None:
             if not icon.isNull():
                 self.setWindowIcon(icon)
 
-            self.tree = QtWidgets.QTreeWidget()
+            self.tree = LegacyTreeWidget(self)
             self.tree.setObjectName("Baum")
             self.tree.setHeaderLabel("Notizen")
             self.tree.setSelectionBehavior(SELECT_ROWS)
@@ -2720,9 +2765,9 @@ if QtWidgets is not None:
 
         def insert_bullet(self) -> None:
             cursor = self.editor.textCursor()
-            prefix = "" if cursor.position() == 0 else "\n"
-            cursor.insertText(prefix + "•   ")
+            cursor.insertText(qt_bullet_insert_text())
             self.editor.setTextCursor(cursor)
+            self.save_current_editor_to_node()
 
         def change_font_size(self, delta: int) -> None:
             fmt = self.editor.currentCharFormat()
@@ -2824,7 +2869,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.7"
+                __version__ = "0.10.8"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
@@ -2893,6 +2938,10 @@ if QtWidgets is not None:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     legacy = parse_legacy_startup_args(raw_argv)
+    startup_validation = validate_legacy_startup_target(legacy)
+    legacy = startup_validation.options
+    if startup_validation.missing_file:
+        print(f"alx file does not exist: {startup_validation.missing_file}", file=sys.stderr)
 
     parser = argparse.ArgumentParser(description="Notizen.NET Python/Qt port")
     parser.add_argument("file", nargs="?", help="ALX/Notizen-Datei oder ftp://-URL zum Öffnen")

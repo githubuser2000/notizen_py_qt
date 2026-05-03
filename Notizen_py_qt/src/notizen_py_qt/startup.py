@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 import subprocess
 import sys
@@ -15,6 +16,14 @@ class StartupOptions:
     minimized: bool = False
     help_requested: bool = False
     cleaned_args: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class StartupTargetValidation:
+    """Validated legacy startup target and a possible missing local file."""
+
+    options: StartupOptions
+    missing_file: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +82,29 @@ def parse_legacy_startup_args(argv: list[str] | tuple[str, ...]) -> StartupOptio
             skip_next = True
 
     return StartupOptions(file=file, minimized=minimized, help_requested=help_requested, cleaned_args=tuple(cleaned))
+
+
+def validate_legacy_startup_target(
+    options: StartupOptions,
+    *,
+    exists: Callable[[str], bool] | None = None,
+) -> StartupTargetValidation:
+    """Mirror the old startup guard for missing local ``.alx`` files.
+
+    ``ApplicationEvents.vb`` accepted a local ``.alx`` path but cleared it again
+    when the file did not exist.  FTP targets were exempt because they cannot be
+    checked through the local filesystem.
+    """
+
+    if not options.file:
+        return StartupTargetValidation(options=options)
+    if options.file.casefold().startswith("ftp://"):
+        return StartupTargetValidation(options=options)
+
+    exists_func = exists or (lambda path: Path(path).exists())
+    if exists_func(options.file):
+        return StartupTargetValidation(options=options)
+    return StartupTargetValidation(options=replace(options, file=None), missing_file=options.file)
 
 
 def legacy_autostart_target_file(recent_files: list[str] | tuple[str, ...]) -> str:

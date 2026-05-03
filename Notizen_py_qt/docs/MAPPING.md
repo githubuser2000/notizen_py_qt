@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.7**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.8**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -20,6 +20,12 @@ Aktiver Portierungsstand: **0.10.7**. Diese Datei beschreibt die aktuelle semant
 | `passwort_dialog*.vb`, `wanna_save.vb`, `wanna_restart.vb`, `AboutBox1.vb` | Qt-Dialoge in `app.py` | Passwort-, Speicher-, Einstellungs- und Info-Dialoge sind in Qt nachgebildet. |
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
+
+## In 0.10.8 weitergeführt
+
+- `Baum.vb` / `Baum_MouseUp`: Drag-and-drop verschiebt einen Nicht-Wurzelknoten als Geschwister **vor** den anvisierten Zielknoten. Drops auf die Wurzel, auf den Quellknoten selbst oder in einen Nachfahren werden blockiert. Die reine Modellregel liegt in `legacy_can_move_before_target(...)` und `legacy_move_before_target(...)`; die Oberfläche verwendet dafür `LegacyTreeWidget`.
+- `Notizen.vb` / `ToolStrip_dot_Click`: Der Bullet-Button fügt wie früher `Chr(13) + ChrW(8226) + "   "` ein. Für Qt wird der Zeilenumbruch auf `\n` normalisiert; der Editor wird danach ins Modell gespeichert.
+- `ApplicationEvents.vb`: Alte Startargumente behalten lokale `.alx`-Dateien nur, wenn sie existieren. Fehlende lokale Ziele werden verworfen, `ftp://`-Ziele bleiben erlaubt.
 
 ## In 0.10.7 weitergeführt
 

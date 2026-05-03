@@ -1,10 +1,10 @@
-# Validierungsbericht Notizen.NET → Python/Qt 0.10.7
+# Validierungsbericht Notizen.NET → Python/Qt 0.10.8
 
 ## Prüfumfang
 
-Der Stand 0.10.7 wurde aus dem entpackten Archiv 0.10.6 weitergeführt. Geprüft wurden die neue `neu_neben_knoten`-Parität, die exakt erreichbare `get_lightcolor()`-Zufallspalette, die bisherigen Regressionstests, die paketweite API und die ZIP-Berechtigungen.
+Der Stand 0.10.8 wurde aus dem entpackten Archiv 0.10.7 weitergeführt. Geprüft wurden die neue Drag-and-drop-Modellregel nach `Baum_MouseUp`, die Bullet-Einfügefolge nach `ToolStrip_dot_Click`, die Startup-Zielprüfung aus `ApplicationEvents.vb`, die bisherigen Regressionstests, der paketweite Import und die ZIP-Berechtigungen.
 
-Die GUI konnte in dieser Umgebung weiterhin nicht visuell gestartet werden, weil keine Qt-Bindung installiert ist. Die Qt-unabhängige Kernlogik, die Starter-/Packaging-Logik und der paketweite Import wurden geprüft.
+Die GUI konnte in dieser Umgebung weiterhin nicht visuell gestartet werden, weil keine Qt-Bindung installiert ist. Die neue Drop-Regel ist aber als reine Modellfunktion getestet; die Qt-Oberfläche verwendet diese Regel über `LegacyTreeWidget`.
 
 ## Ausgeführte Prüfungen
 
@@ -15,7 +15,7 @@ bash -n scripts/*.sh *.sh
 bash scripts/check_no_slint_strict.sh
 PYTHONPATH=src python3 -c "import notizen_py_qt; print(notizen_py_qt.__version__)"
 PYTHONPATH=src python3 scripts/probe_python_qt_runtime.py --skip-qt
-python3 scripts/package_zip.py . /mnt/data/notizenPyQt_0.10.7.zip --root-name Notizen_py_qt
+python3 scripts/package_zip.py . /mnt/data/notizenPyQt_0.10.8.zip --root-name Notizen_py_qt
 ZIP permission check
 package recheck
 ```
@@ -23,25 +23,27 @@ package recheck
 ## Ergebnis
 
 ```text
-pytest: 76 passed, 2 skipped
+pytest: 84 passed, 2 skipped
 compileall: OK
 bash -n scripts/*.sh *.sh: OK
 check_no_slint_strict.sh: OK
-API probe: OK, Version 0.10.7
+API probe: OK, Version 0.10.8
 Qt binding import: erwarteter Hinweis, weil PySide6/PyQt6 in dieser Umgebung nicht installiert ist
 ZIP permission check: OK
 package recheck: OK
 ```
 
-## Neue Tests in 0.10.7
+## Neue Tests in 0.10.8
 
-`tests/test_legacy_new_next_colors_107.py` prüft:
+`tests/test_legacy_drag_startup_bullet_108.py` prüft:
 
-- `legacy_new_next_parent(...)` liefert für Nicht-Wurzelknoten den Elternknoten und den Endindex der Elternebene.
-- `legacy_new_next_node(...)` hängt neue Geschwister wie `neu_neben_knoten` ans Ende der Elternebene.
-- Bei markierter Wurzel wird der neue Knoten als Kind der Wurzel am Ende angelegt.
-- `legacy_light_color_argb(...)` nutzt nur die von `Random.Next(0, 14)` erreichbaren Farben 0 bis 13.
-- Die alten, aber automatisch unerreichbaren Fälle `Case 14`/Magenta und `Else`/LightGray bleiben außerhalb der Zufallspalette.
+- Root-Knoten können nicht per Drag-and-drop verschoben werden.
+- Drops auf die Wurzel, auf sich selbst oder in einen eigenen Nachfahren werden abgelehnt.
+- Ein gezogener Knoten landet als Geschwister direkt vor dem Zielknoten.
+- Same-parent-Indexverschiebungen behalten die korrekte Reihenfolge.
+- Cross-parent-Moves behalten das bestehende `NoteNode`-Objekt und seine Unterstruktur.
+- Der alte Bullet-Clipboard-Text ist `\r•   ` und wird für Qt zu `\n•   ` normalisiert.
+- Fehlende lokale `.alx`-Startziele werden verworfen; existierende lokale Dateien und FTP-Ziele bleiben erhalten.
 
 ## ZIP-Rechte
 
@@ -63,9 +65,9 @@ Lokal sollte zusätzlich geprüft werden:
 
 ```bash
 python3 -m pip install --user "PySide6>=6.6,<7"
-unzip notizenPyQt_0.10.7.zip
+unzip notizenPyQt_0.10.8.zip
 cd Notizen_py_qt
 ./Notizen\ starten.sh
 ```
 
-Praktisch zu prüfen: Mehrere Geschwisterknoten anlegen, den mittleren markieren und Enter beziehungsweise **Neu daneben** auslösen. Der neue Knoten sollte wie im alten Notizen.NET am Ende derselben Elternebene erscheinen, nicht direkt hinter dem markierten Knoten.
+Praktisch zu prüfen: Mehrere Geschwisterknoten anlegen und einen Knoten per Maus auf einen anderen ziehen. Der gezogene Knoten sollte vor dem Ziel-Geschwisterknoten erscheinen und nicht als Kind darunter. Zusätzlich den Bullet-Button im Editor testen: Er sollte immer einen neuen Bullet-Absatz einfügen.

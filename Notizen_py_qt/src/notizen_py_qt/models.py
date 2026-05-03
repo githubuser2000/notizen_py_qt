@@ -196,6 +196,53 @@ def legacy_new_next_node(selected: NoteNode, title: str = "...") -> NoteNode:
     return parent.add_child(NoteNode(title=title, rtf=""))
 
 
+def legacy_can_move_before_target(source: NoteNode, target: NoteNode) -> bool:
+    """Return whether legacy tree drag/drop may move ``source`` before ``target``.
+
+    ``Baum_MouseUp`` in the VB.NET TreeView did not drop a dragged node *into*
+    the hovered node.  It inserted a clone of the dragged subtree as a sibling
+    directly before the hovered target and then removed the original.  The move
+    was refused for the root node, for drops onto the root, onto itself, or into
+    one of the source node's descendants.
+    """
+
+    if source is target:
+        return False
+    if source.parent is None:
+        return False
+    if target.parent is None:
+        return False
+    if source.is_ancestor_of(target):
+        return False
+    return True
+
+
+def legacy_move_before_target(source: NoteNode, target: NoteNode) -> NoteNode | None:
+    """Move ``source`` according to the old Notizen.NET TreeView drag rule.
+
+    The legacy code performed the move through ``Clone`` + ``Remove``.  The
+    Python port keeps the same visible ordering but moves the existing object so
+    desktop-note windows, tests and callers keep their node identity.
+    """
+
+    if not legacy_can_move_before_target(source, target):
+        return None
+
+    old_parent = source.parent
+    new_parent = target.parent
+    if old_parent is None or new_parent is None:
+        return None
+
+    old_index = old_parent.children.index(source)
+    new_index = new_parent.children.index(target)
+    old_parent.children.pop(old_index)
+    if old_parent is new_parent and old_index < new_index:
+        new_index -= 1
+    source.parent = None
+    new_parent.insert_child(new_index, source)
+    return source
+
+
 @dataclass(slots=True)
 class NoteDocument:
     root: NoteNode | None = None
