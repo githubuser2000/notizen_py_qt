@@ -23,6 +23,7 @@ from .search_results import SearchHitView, build_search_hit_views, legacy_search
 from .editor_legacy import legacy_clipboard_bullet_text, qt_bullet_insert_text
 from .rtf_utils import bmp_to_dib_bytes, dib_to_bmp_bytes
 from .window_visibility import VisibleWindowGeometry, env_requests_window_reset, legacy_window_state_is_restorable, sanitize_legacy_window_geometry, should_start_minimized
+from .display_env import DisplayEnvironmentDecision, normalize_qt_display_environment, visible_start_requested
 
 __all__ = [
     "DesktopNoteState",
@@ -71,6 +72,9 @@ __all__ = [
     "legacy_window_state_is_restorable",
     "should_start_minimized",
     "env_requests_window_reset",
+    "DisplayEnvironmentDecision",
+    "normalize_qt_display_environment",
+    "visible_start_requested",
 ]
 
-__version__ = "0.10.10"
+__version__ = "0.10.11"

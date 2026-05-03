@@ -21,12 +21,15 @@ from .desktop_note_legacy import legacy_transparency_menu_options
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
 from .startup import apply_windows_autostart_script, parse_legacy_startup_args, validate_legacy_startup_target
 from .tray_support import decide_startup_tray_visibility, gnome_tray_install_hint
+from .display_env import append_startup_log, normalize_qt_display_environment
 from .window_visibility import env_requests_window_reset, legacy_window_state_is_restorable, sanitize_legacy_window_geometry, should_start_minimized
 from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
 from .search_results import SearchHitView, build_search_hit_views
 from .settings import AppSettings, legacy_autosave_should_save, normalize_autosave_seconds, normalize_window_state
 from .stats import collect_tree_stats
+
+_DISPLAY_ENV_DECISION = normalize_qt_display_environment(sys.argv[1:])
 
 try:  # Importing is optional so tests and CLI helpers work without Qt installed.
     from .qt_compat import load_qt
@@ -2934,7 +2937,7 @@ if QtWidgets is not None:
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.10"
+                __version__ = "0.10.11"
             QtWidgets.QMessageBox.information(
                 self,
                 "Notizen Python/Qt",
@@ -3033,6 +3036,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
+    try:
+        append_startup_log(
+            "APP_RUNTIME binding=%s qpa=%s display=%s wayland=%s env=%s"
+            % (
+                BINDING,
+                app.platformName() if hasattr(app, "platformName") else "",
+                __import__("os").environ.get("DISPLAY", ""),
+                __import__("os").environ.get("WAYLAND_DISPLAY", ""),
+                _DISPLAY_ENV_DECISION.summary(),
+            )
+        )
+    except Exception:
+        pass
     icon = app_icon()
     if not icon.isNull():
         app.setWindowIcon(icon)
@@ -3067,10 +3083,18 @@ def main(argv: list[str] | None = None) -> int:
                 window.statusBar().showMessage(decision.reason)
     else:
         window.ensure_main_window_visible(reset_window=reset_window or args.show)
+    try:
+        append_startup_log(
+            "WINDOW_REQUEST visible=%s minimized=%s reset=%s geometry=%s"
+            % (window.isVisible(), window.isMinimized(), bool(reset_window or args.show), window.geometry().getRect())
+        )
+    except Exception:
+        pass
     # A second pass after the event loop starts prevents GNOME/Wayland from
     # keeping a restored/minimized legacy state invisible.
     QtCore.QTimer.singleShot(150, lambda: window.ensure_main_window_visible(reset_window=False))
     QtCore.QTimer.singleShot(750, lambda: window.ensure_main_window_visible(reset_window=False))
+    QtCore.QTimer.singleShot(1200, lambda: append_startup_log("WINDOW_AFTER_EVENTLOOP visible=%s minimized=%s active=%s geometry=%s" % (window.isVisible(), window.isMinimized(), window.isActiveWindow(), window.geometry().getRect())))
     return int(app.exec())
 
 

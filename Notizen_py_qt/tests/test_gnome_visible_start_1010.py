@@ -77,6 +77,8 @@ def test_start_scripts_force_visible_reset_and_have_diagnostics() -> None:
     assert "prefix+=(--reset-window)" in text
     assert "--no-tray" in text
     assert "startup.log" in text
+    assert "NOTIZEN_FORCE_VISIBLE=1" in text
+    assert "QT_QPA_PLATFORM=\"wayland;xcb\"" in text
     assert ">>\"$LOG_FILE\" 2>&1" in text
 
     diagnose = Path("notizen-diagnose.sh")

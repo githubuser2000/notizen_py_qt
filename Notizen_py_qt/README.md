@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.10**.
+Aktueller Stand dieses Archivs: **0.10.11**.
 
 ## Start
 
@@ -18,7 +18,7 @@ oder technisch gleichwertig:
 ./notizen-starten.sh
 ```
 
-Diese Startdatei setzt den Quellordner automatisch in `PYTHONPATH` und startet standardmäßig mit `--show --reset-window --no-tray`, damit GNOME dich weder durch ein unsichtbares Trayicon noch durch eine alte Offscreen-/Minimized-Fensterposition aussperrt. Eine `.alx`-Datei kann als Argument übergeben werden:
+Diese Startdatei setzt den Quellordner automatisch in `PYTHONPATH`, startet standardmäßig mit `--show --reset-window --no-tray` und bereinigt problematische Qt-Anzeigevariablen aus der Shell. Damit GNOME dich weder durch ein unsichtbares Trayicon, alte Offscreen-/Minimized-Fensterpositionen noch durch ein Terminal-`QT_QPA_PLATFORM=xcb/offscreen/minimal` aussperrt. Eine `.alx`-Datei kann als Argument übergeben werden:
 
 ```bash
 ./Notizen\ starten.sh /pfad/zur/datei.alx
@@ -48,12 +48,26 @@ Optional für alte verschlüsselte ALX-Dateien:
 python3 -m pip install --user pycryptodome
 ```
 
+Direkter Modulstart aus dem entpackten Projektordner funktioniert jetzt ebenfalls ohne Installation, weil ein kleiner Root-Shim auf `src/notizen_py_qt` verweist:
+
+```bash
+python3 -m notizen_py_qt --no-tray --show --reset-window
+```
+
 Eine Installation als Python-Paket funktioniert weiterhin:
 
 ```bash
 python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
+
+## Änderungen in 0.10.11
+
+- Der GNOME-Startunterschied zwischen Menü und Shell wurde gezielt behoben: Vor dem Import von PySide6/PyQt6 normalisiert der Port jetzt die Qt-Anzeigeumgebung. Bei sichtbarem Start unter GNOME/Wayland wird ein aus der Shell geerbtes `QT_QPA_PLATFORM=xcb`, `offscreen`, `minimal` usw. auf `wayland;xcb` gesetzt.
+- Ein aus der Shell geerbtes `QT_QPA_PLATFORMTHEME=gtk2/gtk3` wird für den sichtbaren GNOME/Wayland-Start entfernt, damit die bekannten `Gtk-WARNING: cannot open display: :1`-Fehler nicht mehr den Startpfad blockieren.
+- Die Startdateien setzen jetzt zusätzlich `NOTIZEN_FORCE_VISIBLE=1`, `NOTIZEN_RESET_WINDOW=1` und `NOTIZEN_STARTUP_LOG`, schreiben bei jedem Start die relevante Display-Umgebung in `~/.local/state/notizen-py-qt/startup.log` und duplizieren `--show --reset-window --no-tray` nicht mehr in den Argumenten.
+- Direkter Modulstart `python3 -m notizen_py_qt --no-tray --show` aus dem entpackten Projektordner nutzt jetzt ebenfalls die lokale `src`-Version und dieselbe frühe Display-Normalisierung wie die Startdateien. Wer die Shell-Qt-Variablen absichtlich behalten will, kann `NOTIZEN_KEEP_QT_ENV=1` setzen.
+- Neuer testbarer Kern: `display_env.py` mit `normalize_qt_display_environment(...)`, `visible_start_requested(...)` und `DisplayEnvironmentDecision`.
 
 ## Änderungen in 0.10.10
 

@@ -1,35 +1,79 @@
-# Validierungsbericht Notizen.NET → Python/Qt 0.10.10
+# Validierungsbericht Notizen.NET → Python/Qt 0.10.11
 
-## Umfang
+Geprüft wurde der weitertranspilierte Stand 0.10.11 aus 0.10.10. Schwerpunkt war der Unterschied zwischen sichtbarem GNOME-Menüstart und unsichtbarem Shell-/Modulstart.
 
-Geprüft wurde der weitertranspilierte Stand 0.10.10 aus 0.10.9. Schwerpunkt war der GNOME-Start ohne sichtbares Fenster: sichtbarer Direktstarter, Reset alter Fensterpositionen, genauere Portierung der alten `xml_kram.on_load()`-Bedingung und Diagnoseprotokolle.
+## Prüfumgebung
 
-## Befehle
+- Keine installierte Qt-Bindung in dieser Ausführungsumgebung.
+- Keine echte GNOME-/Wayland-Sitzung verfügbar.
+- Validierung daher über reine Logiktests, Syntaxchecks, Kompilierung, Paketprüfung und ZIP-Rechte.
+
+## Ausgeführte Prüfungen
 
 ```text
+python3 -m pytest -q
 python3 -m compileall -q src tests
-pytest -q
 bash -n notizen-starten.sh "Notizen starten.sh" notizen-diagnose.sh scripts/*.sh
 scripts/check_no_slint_strict.sh
-python3 scripts/probe_python_qt_runtime.py --skip-qt
-PYTHONPATH=src python3 -c "import notizen_py_qt; print(notizen_py_qt.__version__)"
-python3 scripts/package_zip.py . /mnt/data/notizenPyQt_0.10.10.zip --root-name Notizen_py_qt
+python3 scripts/package_zip.py . /mnt/data/notizenPyQt_0.10.11.zip --root-name Notizen_py_qt
 ```
 
-## Ergebnis
+Ergebnis:
 
 ```text
-pytest: 96 passed, 2 skipped
+pytest: 103 passed, 2 skipped
 compileall: OK
-bash -n scripts/*.sh *.sh: OK
+bash -n: OK
 check_no_slint_strict.sh: OK
 runtime probe ohne Qt-Import: OK
-API probe: OK, Version 0.10.10
+API probe: OK, Version 0.10.11
 ZIP permission check: OK
-package recheck via unzip: 96 passed, 2 skipped
+package recheck via unzip: OK
 ```
 
-ZIP-Rechte im frisch gepackten Archiv:
+## Neue Tests in 0.10.11
+
+`tests/test_display_env_1011.py` prüft:
+
+- `--show`, `--reset-window`, `--no-tray` und `NOTIZEN_FORCE_VISIBLE` lösen sichtbaren Start aus.
+- GNOME/Wayland mit geerbtem `QT_QPA_PLATFORM=xcb` wird auf `wayland;xcb` normalisiert.
+- `QT_QPA_PLATFORM=offscreen` wird bei sichtbarem Start entfernt.
+- `QT_QPA_PLATFORMTHEME=gtk3` wird bei sichtbarem GNOME/Wayland-Start entfernt.
+- `NOTIZEN_KEEP_QT_ENV=1` lässt absichtlich gesetzte Werte unangetastet.
+- `python3 -m notizen_py_qt --help` funktioniert aus dem entpackten Projektordner über den neuen Root-Shim.
+
+`tests/test_gnome_visible_start_1010.py` wurde erweitert und prüft nun zusätzlich:
+
+- Startdateien setzen `NOTIZEN_FORCE_VISIBLE=1`.
+- Startdateien enthalten die `wayland;xcb`-Bereinigung.
+- Diagnose- und Startskripte bleiben Bash-syntaxvalide.
+
+## Erwarteter Test auf dem Zielsystem
+
+Nach dem Entpacken direkt im neuen Ordner:
+
+```bash
+cd Notizen_py_qt
+./notizen-diagnose.sh
+./Notizen\ starten.sh
+```
+
+Direkter Modulstart aus dem entpackten Projektordner funktioniert jetzt ohne manuelles `PYTHONPATH`:
+
+```bash
+python3 -m notizen_py_qt --no-tray --show --reset-window
+```
+
+Die relevante Diagnose steht danach in:
+
+```bash
+cat ~/.local/state/notizen-py-qt/startup.log
+cat ~/.local/state/notizen-py-qt/diagnose.log
+```
+
+## ZIP-Rechte
+
+Erwartete Rechte im Archiv:
 
 ```text
 Verzeichnisse: 755
@@ -41,32 +85,6 @@ normale Dateien: 644
 keine __pycache__/.pytest_cache/.pyc im Archiv
 ```
 
-## Neue Tests in 0.10.10
-
-- `test_legacy_default_minimized_state_is_not_restorable_at_zero_zero`
-- `test_force_visible_and_reset_override_minimized_requests`
-- `test_window_geometry_is_clamped_back_into_current_work_area`
-- `test_start_scripts_force_visible_reset_and_have_diagnostics`
-- `test_desktop_installers_pass_reset_window`
-- `test_visible_start_shell_scripts_are_syntax_valid`
-
 ## Nicht visuell geprüft
 
-Die Umgebung enthält keine installierte Qt-Bindung und keine echte GNOME-Sitzung. Deshalb wurde der GUI-Startpfad nicht visuell getestet. Der Runtime-Probe ohne Qt muss weiterhin nur den Installationshinweis liefern.
-
-## Lokaler GNOME-Test
-
-```bash
-python3 -m pip install --user "PySide6>=6.6,<7"
-unzip notizenPyQt_0.10.10.zip
-cd Notizen_py_qt
-./Notizen\ starten.sh
-```
-
-Falls kein Fenster erscheint:
-
-```bash
-./notizen-diagnose.sh
-cat ~/.local/state/notizen-py-qt/startup.log
-cat ~/.local/state/notizen-py-qt/diagnose.log
-```
+Der tatsächliche GNOME-Fensteraufbau kann in dieser Umgebung nicht geprüft werden. Der Fix wurde so früh wie möglich im Prozess platziert, damit er auch für `python3 -m notizen_py_qt --no-tray --show` greift, bevor Qt geladen wird.

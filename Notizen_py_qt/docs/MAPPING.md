@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.10**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.11**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -21,6 +21,14 @@ Aktiver Portierungsstand: **0.10.10**. Diese Datei beschreibt die aktuelle seman
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
 
+
+## In 0.10.11 weitergeführt
+
+- Die Nutzerdiagnose zeigte: Der GNOME-Menüstarter öffnete sichtbar, aber Shell-Starts mit `python3 -m notizen_py_qt --no-tray --show` und den Startdateien blieben unsichtbar beziehungsweise meldeten `Gtk-WARNING: cannot open display: :1`. Das wurde als Startumgebungsproblem statt als reine Trayfrage behandelt.
+- `display_env.py` normalisiert Qt-Displayvariablen vor dem Import von PySide6/PyQt6: sichtbarer GNOME/Wayland-Start bevorzugt `wayland;xcb`, entfernt unsichtbare/offscreen Backends und entfernt problematische GTK-Platform-Themes.
+- `notizen-starten.sh` und `notizen-diagnose.sh` protokollieren jetzt `DISPLAY`, `WAYLAND_DISPLAY`, `QT_QPA_PLATFORM`, `QT_QPA_PLATFORMTHEME`, `PYTHONPATH` und die tatsächlich übergebenen Argumente.
+- Die Startdateien erzwingen den sichtbaren Fenstermodus weiterhin, bereinigen aber doppelte Flags und lassen absichtliches Beibehalten der Shell-Qt-Umgebung über `NOTIZEN_KEEP_QT_ENV=1` zu.
+- Ein Root-Shim unter `notizen_py_qt/` erlaubt `python3 -m notizen_py_qt` direkt aus dem entpackten Ordner und verhindert, dass versehentlich eine ältere installierte Version statt des lokalen `src`-Ports startet.
 
 ## In 0.10.10 weitergeführt
 
