@@ -20,8 +20,22 @@ from .legacy_colors import legacy_light_color_argb
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, ensure_legacy_documents_notizen_dir
 from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_can_move_before_target, legacy_delete_fallback_node, legacy_move_before_target, legacy_new_next_node, legacy_paste_clone
 from .desktop_note_legacy import (
+    LegacyDeskNoteCursor,
+    LegacyDeskNoteMouseAction,
+    LegacyDeskNoteRect,
+    legacy_desknote_clamp_to_work_area,
+    legacy_desknote_cursor_for_move_action,
+    legacy_desknote_editor_rect,
+    legacy_desknote_hidden_border_geometry,
+    legacy_desknote_hover_geometry,
+    legacy_desknote_label_geometry,
+    legacy_desknote_mouse_down_action,
+    legacy_desknote_mouse_move_action,
+    legacy_desknote_move_geometry,
     legacy_desknote_opacity_for_active,
     legacy_desknote_opacity_for_inactive,
+    legacy_desknote_resize_geometry,
+    legacy_desknote_show2_geometry,
     legacy_transparency_menu_options,
 )
 from .node_clipboard import NODE_MIME_TYPE, looks_like_node_clipboard_xml, node_from_clipboard_xml, node_to_clipboard_xml
@@ -96,6 +110,20 @@ if QtWidgets is not None:
     SHIFT = _enum(QtCore.Qt, "KeyboardModifier", "ShiftModifier")
     ALT = _enum(QtCore.Qt, "KeyboardModifier", "AltModifier")
     CUSTOM_CONTEXT_MENU = _enum(QtCore.Qt, "ContextMenuPolicy", "CustomContextMenu")
+    NO_CONTEXT_MENU = _enum(QtCore.Qt, "ContextMenuPolicy", "NoContextMenu")
+    NO_TEXT_INTERACTION = _enum(QtCore.Qt, "TextInteractionFlag", "NoTextInteraction")
+    ARROW_CURSOR = _enum(QtCore.Qt, "CursorShape", "ArrowCursor")
+    SIZE_ALL_CURSOR = _enum(QtCore.Qt, "CursorShape", "SizeAllCursor")
+    SIZE_FDIAG_CURSOR = _enum(QtCore.Qt, "CursorShape", "SizeFDiagCursor")
+    POINTING_HAND_CURSOR = _enum(QtCore.Qt, "CursorShape", "PointingHandCursor")
+    MOUSE_PRESS_EVENT = _enum(QtCore.QEvent, "Type", "MouseButtonPress")
+    MOUSE_MOVE_EVENT = _enum(QtCore.QEvent, "Type", "MouseMove")
+    MOUSE_RELEASE_EVENT = _enum(QtCore.QEvent, "Type", "MouseButtonRelease")
+    MOUSE_DOUBLE_EVENT = _enum(QtCore.QEvent, "Type", "MouseButtonDblClick")
+    KEY_PRESS_EVENT = _enum(QtCore.QEvent, "Type", "KeyPress")
+    ENTER_EVENT = _enum(QtCore.QEvent, "Type", "Enter")
+    LEAVE_EVENT = _enum(QtCore.QEvent, "Type", "Leave")
+    ALIGN_CENTER = _enum(QtCore.Qt, "AlignmentFlag", "AlignCenter")
 
     def color_from_argb(argb: int) -> Any:
         value = argb & 0xFFFFFFFF
@@ -182,10 +210,17 @@ if QtWidgets is not None:
             event.acceptProposedAction()
 
     class DesktopNoteWindow(QtWidgets.QWidget):
+        """Legacy-style frameless desktop note from ``desknote.vb``.
+
+        The old WinForms form was not an editable floating QTextEdit.  It was a
+        read-only sticky note: a compact text-only rectangle when idle, a
+        custom title/border strip on hover, left/right title hot zones for
+        hide/remove, drag-to-move almost everywhere and a lower-right resize
+        handle while expanded.
+        """
+
         def __init__(self, main_window: "MainWindow", node: NoteNode) -> None:
-            flags = TOOL | WINDOW
-            if not main_window.settings.show_desknote_borders:
-                flags |= FRAMELESS
+            flags = TOOL | WINDOW | FRAMELESS
             super().__init__(main_window, flags)
             self.main_window = main_window
             self.node = node
@@ -193,57 +228,163 @@ if QtWidgets is not None:
                 self.node.desktop_note = main_window.default_desktop_note_state()
             self.setWindowTitle(node.title)
             self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_DeleteOnClose"), False)
+            try:
+                self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_TranslucentBackground"), False)
+            except Exception:
+                pass
+            self.setMouseTracking(True)
             self._loading = False
             self._desired_opacity = 0.85
+            self._expanded = False
+            self._geometry_transition = False
+            self._drag_move = False
+            self._drag_resize = False
+            self._drag_offset_x = 0
+            self._drag_offset_y = 0
+            self._title_dark = False
 
-            layout = QtWidgets.QVBoxLayout(self)
-            layout.setContentsMargins(6, 6, 6, 6)
-            self.title_label = QtWidgets.QLabel(node.title)
-            self.title_label.setTextInteractionFlags(_enum(QtCore.Qt, "TextInteractionFlag", "TextSelectableByMouse"))
-            self.editor = QtWidgets.QTextEdit()
+            self.editor = QtWidgets.QTextEdit(self)
             self.editor.setAcceptRichText(True)
+            self.editor.setReadOnly(True)
             self.editor.setHtml(rtf_to_html(node.rtf))
+            self.editor.setMouseTracking(True)
+            self.editor.setCursor(QtGui.QCursor(SIZE_ALL_CURSOR))
             self.editor.setContextMenuPolicy(CUSTOM_CONTEXT_MENU)
+            try:
+                self.editor.setTextInteractionFlags(NO_TEXT_INTERACTION)
+            except Exception:
+                pass
             self.editor.customContextMenuRequested.connect(
                 lambda pos: self._show_context_menu(self.editor.mapToGlobal(pos))
             )
+            self.editor.installEventFilter(self)
+            self.editor.viewport().installEventFilter(self)
+
+            self.title_label = QtWidgets.QLabel(node.title, self)
+            self.title_label.setAlignment(ALIGN_CENTER)
+            self.title_label.setMouseTracking(True)
+            self.title_label.installEventFilter(self)
+            self.title_label.hide()
+
             self.setContextMenuPolicy(CUSTOM_CONTEXT_MENU)
             self.customContextMenuRequested.connect(lambda pos: self._show_context_menu(self.mapToGlobal(pos)))
-            close_button = QtWidgets.QPushButton("Schließen")
-            close_button.clicked.connect(self.close)
-            layout.addWidget(self.title_label)
-            layout.addWidget(self.editor, 1)
-            layout.addWidget(close_button)
-            self.editor.textChanged.connect(self._editor_changed)
+
+            self._collapse_timer = QtCore.QTimer(self)
+            self._collapse_timer.setInterval(4000)
+            self._collapse_timer.timeout.connect(self._timer_collapse_check)
+            self._collapse_timer.start()
+
             self._restore_geometry()
 
-        def _apply_background(self) -> None:
+        def _qt_rect(self, rect: LegacyDeskNoteRect) -> Any:
+            return QtCore.QRect(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+
+        def _current_rect(self) -> LegacyDeskNoteRect:
+            geo = self.geometry()
+            return LegacyDeskNoteRect(int(geo.x()), int(geo.y()), int(geo.width()), int(geo.height()))
+
+        def _event_global_pos(self, event: Any) -> Any:
+            try:
+                return event.globalPosition().toPoint()
+            except Exception:
+                return event.globalPos()
+
+        def _event_local_point(self, event: Any) -> Any:
+            try:
+                global_pos = self._event_global_pos(event)
+                return self.mapFromGlobal(global_pos)
+            except Exception:
+                return _event_pos(event)
+
+        def _set_geometry_rect(self, rect: LegacyDeskNoteRect, *, transition: bool = True) -> None:
+            previous = self._geometry_transition
+            self._geometry_transition = transition or previous
+            try:
+                self.setGeometry(int(rect.x), int(rect.y), max(80, int(rect.width)), max(60, int(rect.height)))
+            finally:
+                self._geometry_transition = previous
+            self._layout_desknote()
+
+        def _state_rect(self) -> LegacyDeskNoteRect:
             state = self.node.desktop_note or DesktopNoteState()
-            if state.argb:
-                self.editor.setStyleSheet(f"background-color: {color_from_argb(state.argb).name()};")
-            else:
-                self.editor.setStyleSheet("")
+            return LegacyDeskNoteRect(state.x, state.y, max(80, state.width), max(60, state.height))
+
+        def _clamp_initial_rect(self, rect: LegacyDeskNoteRect) -> LegacyDeskNoteRect:
+            try:
+                screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+                if screen is not None:
+                    available = screen.availableGeometry()
+                    return legacy_desknote_clamp_to_work_area(rect, int(available.width()), int(available.height()))
+            except Exception:
+                pass
+            return rect
 
         def _restore_geometry(self) -> None:
             state = self.node.desktop_note or DesktopNoteState()
-            self.setGeometry(state.x, state.y, max(120, state.width), max(100, state.height))
+            logical = self._clamp_initial_rect(self._state_rect())
+            shown = legacy_desknote_show2_geometry(logical)
+            self._expanded = False
+            self._set_geometry_rect(shown, transition=True)
             self._desired_opacity = legacy_desknote_opacity_for_inactive(state.opacity)
             try:
                 self.setWindowOpacity(self._desired_opacity)
             except Exception:
                 pass
             self._apply_background()
+            self._layout_desknote()
 
-        def _store_geometry(self) -> None:
-            geo = self.geometry()
+        def show2(self) -> None:
+            """Show using the old ``desknote.show2`` compact geometry."""
+
+            self._restore_geometry()
+            self.show()
+            self.raise_()
+
+        def _layout_desknote(self) -> None:
+            editor_rect = legacy_desknote_editor_rect(self.width(), self.height(), expanded=self._expanded)
+            self.editor.setGeometry(self._qt_rect(editor_rect))
+            self.title_label.setVisible(self._expanded and self.main_window.settings.show_desknote_borders)
+            if self.title_label.isVisible():
+                self.title_label.adjustSize()
+                label_rect = legacy_desknote_label_geometry(self.width(), self.title_label.width(), self.title_label.height())
+                self.title_label.setGeometry(self._qt_rect(label_rect))
+                fg = "black" if self._title_dark else "whitesmoke"
+                self.title_label.setStyleSheet(f"background: transparent; color: {fg};")
+            self.update()
+
+        def _apply_background(self) -> None:
+            state = self.node.desktop_note or DesktopNoteState()
+            if state.argb:
+                color = color_from_argb(state.argb)
+            else:
+                color = color_from_argb(legacy_light_color_argb(0))
+            self.editor.setStyleSheet(f"background-color: {color.name()}; border: none;")
+            try:
+                pal = self.palette()
+                pal.setColor(self.backgroundRole(), color)
+                self.setPalette(pal)
+                self.setAutoFillBackground(True)
+            except Exception:
+                pass
+
+        def _store_geometry(self, *, visible: bool | None = None) -> None:
+            if self._geometry_transition:
+                return
+            geo = self._current_rect()
             if self.node.desktop_note is None:
                 self.node.desktop_note = DesktopNoteState()
-            self.node.desktop_note.x = geo.x()
-            self.node.desktop_note.y = geo.y()
-            self.node.desktop_note.width = geo.width()
-            self.node.desktop_note.height = geo.height()
-            self.node.desktop_note.visible = self.isVisible()
+            self.node.desktop_note.x = geo.x
+            self.node.desktop_note.y = geo.y
+            self.node.desktop_note.width = geo.width
+            self.node.desktop_note.height = geo.height
+            self.node.desktop_note.visible = self.isVisible() if visible is None else visible
             self.node.desktop_note.opacity = legacy_desknote_opacity_for_inactive(self._desired_opacity)
+
+        def _store_after_user_geometry_change(self) -> None:
+            self._store_geometry(visible=True)
+            self.main_window.document.mark_changed()
+            self.main_window.update_title()
+            self.main_window.update_tray_menu()
 
         def reload_from_node(self) -> None:
             self._loading = True
@@ -251,14 +392,11 @@ if QtWidgets is not None:
             self.title_label.setText(self.node.title)
             self.editor.setHtml(rtf_to_html(self.node.rtf))
             self._apply_background()
+            self._layout_desknote()
             self._loading = False
 
         def _show_context_menu(self, global_pos: Any) -> None:
             menu = QtWidgets.QMenu(self)
-            menu.addAction("Ausschneiden", self.editor.cut)
-            menu.addAction("Kopieren", self.editor.copy)
-            menu.addAction("Einfügen", self.editor.paste)
-            menu.addSeparator()
             menu.addAction("Hintergrundfarbe", self._choose_background_color)
             opacity_menu = menu.addMenu("Transparenz")
             for label, opacity_percent in legacy_transparency_menu_options():
@@ -266,7 +404,7 @@ if QtWidgets is not None:
                 action.triggered.connect(lambda checked=False, v=opacity_percent: self._set_opacity_percent(v))
             menu.addSeparator()
             menu.addAction("Im Hauptfenster öffnen", self._activate_main_window_node)
-            menu.addAction("Ausblenden", self.close)
+            menu.addAction("Ausblenden", self._hide_desktop_note)
             menu.addAction("Desktop-Notiz schließen", self._remove_desktop_note)
             menu.exec(global_pos)
 
@@ -277,6 +415,7 @@ if QtWidgets is not None:
             if self.node.desktop_note is None:
                 self.node.desktop_note = DesktopNoteState()
             self.node.desktop_note.argb = argb_from_color(color)
+            self.node.desktop_note.legacy_sparse = False
             self._apply_background()
             self.main_window.document.mark_changed()
             self.main_window.update_title()
@@ -287,6 +426,7 @@ if QtWidgets is not None:
             opacity = legacy_desknote_opacity_for_inactive(value / 100.0)
             self._desired_opacity = opacity
             self.node.desktop_note.opacity = opacity
+            self.node.desktop_note.legacy_sparse = False
             try:
                 self.setWindowOpacity(opacity)
             except Exception:
@@ -306,62 +446,235 @@ if QtWidgets is not None:
             except Exception:
                 pass
 
+        def _expand_for_hover(self) -> None:
+            if self._expanded or not self.main_window.settings.show_desknote_borders:
+                return
+            expanded = legacy_desknote_hover_geometry(self._current_rect())
+            self._expanded = True
+            self._set_geometry_rect(expanded, transition=True)
+            self._set_active_opacity()
+
+        def _collapse_from_hover(self) -> None:
+            if not self._expanded:
+                return
+            collapsed = legacy_desknote_hidden_border_geometry(self._current_rect())
+            self._expanded = False
+            self._set_geometry_rect(collapsed, transition=True)
+            self._restore_inactive_opacity()
+
+        def _timer_collapse_check(self) -> None:
+            if not self._expanded:
+                return
+            try:
+                pos = QtGui.QCursor.pos()
+                top_left = self.mapToGlobal(QtCore.QPoint(0, 0))
+                rect = LegacyDeskNoteRect(int(top_left.x()), int(top_left.y()), int(self.width()), int(self.height()))
+                from .desktop_note_legacy import legacy_desknote_point_outside
+                if legacy_desknote_point_outside(rect, int(pos.x()), int(pos.y())):
+                    self._collapse_from_hover()
+            except Exception:
+                pass
+
         def _activate_main_window_node(self) -> None:
+            self._set_active_opacity()
             self.main_window.show()
             self.main_window.raise_()
             self.main_window.activateWindow()
             self.main_window.select_node(self.node)
+            if self.main_window.current_node_ref is self.node:
+                self.main_window.load_editor_from_node(self.node, preserve_focus=False)
+
+        def _hide_desktop_note(self) -> None:
+            self._store_geometry(visible=False)
+            if self.node.desktop_note is not None:
+                self.node.desktop_note.visible = False
+            self.hide()
+            self.main_window.document.mark_changed()
+            self.main_window.update_title()
+            self.main_window.update_tray_menu()
 
         def _remove_desktop_note(self) -> None:
             self.main_window.close_desktop_note(self.node)
             self.main_window.document.mark_changed()
             self.main_window.update_title()
 
+        def _toggle_title_color(self) -> None:
+            self._title_dark = not self._title_dark
+            self._layout_desknote()
+
+        def _cursor_for_action(self, action: LegacyDeskNoteMouseAction | str) -> Any:
+            cursor = legacy_desknote_cursor_for_move_action(action)
+            if cursor is LegacyDeskNoteCursor.RESIZE:
+                return QtGui.QCursor(SIZE_FDIAG_CURSOR)
+            if cursor is LegacyDeskNoteCursor.ARROW:
+                return QtGui.QCursor(ARROW_CURSOR)
+            if cursor is LegacyDeskNoteCursor.HIDE:
+                return QtGui.QCursor(POINTING_HAND_CURSOR)
+            return QtGui.QCursor(SIZE_ALL_CURSOR)
+
+        def _start_move(self, global_pos: Any) -> None:
+            geo = self.geometry()
+            self._drag_move = True
+            self._drag_resize = False
+            self._drag_offset_x = int(global_pos.x()) - int(geo.x())
+            self._drag_offset_y = int(global_pos.y()) - int(geo.y())
+
+        def _start_resize(self) -> None:
+            self._drag_resize = True
+            self._drag_move = False
+
+        def _handle_mouse_press(self, event: Any) -> bool:
+            self._set_active_opacity()
+            self._expand_for_hover()
+            local = self._event_local_point(event)
+            global_pos = self._event_global_pos(event)
+            left = event.button() == LEFT_BUTTON
+            if not left:
+                return False
+            if self._expanded:
+                hover_action = legacy_desknote_mouse_move_action(int(local.x()), int(local.y()), int(self.width()), int(self.height()))
+                if hover_action is LegacyDeskNoteMouseAction.RESIZE:
+                    self._start_resize()
+                    return True
+            action = legacy_desknote_mouse_down_action(int(local.x()), int(local.y()), int(self.width()), left_button=left)
+            if action is LegacyDeskNoteMouseAction.CLOSE:
+                self._remove_desktop_note()
+                return True
+            if action is LegacyDeskNoteMouseAction.HIDE:
+                self._hide_desktop_note()
+                return True
+            self._start_move(global_pos)
+            return True
+
+        def _handle_mouse_move(self, event: Any) -> bool:
+            local = self._event_local_point(event)
+            global_pos = self._event_global_pos(event)
+            if self._drag_resize:
+                rect = legacy_desknote_resize_geometry(int(self.x()), int(self.y()), int(global_pos.x()), int(global_pos.y()))
+                self._set_geometry_rect(rect, transition=False)
+                return True
+            if self._drag_move:
+                rect = legacy_desknote_move_geometry(
+                    int(global_pos.x()),
+                    int(global_pos.y()),
+                    self._drag_offset_x,
+                    self._drag_offset_y,
+                    int(self.width()),
+                    int(self.height()),
+                )
+                self._set_geometry_rect(rect, transition=False)
+                return True
+            if self._expanded:
+                action = legacy_desknote_mouse_move_action(int(local.x()), int(local.y()), int(self.width()), int(self.height()))
+                self.setCursor(self._cursor_for_action(action))
+            else:
+                self.setCursor(QtGui.QCursor(SIZE_ALL_CURSOR))
+            return False
+
+        def _handle_mouse_release(self, event: Any) -> bool:
+            if self._drag_move or self._drag_resize:
+                self._drag_move = False
+                self._drag_resize = False
+                self._store_after_user_geometry_change()
+                self.update()
+                return True
+            return False
+
+        def eventFilter(self, watched: Any, event: Any) -> bool:  # noqa: N802 - Qt override
+            etype = event.type()
+            if etype == ENTER_EVENT:
+                self._set_active_opacity()
+                self._expand_for_hover()
+                return False
+            if etype == LEAVE_EVENT:
+                self._restore_inactive_opacity()
+                return False
+            if etype == KEY_PRESS_EVENT:
+                self._activate_main_window_node()
+                return True
+            if etype == MOUSE_DOUBLE_EVENT:
+                self._activate_main_window_node()
+                return True
+            if etype == MOUSE_PRESS_EVENT:
+                if watched is self.editor or watched is self.editor.viewport():
+                    self._set_active_opacity()
+                    self._expand_for_hover()
+                    if event.button() == LEFT_BUTTON:
+                        self._start_move(self._event_global_pos(event))
+                        return True
+                    return False
+                if watched is self.title_label and event.button() == LEFT_BUTTON:
+                    self._toggle_title_color()
+                return self._handle_mouse_press(event)
+            if etype == MOUSE_MOVE_EVENT:
+                return self._handle_mouse_move(event)
+            if etype == MOUSE_RELEASE_EVENT:
+                return self._handle_mouse_release(event)
+            return super().eventFilter(watched, event)
+
         def enterEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             self._set_active_opacity()
+            self._expand_for_hover()
             super().enterEvent(event)
 
         def leaveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             self._restore_inactive_opacity()
+            self._collapse_from_hover()
             super().leaveEvent(event)
 
         def focusInEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             self._set_active_opacity()
+            self._expand_for_hover()
             super().focusInEvent(event)
 
         def focusOutEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             self._restore_inactive_opacity()
+            self._collapse_from_hover()
             super().focusOutEvent(event)
+
+        def mousePressEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            if not self._handle_mouse_press(event):
+                super().mousePressEvent(event)
+
+        def mouseMoveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            if not self._handle_mouse_move(event):
+                super().mouseMoveEvent(event)
+
+        def mouseReleaseEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            if not self._handle_mouse_release(event):
+                super().mouseReleaseEvent(event)
 
         def mouseDoubleClickEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             self._activate_main_window_node()
-            super().mouseDoubleClickEvent(event)
+            event.accept()
 
-        def _editor_changed(self) -> None:
-            if self._loading:
+        def paintEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            super().paintEvent(event)
+            if not (self._expanded and self.main_window.settings.show_desknote_borders):
                 return
-            self.node.rtf = html_to_rtf(self.editor.toHtml())
-            self.main_window.document.mark_changed()
-            self.main_window.update_title()
-            self.main_window._reload_desktop_note_windows(self.node, source_window=self)
-            if self.main_window.current_node_ref is self.node:
-                self.main_window.load_editor_from_node(self.node, preserve_focus=True)
-
-        def moveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
-            self._store_geometry()
-            super().moveEvent(event)
+            painter = QtGui.QPainter(self)
+            try:
+                pen = QtGui.QPen(QtGui.QColor("black"))
+                painter.setPen(pen)
+                painter.drawLine(36, 26, max(36, self.width() - 36), 26)
+                painter.drawLine(36, 0, 36, 40)
+                painter.drawLine(max(0, self.width() - 36), 0, max(0, self.width() - 36), 40)
+                painter.drawLine(0, 40, 36, 40)
+                painter.drawLine(max(0, self.width() - 36), 40, self.width(), 40)
+                font = QtGui.QFont("Arial", 20)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(QtCore.QRect(max(0, self.width() - 36), 0, 36, 36), ALIGN_CENTER, "x")
+                painter.drawText(QtCore.QRect(0, 0, 36, 36), ALIGN_CENTER, "_")
+            finally:
+                painter.end()
 
         def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
-            self._store_geometry()
+            self._layout_desknote()
             super().resizeEvent(event)
 
         def closeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
-            self._store_geometry()
-            if self.node.desktop_note is not None:
-                self.node.desktop_note.visible = False
-            self.main_window.document.mark_changed()
-            self.main_window.update_tray_menu()
-            self.hide()
+            self._hide_desktop_note()
             event.ignore()
 
     class SearchDialog(QtWidgets.QDialog):
@@ -2364,8 +2677,7 @@ if QtWidgets is not None:
                 node.desktop_note = self.default_desktop_note_state()
             node.desktop_note.visible = True
             win.reload_from_node()
-            win.show()
-            win.raise_()
+            win.show2()
             win.activateWindow()
             self.document.mark_changed()
             self.update_title()

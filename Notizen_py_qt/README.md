@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.14**.
+Aktueller Stand dieses Archivs: **0.10.15**.
 
 ## Start
 
@@ -63,6 +63,22 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+
+## Änderungen in 0.10.15
+
+- Der sichtbare GNOME-Startpfad aus 0.10.13/0.10.14 bleibt bewusst unverändert: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb` und kein pauschales Löschen von `DISPLAY`. In dieser Runde wurde keine neue Display-/Wayland-Experimentierlogik eingebaut.
+- Desktop-Notizen wurden deutlich näher an das alte WinForms-`desknote.vb` gebracht:
+  - rahmenlose Tool-Fenster statt normaler Editor-Dialoge,
+  - kompakte `show2`-Startgeometrie wie im Original,
+  - Hover-/Aktiv-Zustand mit altem Randversatz `12/32/26/48`,
+  - Titelstreifen mit alter Hide-Zone links und Close-Zone rechts,
+  - alte Move-/Resize-Hotzones inklusive unterer rechter Resize-Ecke,
+  - Read-only-Desktop-Textfläche wie die alte RichTextBox,
+  - Doppelklick/Tastendruck springt zum Hauptfenster und zum passenden Knoten,
+  - Titelklick toggelt die alte helle/dunkle Titelfarbe,
+  - 4000-ms-MouseLeave-/Collapse-Timer und 3-Pixel-Toleranz aus der alten Logik.
+- `desktop_note_legacy.py` enthält jetzt testbare WinForms-Geometrie- und Mausaktionshelfer, damit die Desktop-Notiz-Logik nicht nur in Qt-Events versteckt ist.
+- Neue Tests prüfen die alte `desknote.vb`-Geometrie, Titelzonen, Move-/Resize-Zonen, Cursorzuordnung, WorkArea-Klemmung und MouseLeave-Toleranz.
 
 ## Änderungen in 0.10.14
 

@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.14**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.15**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -11,7 +11,7 @@ Aktiver Portierungsstand: **0.10.14**. Diese Datei beschreibt die aktuelle seman
 | `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB/WMF/EMF-RTF-Brücke, RTF-Codepage-Auswertung über `\ansicpg`, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
 | `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `legacy_validation.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting, unbekannte Notizattribute, sparse Desktop-Notizattribute, Datenschutz-Validator und die alte Autosave-Schutzbedingung sind portiert. |
 | `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
-| `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen, Farben inklusive exakt erreichbarer `get_lightcolor`-Zufallspalette, altes Transparenzmenü, Kontextmenü, Rücksprung ins Hauptfenster und WinForms-nahe Startgeometrie sind portiert. |
+| `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen sind in 0.10.15 deutlich näher am alten WinForms-Verhalten: rahmenlos, kompakte `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Read-only-RichText-Fläche, Opacity-, Farb- und Kontextmenülogik. |
 | `einstellungen.vb` | `settings.py`, Settings-Dialog in `app.py` | Backups, Autosave, Sprache, Scrollleisten, Desktop-Notiz-Ränder, Autostart-Felder und zuletzt geöffnete Dateien sind portiert. |
 | `ftpkram.vb` | `ftp_sync.py`, FTP-Dialog in `app.py` | FTP-Öffnen/Speichern der ALX-Datei ist portiert. |
 | `wecker.vb`, `wecker.Designer.vb` | `alarms.py`, Alarm-Dialog in `app.py` | Einmalige und wiederholende Wecker sind portiert; 0.10.13 ergänzt die alte Aktiviert-Checkbox, Wochentags-Checkbox-Zuordnung und Intervall-Einheiten. |
@@ -22,6 +22,13 @@ Aktiver Portierungsstand: **0.10.14**. Diese Datei beschreibt die aktuelle seman
 
 
 
+## In 0.10.15 weitergeführt
+
+- Schwerpunkt dieser Runde war ausdrücklich `desknote.vb`. Der zuletzt sichtbar funktionierende GNOME-Startpfad wurde nicht erneut verändert.
+- `DesktopNoteWindow` ist jetzt kein normaler kleiner Editor mehr, sondern ein rahmenloses WinForms-nahes Tool-Fenster: die alte RichTextBox ist read-only, füllt im Ruhezustand die ganze kompakte Notiz und wird bei Hover/Fokus auf die alte Innenposition `(12,32)` verschoben.
+- `desktop_note_legacy.py` bildet die alten Zahlen aus `desknote.vb` testbar ab: `show2`-Geometrie, Hover-/Hidden-Geometrie, Titel-Label-Rechteck, Hide-/Close-Titelzonen, Move-/Resize-Mauszonen, Cursorzuordnung, Arbeitsbereich-Klemmung und MouseLeave-Toleranz.
+- Die Qt-Desktop-Notiz reagiert jetzt näher am Original: Titelstreifen links blendet aus, rechts entfernt die Desktop-Notiz, Doppelklick oder Tastendruck öffnet den Knoten im Hauptfenster, ein Titelklick toggelt die Titelfarbe und nach Verlassen wird wieder in die kompakte Form kollabiert.
+- Die noch offene vollständige visuelle Gleichheit betrifft vor allem die alte `set_clientsizes`-/Scrollbar-Autosize-Schleife und pixelgenaue Paint-Optik; die zentralen WinForms-Geometrie- und Interaktionsregeln sind jetzt aber als Code und Tests nachgezogen.
 
 ## In 0.10.14 weitergeführt
 
