@@ -11,26 +11,26 @@ DESKTOP_TARGET="$APP_DESKTOP_DIR/notizen-py-qt.desktop"
 STALE_DESKTOP_TARGET="$APP_DESKTOP_DIR/Notizen PyQt.desktop"
 ICON_TARGET="$ICON_DIR/notizen-py-qt.png"
 INSTALL_DESKTOP_SHORTCUT=0
-USE_VENV_LAUNCHER=0
-
 for arg in "$@"; do
     case "$arg" in
         --desktop|--schreibtisch)
             INSTALL_DESKTOP_SHORTCUT=1
             ;;
         --venv)
-            USE_VENV_LAUNCHER=1
+            # Kompatibilitätsoption: der GNOME-Menüeintrag startet jetzt bewusst
+            # direkt per python3 -m notizen_py_qt, weil Shell-Wrapper mit
+            # Anführungszeichen im GNOME-Menü unzuverlässig waren.
             ;;
         -h|--help)
             cat <<'NOTIZEN_LAUNCHER_HELP'
 Installiert einen GNOME/Linux-Starter für Notizen PyQt.
 
 Aufruf:
-  scripts/install_linux_launcher.sh [--desktop] [--venv]
+  scripts/install_linux_launcher.sh [--desktop]
 
 Ohne Option wird ein Eintrag im Anwendungsmenü installiert.
 Mit --desktop wird zusätzlich eine anklickbare Datei auf dem Desktop/Schreibtisch abgelegt.
-Mit --venv nutzt der Starter den lokalen venv-Starter notizen-starten-venv.sh.
+Der GNOME-Starter nutzt einen direkten python3-Modulstart ohne Shell-Wrapper.
 NOTIZEN_LAUNCHER_HELP
             exit 0
             ;;
@@ -40,13 +40,6 @@ NOTIZEN_LAUNCHER_HELP
             ;;
     esac
 done
-
-escape_desktop_arg() {
-    local value="$1"
-    value="${value//\\/\\\\}"
-    value="${value//\"/\\\"}"
-    printf '"%s"' "$value"
-}
 
 mkdir -p "$APP_DESKTOP_DIR" "$ICON_DIR" "$MIME_PACKAGE_DIR"
 cp "$APPDIR/src/notizen_py_qt/resources/notizen.png" "$ICON_TARGET"
@@ -64,14 +57,7 @@ cat > "$MIME_TARGET" <<'EOF_MIME'
 EOF_MIME
 chmod 0644 "$MIME_TARGET"
 
-if [[ "$USE_VENV_LAUNCHER" == 1 ]]; then
-    LAUNCHER_SCRIPT="$APPDIR/notizen-starten-venv.sh"
-else
-    LAUNCHER_SCRIPT="$APPDIR/notizen-starten.sh"
-fi
-LAUNCHER_SCRIPT_REAL="$(readlink -f "$LAUNCHER_SCRIPT")"
 APPDIR_REAL="$(readlink -f "$APPDIR")"
-EXEC_PATH="$(escape_desktop_arg "$LAUNCHER_SCRIPT_REAL")"
 cat > "$DESKTOP_TARGET" <<EOF_DESKTOP
 [Desktop Entry]
 Version=1.0
@@ -79,7 +65,7 @@ Type=Application
 Name=Notizen PyQt
 GenericName=Notizenverwaltung
 Comment=Notizen.NET Python/Qt-Port sichtbar starten
-Exec=env NOTIZEN_KEEP_DISPLAY=1 NOTIZEN_MENU_LAUNCH=1 NOTIZEN_FORCE_VISIBLE=1 NOTIZEN_RESET_WINDOW=1 $EXEC_PATH --show --no-tray --reset-window %f
+Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f
 Path=$APPDIR_REAL
 Icon=notizen-py-qt
 Terminal=false
@@ -143,5 +129,6 @@ fi
 printf 'Anwendungsstarter installiert: %s\n' "$DESKTOP_TARGET"
 printf 'Entfernte alte Menü-Kopie (falls vorhanden): %s\n' "$STALE_DESKTOP_TARGET"
 printf 'ALX-Dateizuordnung: application/x-notizen-alx\n'
+printf 'GNOME Exec: env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %%f\n'
 printf 'Direktstartdatei: %s\n' "$APPDIR/Notizen starten.sh"
 printf 'Diagnoseprotokoll bei Menüstart: %s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/notizen-py-qt/startup.log"

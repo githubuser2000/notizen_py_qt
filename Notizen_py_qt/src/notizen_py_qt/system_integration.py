@@ -168,33 +168,26 @@ def apply_windows_registry_entries(entries: Iterable[WindowsRegistryEntry]) -> i
 
 
 def build_linux_desktop_exec(
-    launcher: str | Path,
+    module: str = "notizen_py_qt",
     *,
-    use_env_keep_display: bool = True,
-    menu_launch: bool | None = None,
-    force_visible_env: bool | None = None,
+    python_executable: str | Path = "python3",
+    reset_window_env: bool = True,
     visible: bool = True,
     no_tray: bool = True,
     reset_window: bool = True,
     file_placeholder: str = "%f",
 ) -> str:
-    """Build the Linux ``Exec=`` line used by the GNOME launcher."""
+    """Build the direct GNOME ``Exec=`` line for the Linux launcher.
 
-    if menu_launch is None:
-        menu_launch = use_env_keep_display
-    if force_visible_env is None:
-        force_visible_env = use_env_keep_display
+    GNOME menu activation proved unreliable with shell wrappers and nested
+    quoting.  The menu entry therefore starts the Python module directly and
+    leaves only the reset-window environment override in front of it.
+    """
 
-    args: list[str] = []
-    if use_env_keep_display:
-        args.extend(["env", "NOTIZEN_KEEP_DISPLAY=1"])
-    elif menu_launch or force_visible_env:
-        args.append("env")
-    if menu_launch:
-        args.append("NOTIZEN_MENU_LAUNCH=1")
-    if force_visible_env:
-        args.extend(["NOTIZEN_FORCE_VISIBLE=1", "NOTIZEN_RESET_WINDOW=1"])
-    args.append(os.fspath(launcher))
+    args: list[str] = ["env"]
+    if reset_window_env:
+        args.append("NOTIZEN_RESET_WINDOW=1")
+    args.extend([os.fspath(python_executable), "-m", module])
     if visible:
         args.append("--show")
     if no_tray:

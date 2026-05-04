@@ -61,3 +61,56 @@ def test_ole_object_group_gets_visible_placeholder_instead_of_disappearing() -> 
     rtf = r"{\rtf1\ansi Hallo {\object\objemb{\*\objclass Package}{\objdata 010203}} Ende}"
     assert rtf_to_plain_text(rtf) == f"Hallo {LEGACY_OBJECT_PLACEHOLDER} Ende"
     assert LEGACY_OBJECT_PLACEHOLDER in rtf_to_html(rtf)
+
+
+def test_rtf_superscript_and_subscript_survive_html_bridge() -> None:
+    rtf = r"{\rtf1\ansi x{\super 2}{\nosupersub } y{\sub 1}}"
+    html = rtf_to_html(rtf)
+    parts = rtf_to_content_parts(rtf)
+
+    assert "vertical-align:super" in html
+    assert "vertical-align:sub" in html
+    assert any(getattr(part, "text", "") == "2" and getattr(part, "style", None).vertical == "super" for part in parts)
+    assert any(getattr(part, "text", "") == "1" and getattr(part, "style", None).vertical == "sub" for part in parts)
+
+
+def test_html_sup_sub_writes_rtf_controls() -> None:
+    rtf = html_to_rtf("x<sup>2</sup> und y<sub>1</sub>")
+    assert r"\super" in rtf
+    assert r"\sub" in rtf
+    assert rtf_to_plain_text(rtf) == "x2 und y1"
+
+
+def test_rtf_paragraph_alignment_and_indent_are_preserved() -> None:
+    rtf = r"{\rtf1\ansi\pard\qc\li720\ri240\fi-360 Zentriert\par}"
+    html = rtf_to_html(rtf)
+    parts = rtf_to_content_parts(rtf)
+
+    assert "text-align:center" in html
+    assert "margin-left:36pt" in html
+    assert "margin-right:12pt" in html
+    assert "text-indent:-18pt" in html
+    assert any(
+        getattr(part, "text", "").startswith("Zentriert")
+        and getattr(part, "style", None).align == "center"
+        and getattr(part, "style", None).left_indent_twips == 720
+        and getattr(part, "style", None).right_indent_twips == 240
+        and getattr(part, "style", None).first_indent_twips == -360
+        for part in parts
+    )
+
+
+def test_html_paragraph_alignment_and_indent_write_rtf_controls() -> None:
+    rtf = html_to_rtf('<p style="text-align: right; margin-left: 36pt; text-indent: -18pt">Rechts</p>')
+    assert r"\qr" in rtf
+    assert r"\li720" in rtf
+    assert r"\fi-360" in rtf
+    assert rtf_to_plain_text(rtf) == "Rechts"
+
+
+def test_tree_export_keeps_vertical_and_paragraph_rtf_controls() -> None:
+    node = NoteNode(title="Root", rtf=r"{\rtf1\ansi\pard\qc Formel {\super 2}\par}")
+    exported = tree_to_rtf(node)
+    assert r"\qc" in exported
+    assert r"\super" in exported
+    assert "Formel 2" in rtf_to_plain_text(exported)

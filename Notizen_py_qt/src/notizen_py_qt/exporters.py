@@ -181,6 +181,14 @@ def _color_table(color_indexes: dict[str, int]) -> str:
 
 def _style_prefix(style: RtfTextStyle, color_indexes: dict[str, int], font_indexes: dict[str, int]) -> str:
     parts: list[str] = []
+    if style.align in {"left", "center", "right", "justify"}:
+        parts.append({"left": r"\ql", "center": r"\qc", "right": r"\qr", "justify": r"\qj"}[style.align])
+    if style.left_indent_twips is not None:
+        parts.append(rf"\li{style.left_indent_twips}")
+    if style.right_indent_twips is not None:
+        parts.append(rf"\ri{style.right_indent_twips}")
+    if style.first_indent_twips is not None:
+        parts.append(rf"\fi{style.first_indent_twips}")
     if style.font_family in font_indexes:
         parts.append(rf"\f{font_indexes[style.font_family]}")
     if style.bold:
@@ -191,6 +199,10 @@ def _style_prefix(style: RtfTextStyle, color_indexes: dict[str, int], font_index
         parts.append(r"\ul")
     if style.strike:
         parts.append(r"\strike")
+    if style.vertical == "super":
+        parts.append(r"\super")
+    elif style.vertical == "sub":
+        parts.append(r"\sub")
     if style.fs_half_points:
         parts.append(rf"\fs{style.fs_half_points}")
     if style.fg_color in color_indexes:

@@ -27,15 +27,15 @@ def test_human_named_start_file_delegates_to_safe_launcher() -> None:
     assert "notizen-starten.sh" in text
 
 
-def test_desktop_launcher_uses_start_script_relative_to_desktop_file() -> None:
+def test_desktop_launcher_uses_direct_python_module_start() -> None:
     launcher = Path("Notizen PyQt.desktop")
     text = launcher.read_text(encoding="utf-8")
 
     assert os.access(launcher, os.X_OK)
     assert "Type=Application" in text
-    assert "notizen-starten.sh" in text
-    assert "%k" in text
-    assert "%f" in text
+    assert "Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f" in text
+    assert "sh -c" not in text
+    assert "notizen-starten.sh" not in text
 
 
 def test_linux_launcher_installer_writes_visible_no_tray_exec() -> None:

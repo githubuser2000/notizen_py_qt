@@ -53,10 +53,9 @@ def test_gnome_menu_launcher_hardened_against_stale_desktop_copy() -> None:
     installer = Path("scripts/install_linux_launcher.sh").read_text(encoding="utf-8")
     appdir = Path("scripts/build_linux_appdir.sh").read_text(encoding="utf-8")
 
-    assert "NOTIZEN_MENU_LAUNCH=1" in root_desktop
-    assert "NOTIZEN_FORCE_VISIBLE=1" in root_desktop
+    assert "Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f" in root_desktop
     assert "DBusActivatable=false" in root_desktop
     assert "STALE_DESKTOP_TARGET" in installer
-    assert "rm -f \"$STALE_DESKTOP_TARGET\"" in installer
-    assert "Exec=env NOTIZEN_KEEP_DISPLAY=1 NOTIZEN_MENU_LAUNCH=1" in installer
+    assert 'rm -f "$STALE_DESKTOP_TARGET"' in installer
+    assert "Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt" in installer
     assert "Exec=AppRun %f" in appdir

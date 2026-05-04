@@ -2152,8 +2152,14 @@ if QtWidgets is not None:
             self.node_items[id(node)] = item
             for child in node.children:
                 item.addChild(self._make_item(child))
-            item.setExpanded(node.expanded)
             return item
+
+        def _apply_tree_expansion_state(self, item: Any) -> None:
+            node = item.data(0, USER_ROLE)
+            if isinstance(node, NoteNode):
+                item.setExpanded(bool(node.expanded))
+            for index in range(item.childCount()):
+                self._apply_tree_expansion_state(item.child(index))
 
         def build_tree(self) -> None:
             self._loading_tree = True
@@ -2162,6 +2168,12 @@ if QtWidgets is not None:
             if self.document.root is not None:
                 root_item = self._make_item(self.document.root)
                 self.tree.addTopLevelItem(root_item)
+                # QTreeWidgetItem.setExpanded() is only reliable after the item
+                # belongs to a QTreeWidget.  Notizen.NET restored ``isexpanded``
+                # after creating each TreeNode; applying the state here prevents
+                # loaded .alx files from immediately overwriting collapsed nodes
+                # during the next save.
+                self._apply_tree_expansion_state(root_item)
                 self.tree.setCurrentItem(root_item)
             self._loading_tree = False
             self.on_tree_selection_changed()

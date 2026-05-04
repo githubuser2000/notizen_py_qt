@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.19**.
+Aktueller Stand dieses Archivs: **0.10.20**.
 
 ## Start
 
@@ -63,6 +63,15 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+
+## Änderungen in 0.10.20
+
+- Der `.alx`-Baumzustand wird jetzt vollständig beachtet. `isexpanded` wird weiter gelesen und geschrieben, aber der Qt-Baum wendet den geladenen Zustand erst nach `addTopLevelItem(...)` an. Dadurch bleiben geöffnete und geschlossene Knoten beim Laden erhalten und werden beim nächsten Speichern nicht mehr versehentlich überschrieben.
+- Der GNOME-Menüstarter wurde auf den funktionierenden Direktstart umgestellt: `Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f`. Der installierte Starter setzt zusätzlich `Path=<Projektordner>`, nutzt keinen `.sh`-Wrapper mehr und vermeidet verschachtelte Anführungszeichen.
+- Die RTF-Brücke wurde weiter an WinForms-`RichTextBox` angenähert: `\super`, `\sub` und `\nosupersub` werden gelesen; HTML `<sup>/<sub>` und CSS `vertical-align: super/sub` werden wieder als RTF geschrieben.
+- Absatzformatierung wird nun ebenfalls robuster übertragen: `\ql`, `\qc`, `\qr`, `\qj`, `\li`, `\ri` und `\fi` werden nach HTML/CSS (`text-align`, `margin-left`, `margin-right`, `text-indent`) übernommen und beim HTML-nach-RTF-Weg wieder als RTF-Controls ausgegeben.
+- Der kombinierte RTF-Export für Teilbaum/Gesamtbaum übernimmt die neuen Hoch-/Tiefstellungs- und Absatzformat-Controls aus den einzelnen Notizen.
+- Zusätzliche Regressionstests sichern `.alx`-`isexpanded`-Roundtrips, die späte Qt-Baumzustandsanwendung, den direkten GNOME-`Exec` und die neuen RTF-Formatpfade ab.
 
 ## Änderungen in 0.10.19
 

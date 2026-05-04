@@ -225,6 +225,11 @@ class _RtfStyle:
     bg_index: int = 0
     font_family: str = ""
     hyperlink_url: str = ""
+    vertical: str = ""
+    align: str = ""
+    left_indent_twips: int | None = None
+    right_indent_twips: int | None = None
+    first_indent_twips: int | None = None
 
     def copy(self) -> "_RtfStyle":
         return _RtfStyle(
@@ -237,6 +242,11 @@ class _RtfStyle:
             bg_index=self.bg_index,
             font_family=self.font_family,
             hyperlink_url=self.hyperlink_url,
+            vertical=self.vertical,
+            align=self.align,
+            left_indent_twips=self.left_indent_twips,
+            right_indent_twips=self.right_indent_twips,
+            first_indent_twips=self.first_indent_twips,
         )
 
 
@@ -254,6 +264,11 @@ class RtfTextStyle:
     fg_color: str = ""
     bg_color: str = ""
     font_family: str = ""
+    vertical: str = ""
+    align: str = ""
+    left_indent_twips: int | None = None
+    right_indent_twips: int | None = None
+    first_indent_twips: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -689,6 +704,16 @@ def _style_to_css(style: _RtfStyle, colors: list[str]) -> str:
     if style.font_family:
         family = style.font_family.replace("\\", "\\\\").replace('"', r'\"')
         rules.append(f'font-family:"{family}"')
+    if style.vertical in {"super", "sub"}:
+        rules.append(f"vertical-align:{style.vertical}")
+    if style.align in {"left", "center", "right", "justify"}:
+        rules.append(f"text-align:{style.align}")
+    if style.left_indent_twips is not None:
+        rules.append(f"margin-left:{style.left_indent_twips / 20:g}pt")
+    if style.right_indent_twips is not None:
+        rules.append(f"margin-right:{style.right_indent_twips / 20:g}pt")
+    if style.first_indent_twips is not None:
+        rules.append(f"text-indent:{style.first_indent_twips / 20:g}pt")
     if 0 <= style.fg_index < len(colors) and colors[style.fg_index]:
         rules.append(f"color:{colors[style.fg_index]}")
     if 0 <= style.bg_index < len(colors) and colors[style.bg_index]:
@@ -795,6 +820,12 @@ def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[
                 style.underline = False
             elif word == "strike":
                 style.strike = number != 0
+            elif word == "super":
+                style.vertical = "" if number == 0 else "super"
+            elif word == "sub":
+                style.vertical = "" if number == 0 else "sub"
+            elif word == "nosupersub":
+                style.vertical = ""
             elif word == "fs" and number is not None:
                 style.fs_half_points = max(1, number)
             elif word == "f" and number is not None:
@@ -803,6 +834,19 @@ def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[
                 style.fg_index = max(0, number)
             elif word in {"highlight", "cb"} and number is not None:
                 style.bg_index = max(0, number)
+            elif word in {"ql", "qc", "qr", "qj"}:
+                style.align = {"ql": "left", "qc": "center", "qr": "right", "qj": "justify"}[word]
+            elif word == "li" and number is not None:
+                style.left_indent_twips = number
+            elif word == "ri" and number is not None:
+                style.right_indent_twips = number
+            elif word == "fi" and number is not None:
+                style.first_indent_twips = number
+            elif word == "pard":
+                style.align = ""
+                style.left_indent_twips = None
+                style.right_indent_twips = None
+                style.first_indent_twips = None
             elif word == "plain":
                 state.style = _RtfStyle()
             else:
@@ -839,6 +883,11 @@ def _resolve_style(style: _RtfStyle, colors: list[str]) -> RtfTextStyle:
         fg_color=fg,
         bg_color=bg,
         font_family=style.font_family,
+        vertical=style.vertical,
+        align=style.align,
+        left_indent_twips=style.left_indent_twips,
+        right_indent_twips=style.right_indent_twips,
+        first_indent_twips=style.first_indent_twips,
     )
 
 
@@ -895,6 +944,11 @@ def rtf_to_content_parts(rtf: str) -> list[RtfContentPart]:
                 fg_color=resolved.fg_color,
                 bg_color=resolved.bg_color,
                 font_family=resolved.font_family,
+                vertical=resolved.vertical,
+                align=resolved.align,
+                left_indent_twips=resolved.left_indent_twips,
+                right_indent_twips=resolved.right_indent_twips,
+                first_indent_twips=resolved.first_indent_twips,
             )
             parts.append(RtfHyperlink(url=token.url, text=token.text, style=link_style))
             current_style = None
@@ -956,6 +1010,11 @@ def rtf_to_text_segments(rtf: str) -> list[RtfTextSegment]:
                 fg_color=resolved.fg_color,
                 bg_color=resolved.bg_color,
                 font_family=resolved.font_family,
+                vertical=resolved.vertical,
+                align=resolved.align,
+                left_indent_twips=resolved.left_indent_twips,
+                right_indent_twips=resolved.right_indent_twips,
+                first_indent_twips=resolved.first_indent_twips,
             )
         if resolved != current_style:
             flush()
@@ -1146,6 +1205,41 @@ def _parse_style_attribute(style_attr: str, style: _RtfStyle, color_names: dict[
             color = _css_color(raw_value)
             if color:
                 style.bg_index = color_names.setdefault(color, len(color_names) + 1)
+        elif key == "vertical-align" and value_lower in {"super", "sub"}:
+            style.vertical = value_lower
+        elif key == "text-align" and value_lower in {"left", "center", "right", "justify"}:
+            style.align = value_lower
+        elif key == "margin-left":
+            twips = _dimension_to_twips(raw_value)
+            if twips is not None:
+                style.left_indent_twips = twips
+        elif key == "margin-right":
+            twips = _dimension_to_twips(raw_value)
+            if twips is not None:
+                style.right_indent_twips = twips
+        elif key == "text-indent":
+            twips = _dimension_to_twips(raw_value)
+            if twips is not None:
+                style.first_indent_twips = twips
+
+
+def _dimension_to_twips(value: str) -> int | None:
+    value = value.strip().lower()
+    match = re.search(r"(-?[0-9]+(?:\.[0-9]+)?)", value)
+    if not match:
+        return None
+    number = float(match.group(1))
+    if "px" in value:
+        points = number * 72.0 / 96.0
+    elif "cm" in value:
+        points = number * 72.0 / 2.54
+    elif "mm" in value:
+        points = number * 72.0 / 25.4
+    elif "in" in value:
+        points = number * 72.0
+    else:
+        points = number
+    return int(round(points * 20))
 
 
 def _dimension_to_px(value: str) -> int | None:
@@ -1287,6 +1381,10 @@ class _HtmlToSegments(HTMLParser):
             style.underline = True
         elif tag in {"s", "strike", "del"}:
             style.strike = True
+        elif tag == "sup":
+            style.vertical = "super"
+        elif tag == "sub":
+            style.vertical = "sub"
         elif tag == "a":
             href = attr.get("href", "").strip()
             if href:
@@ -1399,9 +1497,12 @@ class _HtmlToSegments(HTMLParser):
             self._append("\n")
             return
         if tag in {"p", "div", "li"}:
+            # Keep the paragraph break inside the paragraph's style scope so
+            # alignment and indentation controls are attached to the same RTF
+            # paragraph rather than a short grouped text run before ``\par``.
+            self._append("\n")
             if len(self.stack) > 1:
                 self.stack.pop()
-            self._append("\n")
             return
         if tag in {"td", "th", "table", "tbody", "thead", "tfoot", "a"}:
             if len(self.stack) > 1:
@@ -1433,6 +1534,14 @@ class _HtmlToSegments(HTMLParser):
 
 def _style_prefix(style: _RtfStyle, font_names: dict[str, int] | None = None) -> str:
     parts: list[str] = []
+    if style.align in {"left", "center", "right", "justify"}:
+        parts.append({"left": r"\ql", "center": r"\qc", "right": r"\qr", "justify": r"\qj"}[style.align])
+    if style.left_indent_twips is not None:
+        parts.append(rf"\li{style.left_indent_twips}")
+    if style.right_indent_twips is not None:
+        parts.append(rf"\ri{style.right_indent_twips}")
+    if style.first_indent_twips is not None:
+        parts.append(rf"\fi{style.first_indent_twips}")
     if style.font_family and font_names and style.font_family in font_names:
         parts.append(rf"\f{font_names[style.font_family]}")
     if style.bold:
@@ -1443,6 +1552,10 @@ def _style_prefix(style: _RtfStyle, font_names: dict[str, int] | None = None) ->
         parts.append(r"\ul")
     if style.strike:
         parts.append(r"\strike")
+    if style.vertical == "super":
+        parts.append(r"\super")
+    elif style.vertical == "sub":
+        parts.append(r"\sub")
     if style.fs_half_points:
         parts.append(rf"\fs{style.fs_half_points}")
     if style.fg_index:
@@ -1507,7 +1620,7 @@ def html_to_rtf(html_text: str) -> str:
         else:
             body_parts.append(escaped_text)
     body = "".join(body_parts).strip()
-    if body and not body.endswith(r"\par"):
+    if body and not re.search(r"\\par\s*(?:\}+)?$", body):
         body += r"\par" + "\n"
     return (
         r"{\rtf1\ansi\ansicpg1252\deff0\deflang1031"

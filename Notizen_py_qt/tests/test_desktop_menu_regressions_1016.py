@@ -43,11 +43,13 @@ def test_graphical_session_repair_still_fixes_known_stale_shell_display() -> Non
     assert any("DISPLAY" in note for note in notes)
 
 
-def test_menu_launchers_preserve_gnome_supplied_display() -> None:
+def test_menu_launchers_use_direct_module_exec_without_shell_quoting() -> None:
     project_desktop = Path("Notizen PyQt.desktop").read_text(encoding="utf-8")
     install_script = Path("scripts/install_linux_launcher.sh").read_text(encoding="utf-8")
-    assert "NOTIZEN_KEEP_DISPLAY=1" in project_desktop
-    assert "NOTIZEN_KEEP_DISPLAY=1" in install_script
+    direct_exec = "Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f"
+    assert direct_exec in project_desktop
+    assert direct_exec in install_script
+    assert "sh -c" not in project_desktop
 
 
 def test_desktop_note_window_uses_qt_system_drag_for_wayland() -> None:

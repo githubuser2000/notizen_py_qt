@@ -14,8 +14,8 @@ from notizen_py_qt.system_integration import (
 )
 
 
-def test_version_1019() -> None:
-    assert __version__ == "0.10.19"
+def test_version_1020() -> None:
+    assert __version__ == "0.10.20"
 
 
 def test_windows_module_open_command_quotes_percent_one() -> None:
@@ -56,16 +56,9 @@ def test_registry_preview_is_stable_and_human_readable() -> None:
     assert any(r"set Software\Classes\notizenfile\Shell\Open\Command [(Default)] = cmd %1" == line for line in lines)
 
 
-def test_linux_desktop_exec_keeps_visible_start_flags() -> None:
-    line = build_linux_desktop_exec("/home/alex/Notizen_py_qt/notizen-starten.sh")
-    assert line.startswith("env NOTIZEN_KEEP_DISPLAY=1")
-    assert "NOTIZEN_MENU_LAUNCH=1" in line
-    assert "NOTIZEN_FORCE_VISIBLE=1" in line
-    assert "NOTIZEN_RESET_WINDOW=1" in line
-    assert "--show" in line
-    assert "--no-tray" in line
-    assert "--reset-window" in line
-    assert line.endswith("%f")
+def test_linux_desktop_exec_keeps_visible_direct_module_flags() -> None:
+    line = build_linux_desktop_exec()
+    assert line == "env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f"
 
 
 def test_new_installation_scripts_are_present() -> None:
