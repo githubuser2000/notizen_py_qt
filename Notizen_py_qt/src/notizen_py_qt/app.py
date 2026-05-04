@@ -14,6 +14,13 @@ from .exporters import create_unified_note, tree_to_plain_text, tree_to_rtf, tre
 from .editor_legacy import qt_bullet_insert_text
 from .html_export import HtmlExportOptions, tree_to_html_bytes
 from .ftp_sync import FtpSyncError, FtpTarget
+from .feedback import (
+    LEGACY_FEEDBACK_EMAIL,
+    LEGACY_FEEDBACK_WEB_URL,
+    legacy_feedback_decision,
+    legacy_feedback_next_state,
+    write_local_feedback_archive,
+)
 from .i18n import available_languages, tr
 from .keyboard_legacy import legacy_shortcut_action
 from .legacy_colors import legacy_light_color_argb
@@ -3410,27 +3417,88 @@ if QtWidgets is not None:
                     self.statusBar().showMessage(autostart.message)
 
         def show_about(self) -> None:
+            """Show the old Info/Hilfe/Feedback dialog without unsafe FTP upload."""
+
             try:
                 from . import __version__
             except Exception:
-                __version__ = "0.10.13"
-            QtWidgets.QMessageBox.information(
-                self,
-                "Notizen Python/Qt",
-                (
-                    f"Notizen.NET Weitertranspilierung nach Python/Qt {__version__}\n\n"
-                    f"{self.tr('aboutinfotext', '')}\n\n"
-                    "Portiert: ALX-Dateiformat, Notizbaum, lokale/FTP-Speicherung, Suche, "
-                    "Knotenoperationen, Desktop-Notizen, RichText-Brücke, Teilbaum-Export, "
-                    "Sprachdateien, legacy Startparameter, alte Tastaturbedienung, "
-                    "systemweites Knoten-Clipboard, wiederholende Wecker, "
-                    "Qt-Druckpfade, TXT/RTF-Import, HTML-Export, Statistik, "
-                    "Knoten-Verschieben, Auf-/Zu-Funktionen, sichere Recent-Dateien, "
-                    "aktuelle/ganze Baum-Zusammenfassung, Sicherungsverwaltung "
-                    "und Desktop-Notiz-Startwerte nach Notizen.NET.\n\n"
-                    f"Qt-Binding: {BINDING}"
-                ),
+                __version__ = "0.10.18"
+
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle("Info Notizen PyQt")
+            dialog.resize(640, 660)
+            layout = QtWidgets.QVBoxLayout(dialog)
+
+            product = QtWidgets.QLabel(f"Notizen .NET / PyQt {__version__}")
+            author = QtWidgets.QLabel("Alexander Kern / Notizen.NET migration")
+            web = QtWidgets.QLabel(f'<a href="{LEGACY_FEEDBACK_WEB_URL}">{LEGACY_FEEDBACK_WEB_URL}</a>')
+            web.setOpenExternalLinks(True)
+            mail = QtWidgets.QLabel(f"Email: {LEGACY_FEEDBACK_EMAIL}")
+            layout.addWidget(product)
+            layout.addWidget(author)
+            layout.addWidget(web)
+            layout.addWidget(mail)
+
+            description = QtWidgets.QTextEdit()
+            description.setReadOnly(True)
+            description.setPlainText(
+                f"{self.tr('aboutinfotext', '')}\n\n"
+                "Portiert: ALX-Dateiformat, Notizbaum, lokale/FTP-Speicherung, Suche, "
+                "Knotenoperationen, Desktop-Notizen, RichText-Brücke, Teilbaum-Export, "
+                "Sprachdateien, legacy Startparameter, alte Tastaturbedienung, "
+                "systemweites Knoten-Clipboard, wiederholende Wecker, Qt-Druckpfade, "
+                "TXT/RTF-Import, HTML-Export, Statistik, Knoten-Verschieben, "
+                "Auf-/Zu-Funktionen, sichere Recent-Dateien, Baum-Zusammenfassung, "
+                "Sicherungsverwaltung, Windows-/Linux-Dateizuordnung und sichere lokale "
+                "Feedback-Ablage.\n\n"
+                f"Qt-Binding: {BINDING}"
             )
+            layout.addWidget(description, 1)
+
+            layout.addWidget(QtWidgets.QLabel(self.tr("feedback", "Feedback")))
+            feedback_edit = QtWidgets.QTextEdit()
+            feedback_edit.setPlaceholderText("Feedback wird lokal als gzip-Datei gespeichert; der alte FTP-Upload wird nicht reaktiviert.")
+            feedback_edit.setMinimumHeight(120)
+            layout.addWidget(feedback_edit)
+
+            buttons = QtWidgets.QDialogButtonBox()
+            save_button = buttons.addButton(self.tr("send", "Senden"), QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+            close_button = buttons.addButton(self.tr("close", "Schließen"), QtWidgets.QDialogButtonBox.ButtonRole.RejectRole)
+            layout.addWidget(buttons)
+            close_button.clicked.connect(dialog.reject)
+
+            def save_local_feedback() -> None:
+                text = feedback_edit.toPlainText()
+                decision = legacy_feedback_decision(
+                    text=text,
+                    previous_day_ticks=self.settings.feedback_day_ticks,
+                    previous_count=self.settings.feedback_count,
+                )
+                if not decision.allowed:
+                    if decision.reason == "char10minimum":
+                        message = self.tr("char10minimum", "Mindestens 10 Zeichen eingeben.")
+                    else:
+                        message = self.tr("no_send", "Heute kann kein weiteres Feedback gespeichert werden.")
+                    QtWidgets.QMessageBox.warning(dialog, "Notizen PyQt", message)
+                    return
+                feedback_dir = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state"))) / "notizen-py-qt" / "feedback"
+                target = write_local_feedback_archive(text, feedback_dir)
+                next_state = legacy_feedback_next_state(
+                    previous_day_ticks=self.settings.feedback_day_ticks,
+                    previous_count=self.settings.feedback_count,
+                )
+                self.settings.feedback_day_ticks = next_state.day_ticks
+                self.settings.feedback_count = next_state.count
+                self.settings.save()
+                QtWidgets.QMessageBox.information(
+                    dialog,
+                    "Notizen PyQt",
+                    f"Feedback wurde lokal gespeichert:\n{target}\n\nDer alte hartkodierte FTP-Upload aus Notizen.NET bleibt aus Sicherheitsgründen deaktiviert.",
+                )
+                feedback_edit.clear()
+
+            save_button.clicked.connect(save_local_feedback)
+            dialog.exec()
 
         def _legacy_shortcut_key_name(self, key: Any) -> str:
             key_values = {

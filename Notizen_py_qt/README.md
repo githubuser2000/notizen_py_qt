@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.17**.
+Aktueller Stand dieses Archivs: **0.10.18**.
 
 ## Start
 
@@ -62,6 +62,49 @@ Eine Installation als Python-Paket funktioniert weiterhin:
 python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
+
+
+## Änderungen in 0.10.18
+
+- Der sichtbare GNOME-Startpfad aus 0.10.13 bis 0.10.17 bleibt unverändert: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb` und kein pauschales Löschen von `DISPLAY`.
+- Windows-Dateizuordnung für `.alx` wurde aus dem alten `Notizen.Designer.vb`-Registry-Code portiert, aber sicherer umgesetzt: nicht mehr automatisch bei jedem Start und nicht unter `HKEY_CLASSES_ROOT`, sondern explizit per Benutzerinstallation unter `HKCU\Software\Classes`.
+- Neue Windows-Starter und Installationshilfen:
+
+```powershell
+./notizen-starten.ps1
+./scripts/install_windows_file_association.ps1 -UseLauncher
+```
+
+  Außerdem liegt ein klassischer Batch-Starter bei:
+
+```cmd
+Notizen starten.cmd
+```
+
+- Linux-Systemintegration erweitert:
+  - neuer Entferner für Menüeintrag/MIME/Icon: `scripts/uninstall_linux_launcher.sh`,
+  - neuer vorbereitender AppDir-Bauer: `scripts/build_linux_appdir.sh`,
+  - der bestehende GNOME-Starter bleibt weiterhin sichtbar-first und ohne Tray.
+- Der alte `info_help_and_feedback.vb`-Dialog wurde sicherer nachgebaut:
+  - Produkt-/Hilfe-/Web-/Mail-Informationen,
+  - Feedback-Feld wie im alten Dialog,
+  - aber kein Reaktivieren des alten hartkodierten FTP-Uploads,
+  - Feedback wird lokal als UTF-16-gzip-Datei unter `~/.local/state/notizen-py-qt/feedback/` abgelegt.
+- Die alten Feedback-Zähler aus Config-Element `x` (`y`/`z`) werden jetzt gelesen, geschrieben und für die lokale Feedback-Drossel genutzt, statt beim Speichern auf `0` zurückgesetzt zu werden.
+- FTP-Kompatibilität verbessert:
+  - Prozentkodierte Benutzernamen, Passwörter und Pfade werden dekodiert,
+  - Anzeige-URLs maskieren das Passwort,
+  - passiver/aktiver Modus ist testbar,
+  - Upload/Download sind über Fake-FTP-Adapter unit-testbar.
+- Neue Module/Helfer:
+  - `system_integration.py`,
+  - `feedback.py`,
+  - `WindowsRegistryEntry`,
+  - `legacy_windows_alx_registry_entries(...)`,
+  - `build_windows_module_open_command(...)`,
+  - `legacy_feedback_decision(...)`,
+  - `write_local_feedback_archive(...)`.
+- Neue Tests prüfen Windows-Registry-Mapping, Linux-Exec-Zeile, neue Start-/Installationsskripte, lokale Feedback-Gzip-Dateien, Feedback-Throttle, Config-Erhalt von `x.y`/`x.z` und FTP-Fake-Upload/-Download.
 
 
 ## Änderungen in 0.10.17

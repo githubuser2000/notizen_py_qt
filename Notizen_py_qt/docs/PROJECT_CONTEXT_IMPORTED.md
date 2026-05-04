@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.17.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.18.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -89,3 +89,7 @@ Die aktuelle Nutzer-Rückmeldung meldete zwei Regressions: Desktop-Notizen zeigt
 ## Weiterführung 0.10.17
 
 Diese Runde folgt weiter der großen Rest-Transpilierungsuntersuchung, ohne den sichtbar funktionierenden GNOME-Startpfad erneut umzubauen. Schwerpunkt ist jetzt die alte RichTextBox-/RTF-Fidelity aus `inhalt.vb`, `kontext_inhalt.vb` und den Zusammenfassungs-/Exportpfaden in `Notizen.vb`: alte Listenmarker aus ignorierbaren RTF-Zielen bleiben sichtbar, Hyperlink-Felder werden über Plaintext/HTML/RTF-Roundtrip erhalten, HTML-Tabellen und Listen werden strukturiert nach RTF übertragen, und OLE-Objekte verschwinden nicht mehr still. Zusätzlich gibt es einen optionalen lokalen venv-Starter für Systeme, auf denen Paketinstallation und System-Python-Umgebung getrennt bleiben sollen.
+
+## Weiterführung 0.10.18
+
+Diese Runde arbeitet die nächsten Punkte aus der Restliste ab, ohne die sichtbar-first GNOME-Startstrategie aus 0.10.13 bis 0.10.17 zu verändern. Der Schwerpunkt liegt auf Systemintegration und sicherer Hilfe/Feedback-Parität: Die alte `.alx`-Dateizuordnung aus dem Registry-Code in `Notizen.Designer.vb` ist jetzt als explizite Windows-Benutzerinstallation unter `HKCU\Software\Classes` portiert, Linux-Starter können wieder entfernt werden, und eine AppDir-Struktur kann als portable AppImage-Vorstufe gebaut werden. Außerdem wurde `info_help_and_feedback.vb` sicher nachgebildet: Der Dialog zeigt wieder Hilfe, Web, Mail und Feedback, speichert Feedback aber lokal als UTF-16-gzip-Datei, statt den alten hartkodierten FTP-Upload zu reaktivieren. Die Config-Zähler `x.y`/`x.z` werden dafür nun semantisch erhalten.

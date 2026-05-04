@@ -178,6 +178,8 @@ class AppSettings:
     window_width: int = 1000
     window_height: int = 700
     window_state: str = "Normal"
+    feedback_day_ticks: int = 0
+    feedback_count: int = 0
     legacy_root_attributes: dict[str, str] = field(default_factory=dict)
     legacy_known_element_attrs: dict[str, dict[str, str]] = field(default_factory=dict)
     legacy_known_nested_element_attrs: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -321,12 +323,16 @@ class AppSettings:
             self.backup_keep = _as_int(backups.get("amount"), self.backup_keep)
 
         autosave = child("autosave")
+        feedback = child("x")
         if autosave is None:
-            autosave = child("x")
+            autosave = feedback
         if autosave is not None:
             self.autosave_seconds = normalize_autosave_seconds(
                 _as_int(autosave.get("seconds", autosave.get("a")), self.autosave_seconds)
             )
+        if feedback is not None:
+            self.feedback_day_ticks = _as_int(feedback.get("y"), self.feedback_day_ticks)
+            self.feedback_count = _as_int(feedback.get("z"), self.feedback_count)
 
         tool_stripes = child("tool-stripes")
         if tool_stripes is not None:
@@ -478,7 +484,7 @@ class AppSettings:
         for name in ("haupt", "elements", "font", "cutpastecopy"):
             x, y = positions[name]
             ET.SubElement(tool_stripes, name, attrs_for(f"tool-stripes/{name}", {"x": str(x), "y": str(y)}))
-        ET.SubElement(root, "x", attrs_for("x", {"y": "0", "z": "0", "a": str(normalize_autosave_seconds(self.autosave_seconds))}))
+        ET.SubElement(root, "x", attrs_for("x", {"y": str(self.feedback_day_ticks), "z": str(self.feedback_count), "a": str(normalize_autosave_seconds(self.autosave_seconds))}))
         existing_tags = {element.tag for element in list(root)}
         for xml_text in self.legacy_passthrough_elements:
             try:

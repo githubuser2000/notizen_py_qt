@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.17**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.18**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -9,18 +9,25 @@ Aktiver Portierungsstand: **0.10.17**. Diese Datei beschreibt die aktuelle seman
 | `Notizen.vb`, `Notizen.Designer.vb` | `src/notizen_py_qt/app.py` | Hauptfenster, Menüs, Toolbar, Baum, Editor, Dialoge und Legacy-Aktionen sind semantisch portiert. |
 | `Baum.vb`, `Baum_Kontext_.vb` | `app.py`, `models.py`, `node_clipboard.py` | Baumoperationen, Einfügen/Ausschneiden/Kopieren, Drag-and-drop-nahe Modellpflege, Doppelklick-Umbenennung, Knotenfarben, Auf-/Zu-Funktionen, `PrevVisibleNode`-Löschauswahl, alte `neu_neben_knoten`-Einfügeposition und Teilbaum-Zusammenfassung sind portiert. |
 | `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB/WMF/EMF-RTF-Brücke, RTF-Codepage-Auswertung über `\ansicpg`, alte Listenmarker `\*\pntext`/`\*\listtext`, RTF-Hyperlink-Felder, sichtbare OLE-Objektplatzhalter, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
-| `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `legacy_validation.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting, unbekannte Notizattribute, sparse Desktop-Notizattribute, Datenschutz-Validator und die alte Autosave-Schutzbedingung sind portiert. |
+| `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `legacy_validation.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting, unbekannte Notizattribute, sparse Desktop-Notizattribute, Datenschutz-Validator, Feedback-Zähler `x.y`/`x.z` und die alte Autosave-Schutzbedingung sind portiert. |
 | `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
 | `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen sind in 0.10.15 deutlich näher am alten WinForms-Verhalten: rahmenlos, kompakte `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Wayland-taugliches System-Move/-Resize, Read-only-RichText-Fläche, Opacity-, Farb- und Kontextmenülogik. |
 | `einstellungen.vb` | `settings.py`, Settings-Dialog in `app.py` | Backups, Autosave, Sprache, Scrollleisten, Desktop-Notiz-Ränder, Autostart-Felder und zuletzt geöffnete Dateien sind portiert. |
-| `ftpkram.vb` | `ftp_sync.py`, FTP-Dialog in `app.py` | FTP-Öffnen/Speichern der ALX-Datei ist portiert. |
+| `ftpkram.vb` | `ftp_sync.py`, FTP-Dialog in `app.py` | FTP-Öffnen/Speichern der ALX-Datei ist portiert; 0.10.18 ergänzt Prozentkodierung, Passwort-maskierte Anzeige und testbaren Fake-FTP-Adapter. |
 | `wecker.vb`, `wecker.Designer.vb` | `alarms.py`, Alarm-Dialog in `app.py` | Einmalige und wiederholende Wecker sind portiert; 0.10.13 ergänzt die alte Aktiviert-Checkbox, Wochentags-Checkbox-Zuordnung und Intervall-Einheiten. |
 | `languages.vb`, `.resx`-Sprachdaten | `i18n.py`, dynamische Aktionsbeschriftungen in `app.py` | Die sechs alten Spracharrays sind positionsgenau aus `languages.vb`/`lang_keys` übernommen; 118 semantische Legacy-Schlüssel sind testbar und umschaltbar. |
-| `ApplicationEvents.vb` | `startup.py`, `app.py` | Legacy-Startargumente wie minimierter Start und direkte Datei-/FTP-Ziele sind portiert. |
+| `ApplicationEvents.vb`, Windows-Registry-Code in `Notizen.Designer.vb` | `startup.py`, `app.py`, `system_integration.py`, Installationsskripte | Legacy-Startargumente, direkte Datei-/FTP-Ziele und die alte `.alx`-Dateizuordnungsidee sind portiert; Windows-Registry-Einträge werden explizit per Benutzerinstallation unter `HKCU\Software\Classes` gesetzt. |
 | `passwort_dialog*.vb`, `wanna_save.vb`, `wanna_restart.vb`, `AboutBox1.vb` | Qt-Dialoge in `app.py` | Passwort-, Speicher-, Einstellungs- und Info-Dialoge sind in Qt nachgebildet. |
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
 
+
+## In 0.10.18 weitergeführt
+
+- Die alte Windows-Registry-Dateizuordnung aus `Notizen.Designer.vb` ist als testbare Systemintegration portiert. Der Port schreibt sie nicht mehr ungefragt beim App-Start, sondern bietet `scripts/install_windows_file_association.ps1` und reine Helfer wie `legacy_windows_alx_registry_entries(...)`. Dadurch bleibt die alte `.alx`-Öffnen-mit-Notizen-Idee erhalten, ohne Administratorrechte oder stilles Überschreiben von Systemzuordnungen.
+- Linux/GNOME-Systemintegration wurde alltagstauglicher: `scripts/uninstall_linux_launcher.sh` entfernt Menüeintrag/MIME/Icon wieder, `scripts/build_linux_appdir.sh` erzeugt eine portable AppDir-Struktur als Vorstufe für ein AppImage. Der sichtbare Startpfad selbst blieb unverändert.
+- `info_help_and_feedback.vb` ist sicherer nachgebildet: Der Dialog zeigt wieder Produkt, Autor, Weblink, Mail, Hilfe und Feedback. Statt des alten hartkodierten FTP-Uploads schreibt `feedback.py` lokale gzip-Dateien mit UTF-16-Payload und nutzt die alten Config-Zähler `x.y`/`x.z` als Drossel.
+- `ftpkram.vb`/`ftp_sync.py` wurde robuster: Prozentkodierte FTP-URLs werden korrekt dekodiert, Display-URLs geben kein Passwort preis, passiver Modus ist konfigurierbar und Upload/Download sind mit einem Fake-FTP-Adapter testbar.
 
 ## In 0.10.17 weitergeführt
 

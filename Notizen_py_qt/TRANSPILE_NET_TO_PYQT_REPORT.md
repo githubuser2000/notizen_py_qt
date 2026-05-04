@@ -1,87 +1,132 @@
-# Weitertranspilierung Notizen.NET → Python/Qt 0.10.17
+# Weitertranspilierung Notizen.NET → Python/Qt 0.10.18
 
 ## Schwerpunkt
 
-Diese Runde geht die nächste Position aus der großen Rest-Transpilierungsuntersuchung an: RichTextBox-/RTF-Fidelity und ein robusterer Installations-/Startpfad, ohne den zuletzt sichtbaren GNOME-Start erneut zu verändern.
-
-Der sichtbare Startpfad aus 0.10.13 bis 0.10.16 bleibt erhalten: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb` und kein pauschales Löschen von `DISPLAY`. An GNOME-/Wayland-Displaylogik wurde in 0.10.17 bewusst nichts Neues experimentiert.
-
-## RTF-Listenmarker aus alter RichTextBox
-
-WinForms-`RichTextBox` speichert sichtbare Listenpräfixe häufig in RTF-Zielen wie `\*\pntext` und `\*\listtext`. Diese Ziele sind formal ignorierbar, enthalten aber den sichtbaren Bullet- oder Nummerntext.
-
-Der PyQt-Port überspringt diese Gruppen nun nicht mehr vollständig. Dadurch bleiben alte Listenmarker erhalten in:
-
-- Plaintext-Ausgabe,
-- Suche,
-- Statistik,
-- HTML-Brücke,
-- Baum-/Teilbaum-Zusammenfassungen,
-- Exporten.
-
-## RTF-Hyperlinks
-
-Alte RTF-Hyperlinks werden über `\field`/`HYPERLINK`-Gruppen erkannt. Neu ist der Inhaltsteil `RtfHyperlink`.
-
-Damit gilt jetzt:
-
-- Plaintext nutzt den sichtbaren Linktext,
-- HTML-Ausgabe schreibt `<a href="...">...</a>`,
-- HTML-zu-RTF schreibt wieder RTF-`HYPERLINK`-Felder,
-- kombinierter RTF-Export und Zusammenfassungen behalten diese Felder.
-
-## HTML-Tabellen und Listen im RTF-Rückweg
-
-Die HTML-zu-RTF-Brücke wurde so erweitert, dass einfache Tabellen und Listen nicht mehr zu einem ungetrennten Textstrom werden:
-
-- Tabellenzellen werden durch Tabs getrennt,
-- Tabellenzeilen durch Zeilenumbrüche,
-- ungeordnete Listen bekommen Bullet-Präfixe,
-- geordnete Listen bekommen stabile Nummernpräfixe.
-
-Das ist kein vollständiger Tabellenrenderer, aber es erhält die textuelle Struktur alter Notizinhalte deutlich besser.
-
-## OLE-/Objektgruppen
-
-Alte RTF-Objekte (`\object`, `\objdata`) können von Qt nicht sinnvoll als WinForms-OLE-Objekte geöffnet werden. Bisher drohten solche Gruppen aber komplett zu verschwinden. 0.10.17 ersetzt sie deshalb sichtbar durch:
+Diese Runde arbeitet die nächsten Punkte aus der großen Rest-Transpilierungsuntersuchung ab: Systemintegration, sichere Hilfe-/Feedback-Parität und FTP-Härtung. Der sichtbare GNOME-Startpfad wurde bewusst **nicht** umgebaut. Er bleibt wie in den sichtbaren Zwischenständen:
 
 ```text
-[Objekt]
+--show --reset-window --no-tray
+QT_QPA_PLATFORM=wayland;xcb
+kein pauschales Löschen von DISPLAY
 ```
 
-Damit ist wenigstens erkennbar, dass in der alten Notiz ein eingebettetes Objekt existierte.
+## Windows-`.alx`-Dateizuordnung aus `Notizen.Designer.vb`
 
-## Optionaler venv-Starter
+Das alte Notizen.NET schrieb beim Start Registry-Werte unter `HKEY_CLASSES_ROOT`, um `.alx`-Dateien mit `Notizen.exe "%1"` zu öffnen. Diese Idee ist jetzt portiert, aber sicherer:
 
-Neu ist:
+- keine automatische Registry-Änderung beim App-Start,
+- keine Administratorrechte nötig,
+- per Benutzerinstallation unter `HKCU\Software\Classes`,
+- testbare reine Python-Abbildung in `system_integration.py`,
+- explizites Installationsskript für Windows.
+
+Neu:
+
+```text
+src/notizen_py_qt/system_integration.py
+scripts/install_windows_file_association.ps1
+Notizen starten.cmd
+notizen-starten.ps1
+```
+
+Die testbare Registry-Struktur entspricht dem alten Code:
+
+```text
+.alx → Notizenfile
+.alx\OpenWithList\Notizen.exe
+.alx\OpenWithProgIds\notizenfile
+notizenfile\Shell = Open
+notizenfile\Shell\Open\Command = ... "%1"
+notizenfile\DefaultIcon = ...
+```
+
+## Linux-/GNOME-Systemintegration
+
+Der bestehende GNOME-Starter bleibt sichtbar-first und ohne Tray. Ergänzt wurden zwei praktische Werkzeuge:
 
 ```bash
-./notizen-starten-venv.sh
+scripts/uninstall_linux_launcher.sh
+scripts/build_linux_appdir.sh
 ```
 
-Der Starter erstellt bei Bedarf eine lokale `.venv`, installiert das Paket im editierbaren Modus mit Crypto-Extra und delegiert dann an den bestehenden sichtbaren Starter `notizen-starten.sh`.
+`uninstall_linux_launcher.sh` entfernt Menüeintrag, MIME-Datei und Icon wieder aus dem Benutzerprofil. `build_linux_appdir.sh` erzeugt eine portable AppDir-Struktur mit `AppRun` als Vorstufe für ein mögliches AppImage. Das ist noch kein voll signiertes/veröffentlichtes AppImage, aber eine belastbare Zwischenstufe für die Paketierungs-Roadmap.
 
-Der Linux-/GNOME-Starter-Installer kann optional diesen venv-Starter verwenden:
+## Sicherer Hilfe-/Feedback-Dialog aus `info_help_and_feedback.vb`
 
-```bash
-./scripts/install_linux_launcher.sh --venv
-./scripts/install_linux_launcher.sh --desktop --venv
+Das alte Formular enthielt:
+
+- Produktname,
+- Autor,
+- Weblink,
+- Mailadresse,
+- Hilfe-/Beschreibungstext,
+- Feedback-Feld,
+- Senden-Button.
+
+Der PyQt-Port bildet diesen Dialog jetzt semantisch nach. Der alte hartkodierte FTP-Upload zu `notiza.de` wird aber **nicht** reaktiviert. Stattdessen wird Feedback lokal als gzip-Datei gespeichert:
+
+```text
+~/.local/state/notizen-py-qt/feedback/feedback.YYYY-MM-DD-HH-MM-SS.txt.gz
 ```
 
-Der normale Starter bleibt unverändert erhalten.
+Der Payload bleibt wie im alten Code UTF-16-kodiert. Damit ist das alte Verhalten nachvollziehbar, ohne private Rückmeldungen ungefragt über Legacy-FTP-Zugangsdaten zu versenden.
+
+## Feedback-Zähler `x.y`/`x.z`
+
+Die alte Config nutzte im Element `x` neben `a` für Autosave auch:
+
+```text
+x.y = DateTime.Today.Ticks
+x.z = Tageszähler
+```
+
+Diese Werte werden jetzt gelesen, geschrieben und für die lokale Feedback-Drossel genutzt. Vorher wurden sie beim Speichern faktisch auf `0` zurückgesetzt.
+
+Neu:
+
+```text
+src/notizen_py_qt/feedback.py
+legacy_feedback_decision(...)
+legacy_feedback_next_state(...)
+write_local_feedback_archive(...)
+```
+
+## FTP-Härtung
+
+`ftp_sync.py` wurde robuster und besser testbar:
+
+- prozentkodierte Benutzernamen, Passwörter und Pfade werden dekodiert,
+- Anzeige-URLs zeigen kein Passwort,
+- passiver/aktiver FTP-Modus ist im Zielobjekt konfigurierbar,
+- Upload/Download können über `ftp_factory` mit einem Fake-FTP-Adapter getestet werden.
+
+Das ersetzt noch keinen echten FTP-Server-Integrationstest, aber die Kernlogik ist jetzt ohne Live-Server prüfbar.
 
 ## Neue Tests
 
-Neu hinzugekommen sind:
+Neu hinzugekommen:
 
-- `tests/test_rtf_fidelity_1017.py`
-- `tests/test_launchers_1017.py`
+```text
+tests/test_system_integration_1018.py
+tests/test_feedback_help_1018.py
+tests/test_ftp_integration_1018.py
+```
 
-Sie prüfen Listenmarker, Hyperlink-Roundtrips, Tabellen-/Listenstruktur, OLE-Platzhalter, kombinierten RTF-Export mit Links und den optionalen venv-Starter.
+Sie prüfen:
+
+- Windows-Open-Command mit `"%1"`,
+- Registry-Key-Mapping nach altem `.alx`/`notizenfile`-Schema,
+- Linux-Desktop-Exec-Zeile mit sichtbarem Start,
+- neue Installations-/Deinstallationsskripte,
+- lokale Feedback-gzip-Dateien mit UTF-16-Payload,
+- Feedback-Drossel nach altem `x.y`/`x.z`-Prinzip,
+- Config-Roundtrip dieser Werte,
+- FTP-URL-Dekodierung,
+- Fake-FTP-Download und Upload.
 
 ## Bewusst nicht geändert
 
-Der GNOME-Startpfad wurde nicht erneut umgebaut. Die Nutzeranforderung war, das sichtbar gewesene Startverhalten zu erhalten. 0.10.17 konzentriert sich deshalb auf RTF-Fidelity und optionale Installationshärtung.
+Der GNOME-/Wayland-Startpfad wurde nicht erneut verändert. Die Nutzeranforderung war, das sichtbar gewesene Startverhalten beizubehalten. 0.10.18 konzentriert sich deshalb auf Systemintegration, Hilfe/Feedback und FTP-Härtung.
 
 ## Validierung
 

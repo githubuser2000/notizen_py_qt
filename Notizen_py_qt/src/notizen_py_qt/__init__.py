@@ -78,6 +78,27 @@ from .alarms import (
     legacy_wecker_weekday_labels,
 )
 from .keyboard_legacy import LegacyShortcut, legacy_shortcut_action
+from .feedback import (
+    FeedbackDecision,
+    FeedbackThrottleState,
+    dotnet_date_ticks,
+    legacy_feedback_decision,
+    legacy_feedback_filename,
+    legacy_feedback_next_state,
+    legacy_feedback_text_is_long_enough,
+    write_local_feedback_archive,
+)
+from .system_integration import (
+    LEGACY_ALX_EXTENSION,
+    LEGACY_ALX_PROG_ID,
+    WindowsRegistryEntry,
+    build_linux_desktop_exec,
+    build_windows_module_open_command,
+    build_windows_script_open_command,
+    legacy_windows_alx_registry_entries,
+    quote_windows_argument,
+    windows_association_preview_lines,
+)
 from .legacy_validation import (
     LegacyAlxRoundtripResult,
     LegacyAlxSummary,
@@ -187,6 +208,23 @@ __all__ = [
     "summarize_alx_file",
     "validate_alx_roundtrip_bytes",
     "validate_alx_roundtrip_file",
+    "FeedbackDecision",
+    "FeedbackThrottleState",
+    "dotnet_date_ticks",
+    "legacy_feedback_decision",
+    "legacy_feedback_filename",
+    "legacy_feedback_next_state",
+    "legacy_feedback_text_is_long_enough",
+    "write_local_feedback_archive",
+    "LEGACY_ALX_EXTENSION",
+    "LEGACY_ALX_PROG_ID",
+    "WindowsRegistryEntry",
+    "build_linux_desktop_exec",
+    "build_windows_module_open_command",
+    "build_windows_script_open_command",
+    "legacy_windows_alx_registry_entries",
+    "quote_windows_argument",
+    "windows_association_preview_lines",
 ]
 
-__version__ = "0.10.17"
+__version__ = "0.10.18"

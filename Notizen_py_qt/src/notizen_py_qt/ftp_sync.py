@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from ftplib import FTP, all_errors
 from io import BytesIO
 from pathlib import PurePosixPath
-from urllib.parse import urlparse
+from urllib.parse import quote, unquote, urlparse
 
 
 class FtpSyncError(Exception):
@@ -18,6 +19,8 @@ class FtpTarget:
     username: str = ""
     password: str = ""
     timeout: int = 30
+    passive: bool = True
+    ftp_factory: Callable[[], FTP] = field(default=FTP, repr=False, compare=False)
 
     @classmethod
     def from_fields(cls, host: str, remote_path: str, username: str = "", password: str = "") -> "FtpTarget":
@@ -27,31 +30,42 @@ class FtpTarget:
         if not normalized_host:
             raise FtpSyncError("FTP-Host fehlt.")
         if parsed.username and not username:
-            username = parsed.username
+            username = unquote(parsed.username)
         if parsed.password and not password:
-            password = parsed.password
-        path = (remote_path or parsed.path or "").strip()
+            password = unquote(parsed.password)
+        path = unquote((remote_path or parsed.path or "").strip())
         if not path:
             raise FtpSyncError("FTP-Pfad fehlt.")
         if not path.startswith("/"):
             path = "/" + path
         if not path.lower().endswith(".alx"):
             raise FtpSyncError("FTP-Pfad muss auf eine .alx-Datei zeigen.")
-        return cls(host=normalized_host, remote_path=path, username=username.strip(), password=password)
+        return cls(host=normalized_host, remote_path=path, username=unquote(username.strip()), password=unquote(password))
 
     @property
     def display_url(self) -> str:
-        user = f"{self.username}@" if self.username else ""
-        return f"ftp://{user}{self.host}{self.remote_path}"
+        user = f"{quote(self.username)}@" if self.username else ""
+        return f"ftp://{user}{self.host}{quote(self.remote_path, safe='/')}"
+
+    @property
+    def safe_display_url(self) -> str:
+        """Display URL without exposing the legacy FTP password."""
+
+        user = f"{quote(self.username)}@" if self.username else ""
+        return f"ftp://{user}{self.host}{quote(self.remote_path, safe='/')}"
 
     def _login(self) -> FTP:
-        ftp = FTP()
+        ftp = self.ftp_factory()
         try:
             ftp.connect(self.host, timeout=self.timeout)
             if self.username:
                 ftp.login(self.username, self.password)
             else:
                 ftp.login()
+            try:
+                ftp.set_pasv(self.passive)
+            except AttributeError:
+                pass
             return ftp
         except all_errors as exc:
             try:
