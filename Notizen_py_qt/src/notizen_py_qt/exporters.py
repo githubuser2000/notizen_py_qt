@@ -189,6 +189,18 @@ def _style_prefix(style: RtfTextStyle, color_indexes: dict[str, int], font_index
         parts.append(rf"\ri{style.right_indent_twips}")
     if style.first_indent_twips is not None:
         parts.append(rf"\fi{style.first_indent_twips}")
+    if style.space_before_twips is not None:
+        parts.append(rf"\sb{max(0, style.space_before_twips)}")
+    if style.space_after_twips is not None:
+        parts.append(rf"\sa{max(0, style.space_after_twips)}")
+    if style.line_spacing_twips is not None and style.line_spacing_twips > 0:
+        parts.append(rf"\sl{style.line_spacing_twips}")
+    if style.line_spacing_multiple is not None:
+        parts.append(rf"\slmult{1 if style.line_spacing_multiple else 0}")
+    if style.direction == "rtl":
+        parts.append(r"\rtlpar\rtlch")
+    elif style.direction == "ltr":
+        parts.append(r"\ltrpar\ltrch")
     if style.font_family in font_indexes:
         parts.append(rf"\f{font_indexes[style.font_family]}")
     if style.bold:
@@ -199,6 +211,14 @@ def _style_prefix(style: RtfTextStyle, color_indexes: dict[str, int], font_index
         parts.append(r"\ul")
     if style.strike:
         parts.append(r"\strike")
+    if style.all_caps:
+        parts.append(r"\caps")
+    if style.small_caps:
+        parts.append(r"\scaps")
+    if style.hidden:
+        parts.append(r"\v")
+    if style.letter_spacing_twips is not None:
+        parts.append(rf"\expndtw{style.letter_spacing_twips}")
     if style.vertical == "super":
         parts.append(r"\super")
     elif style.vertical == "sub":

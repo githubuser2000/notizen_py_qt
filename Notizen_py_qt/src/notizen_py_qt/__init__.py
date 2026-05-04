@@ -245,4 +245,4 @@ __all__ = [
     "windows_association_preview_lines",
 ]
 
-__version__ = "0.10.21"
+__version__ = "0.10.22"

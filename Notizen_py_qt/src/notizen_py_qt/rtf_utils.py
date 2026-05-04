@@ -226,6 +226,11 @@ class _RtfStyle:
     font_family: str = ""
     hyperlink_url: str = ""
     vertical: str = ""
+    all_caps: bool = False
+    small_caps: bool = False
+    hidden: bool = False
+    direction: str = ""
+    letter_spacing_twips: int | None = None
     align: str = ""
     left_indent_twips: int | None = None
     right_indent_twips: int | None = None
@@ -233,6 +238,7 @@ class _RtfStyle:
     space_before_twips: int | None = None
     space_after_twips: int | None = None
     line_spacing_twips: int | None = None
+    line_spacing_multiple: bool | None = None
 
     def copy(self) -> "_RtfStyle":
         return _RtfStyle(
@@ -246,6 +252,11 @@ class _RtfStyle:
             font_family=self.font_family,
             hyperlink_url=self.hyperlink_url,
             vertical=self.vertical,
+            all_caps=self.all_caps,
+            small_caps=self.small_caps,
+            hidden=self.hidden,
+            direction=self.direction,
+            letter_spacing_twips=self.letter_spacing_twips,
             align=self.align,
             left_indent_twips=self.left_indent_twips,
             right_indent_twips=self.right_indent_twips,
@@ -253,9 +264,40 @@ class _RtfStyle:
             space_before_twips=self.space_before_twips,
             space_after_twips=self.space_after_twips,
             line_spacing_twips=self.line_spacing_twips,
+            line_spacing_multiple=self.line_spacing_multiple,
         )
 
 
+def _reset_rtf_character_style(style: _RtfStyle) -> None:
+    r"""Reset only character attributes like RichTextBox/RTF ``\plain``."""
+
+    style.bold = False
+    style.italic = False
+    style.underline = False
+    style.strike = False
+    style.fs_half_points = None
+    style.fg_index = 0
+    style.bg_index = 0
+    style.font_family = ""
+    style.hyperlink_url = ""
+    style.vertical = ""
+    style.all_caps = False
+    style.small_caps = False
+    style.hidden = False
+    style.letter_spacing_twips = None
+
+
+def _reset_rtf_paragraph_style(style: _RtfStyle) -> None:
+    r"""Reset paragraph attributes like RTF ``\pard`` without touching text style."""
+
+    style.align = ""
+    style.left_indent_twips = None
+    style.right_indent_twips = None
+    style.first_indent_twips = None
+    style.space_before_twips = None
+    style.space_after_twips = None
+    style.line_spacing_twips = None
+    style.line_spacing_multiple = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +313,11 @@ class RtfTextStyle:
     bg_color: str = ""
     font_family: str = ""
     vertical: str = ""
+    all_caps: bool = False
+    small_caps: bool = False
+    hidden: bool = False
+    direction: str = ""
+    letter_spacing_twips: int | None = None
     align: str = ""
     left_indent_twips: int | None = None
     right_indent_twips: int | None = None
@@ -278,6 +325,7 @@ class RtfTextStyle:
     space_before_twips: int | None = None
     space_after_twips: int | None = None
     line_spacing_twips: int | None = None
+    line_spacing_multiple: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -297,6 +345,7 @@ class _RtfState:
     uc: int = 1
     fallback_chars_to_skip: int = 0
     ignorable_destination: bool = False
+    hidden: bool = False
     style: _RtfStyle | None = None
 
     def copy(self) -> "_RtfState":
@@ -305,6 +354,7 @@ class _RtfState:
             uc=self.uc,
             fallback_chars_to_skip=self.fallback_chars_to_skip,
             ignorable_destination=self.ignorable_destination,
+            hidden=self.hidden,
             style=self.style.copy() if self.style is not None else None,
         )
 
@@ -517,19 +567,47 @@ def _clean_font_name(raw: str, encoding: str = "cp1252") -> str:
     return " ".join(raw.split())
 
 
+def _strip_font_alias_groups(raw: str) -> str:
+    """Remove nested font-table alias/fallback groups before cleaning a name."""
+
+    raw = re.sub(r"\{\\\*\\falt[^{};]*;\}", " ", raw)
+    return re.sub(r"\{[^{}]*\}", " ", raw)
+
+
 def extract_font_table(rtf: str) -> list[str]:
-    r"""Return RTF font-table names by ``\fN`` index."""
+    r"""Return RTF font-table names by ``\fN`` index.
+
+    WordPad/Word and some clipboard paths put fallback aliases inside the font
+    entry, for example ``{\f1 ... Times New Roman{\*\falt Times};}``.  A flat
+    regex drops these entries.  This parser walks balanced font groups instead.
+    """
+
     encoding = rtf_ansi_encoding(rtf)
     group = _find_group(rtf, "fonttbl")
     fonts = [""]
     if not group:
         return fonts
-    for match in re.finditer(r"\{\\f(\d+)([^{};]*);\}", group):
+    pos = 0
+    while True:
+        match = re.search(r"\{\\f(\d+)\b", group[pos:])
+        if not match:
+            break
+        start = pos + match.start()
+        end = _find_group_end(group, start)
+        if end < 0:
+            pos = start + 1
+            continue
+        chunk = group[start : end + 1]
+        pos = end + 1
         try:
             index = int(match.group(1))
         except ValueError:
             continue
-        name = _clean_font_name(match.group(2), encoding)
+        body = re.sub(r"^\{\\f\d+\b", "", chunk)
+        semi = body.rfind(";")
+        if semi >= 0:
+            body = body[:semi]
+        name = _clean_font_name(_strip_font_alias_groups(body), encoding)
         if not name:
             continue
         while len(fonts) <= index:
@@ -551,8 +629,13 @@ def extract_color_table(rtf: str) -> list[str]:
     # are meaningful because RTF color indexes are 1-based after the first ';'.
     body = group.strip()[2:-1]
     body = re.sub(r"^colortbl\s*", "", body)
+    entries = body.split(";")
+    # Some imported RTF omits the leading automatic-color slot.  RichTextBox
+    # writes it, so add it when the first entry already contains a color.
+    if entries and _COLOR_RE.search(entries[0]):
+        entries.insert(0, "")
     colors: list[str] = []
-    for entry in body.split(";"):
+    for entry in entries:
         match = _COLOR_RE.search(entry)
         if match:
             red, green, blue = (max(0, min(255, int(v))) for v in match.groups())
@@ -572,14 +655,14 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
         ch = rtf[i]
         if ch == "{":
             field_result = _extract_field_at(rtf, i)
-            if field_result is not None and not state.skip:
+            if field_result is not None and not state.skip and not state.hidden:
                 hyperlink, i = field_result
                 yield hyperlink.text
                 continue
             object_result = _extract_object_at(rtf, i)
             if object_result is not None:
                 placeholder, i = object_result
-                if not state.skip:
+                if not state.skip and not state.hidden:
                     yield placeholder
                 continue
             stack.append(state.copy())
@@ -607,7 +690,7 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
                 continue
             if nxt in "{}\\":
                 i += 2
-                if state.skip:
+                if state.skip or state.hidden:
                     continue
                 if state.fallback_chars_to_skip > 0:
                     state.fallback_chars_to_skip -= 1
@@ -617,7 +700,7 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
             if nxt == "'" and i + 3 < len(rtf):
                 text_ch = _decode_hex_byte(rtf[i + 2 : i + 4], encoding)
                 i += 4
-                if state.skip:
+                if state.skip or state.hidden:
                     continue
                 if state.fallback_chars_to_skip > 0:
                     state.fallback_chars_to_skip -= 1
@@ -628,7 +711,7 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
                 symbol = nxt
                 i += 2
                 replacement = {"~": "\xa0", "-": "", "_": "-"}.get(symbol, "")
-                if replacement and not state.skip:
+                if replacement and not state.skip and not state.hidden:
                     if state.fallback_chars_to_skip > 0:
                         state.fallback_chars_to_skip -= 1
                     else:
@@ -644,16 +727,25 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
                 continue
             if state.skip:
                 continue
+            if word == "v":
+                state.hidden = number != 0
+                continue
+            if word == "plain":
+                state.hidden = False
+                continue
             if word == "u" and number is not None:
-                yield _signed_16_to_char(number)
+                if not state.hidden:
+                    yield _signed_16_to_char(number)
                 state.fallback_chars_to_skip = state.uc
+                continue
+            if state.hidden:
                 continue
             replacement = _TEXT_CONTROLS.get(word)
             if replacement is not None:
                 yield replacement
             continue
         i += 1
-        if state.skip:
+        if state.skip or state.hidden:
             continue
         if ch in "\r\n":
             continue
@@ -715,6 +807,17 @@ def _inline_style_to_css(style: _RtfStyle, colors: list[str]) -> str:
         rules.append(f'font-family:"{family}"')
     if style.vertical in {"super", "sub"}:
         rules.append(f"vertical-align:{style.vertical}")
+    if style.all_caps:
+        rules.append("text-transform:uppercase")
+    if style.small_caps:
+        rules.append("font-variant:small-caps")
+    if style.hidden:
+        rules.append("display:none")
+    if style.direction in {"rtl", "ltr"}:
+        rules.append(f"direction:{style.direction}")
+        rules.append("unicode-bidi:embed")
+    if style.letter_spacing_twips is not None:
+        rules.append(f"letter-spacing:{style.letter_spacing_twips / 20:g}pt")
     if 0 <= style.fg_index < len(colors) and colors[style.fg_index]:
         rules.append(f"color:{colors[style.fg_index]}")
     if 0 <= style.bg_index < len(colors) and colors[style.bg_index]:
@@ -728,6 +831,8 @@ def _paragraph_style_to_css(style: _RtfStyle | None) -> str:
     rules: list[str] = []
     if style.align in {"left", "center", "right", "justify"}:
         rules.append(f"text-align:{style.align}")
+    if style.direction in {"rtl", "ltr"}:
+        rules.append(f"direction:{style.direction}")
     if style.left_indent_twips is not None:
         rules.append(f"margin-left:{style.left_indent_twips / 20:g}pt")
     if style.right_indent_twips is not None:
@@ -739,7 +844,10 @@ def _paragraph_style_to_css(style: _RtfStyle | None) -> str:
     if style.space_after_twips is not None:
         rules.append(f"margin-bottom:{style.space_after_twips / 20:g}pt")
     if style.line_spacing_twips is not None and style.line_spacing_twips > 0:
-        rules.append(f"line-height:{style.line_spacing_twips / 20:g}pt")
+        if style.line_spacing_multiple:
+            rules.append(f"line-height:{style.line_spacing_twips / 240:g}")
+        else:
+            rules.append(f"line-height:{style.line_spacing_twips / 20:g}pt")
     return "; ".join(rules)
 
 
@@ -843,29 +951,63 @@ def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[
                 style.bold = number != 0
             elif word == "i":
                 style.italic = number != 0
-            elif word == "ul":
+            elif word in {
+                "ul",
+                "ulw",
+                "uldb",
+                "uld",
+                "uldash",
+                "uldashd",
+                "uldashdd",
+                "ulth",
+                "ulthd",
+                "ulthdash",
+                "ulthdashd",
+                "ulthdashdd",
+                "ulwave",
+                "ululdbwave",
+                "ulhwave",
+                "ulhair",
+            }:
                 style.underline = number != 0
             elif word in {"ulnone", "ul0"}:
                 style.underline = False
-            elif word == "strike":
+            elif word in {"strike", "striked", "strikedl"}:
                 style.strike = number != 0
+            elif word in {"strike0", "striked0"}:
+                style.strike = False
             elif word == "super":
                 style.vertical = "" if number == 0 else "super"
             elif word == "sub":
                 style.vertical = "" if number == 0 else "sub"
-            elif word == "up" and number is not None:
-                style.vertical = "super" if number > 0 else ""
-            elif word == "dn" and number is not None:
-                style.vertical = "sub" if number > 0 else ""
+            elif word in {"up", "dn"}:
+                if number == 0:
+                    style.vertical = ""
+                else:
+                    style.vertical = "super" if word == "up" else "sub"
             elif word == "nosupersub":
                 style.vertical = ""
+            elif word == "caps":
+                style.all_caps = number != 0
+            elif word == "scaps":
+                style.small_caps = number != 0
+            elif word == "v":
+                style.hidden = number != 0
+            elif word in {"rtlch", "rtlpar"}:
+                style.direction = "rtl"
+            elif word in {"ltrch", "ltrpar"}:
+                style.direction = "ltr"
+            elif word == "expndtw" and number is not None:
+                style.letter_spacing_twips = number
+            elif word == "expnd" and number is not None:
+                style.letter_spacing_twips = number * 5
             elif word == "fs" and number is not None:
                 style.fs_half_points = max(1, number)
             elif word == "f" and number is not None:
                 style.font_family = fonts[number] if 0 <= number < len(fonts) else ""
             elif word == "cf" and number is not None:
                 style.fg_index = max(0, number)
-            elif word in {"highlight", "cb"} and number is not None:
+            elif word in {"highlight", "cb", "cbpat", "chcbpat"} and number is not None:
                 style.bg_index = max(0, number)
             elif word in {"ql", "qc", "qr", "qj"}:
                 style.align = {"ql": "left", "qc": "center", "qr": "right", "qj": "justify"}[word]
@@ -881,16 +1023,12 @@ def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[
                 style.space_after_twips = max(0, number)
             elif word == "sl" and number is not None:
                 style.line_spacing_twips = abs(number)
+            elif word == "slmult" and number is not None:
+                style.line_spacing_multiple = bool(number)
             elif word == "pard":
-                style.align = ""
-                style.left_indent_twips = None
-                style.right_indent_twips = None
-                style.first_indent_twips = None
-                style.space_before_twips = None
-                style.space_after_twips = None
-                style.line_spacing_twips = None
+                _reset_rtf_paragraph_style(style)
             elif word == "plain":
-                state.style = _RtfStyle()
+                _reset_rtf_character_style(style)
             else:
                 replacement = _TEXT_CONTROLS.get(word)
                 if replacement is not None:
@@ -926,6 +1064,11 @@ def _resolve_style(style: _RtfStyle, colors: list[str]) -> RtfTextStyle:
         bg_color=bg,
         font_family=style.font_family,
         vertical=style.vertical,
+        all_caps=style.all_caps,
+        small_caps=style.small_caps,
+        hidden=style.hidden,
+        direction=style.direction,
+        letter_spacing_twips=style.letter_spacing_twips,
         align=style.align,
         left_indent_twips=style.left_indent_twips,
         right_indent_twips=style.right_indent_twips,
@@ -933,6 +1076,7 @@ def _resolve_style(style: _RtfStyle, colors: list[str]) -> RtfTextStyle:
         space_before_twips=style.space_before_twips,
         space_after_twips=style.space_after_twips,
         line_spacing_twips=style.line_spacing_twips,
+        line_spacing_multiple=style.line_spacing_multiple,
     )
 
 
@@ -949,6 +1093,11 @@ def _text_style_with_underline(style: RtfTextStyle) -> RtfTextStyle:
         bg_color=style.bg_color,
         font_family=style.font_family,
         vertical=style.vertical,
+        all_caps=style.all_caps,
+        small_caps=style.small_caps,
+        hidden=style.hidden,
+        direction=style.direction,
+        letter_spacing_twips=style.letter_spacing_twips,
         align=style.align,
         left_indent_twips=style.left_indent_twips,
         right_indent_twips=style.right_indent_twips,
@@ -956,6 +1105,7 @@ def _text_style_with_underline(style: RtfTextStyle) -> RtfTextStyle:
         space_before_twips=style.space_before_twips,
         space_after_twips=style.space_after_twips,
         line_spacing_twips=style.line_spacing_twips,
+        line_spacing_multiple=style.line_spacing_multiple,
     )
 
 
@@ -1210,33 +1360,92 @@ def plain_text_to_rtf(text: str) -> str:
     )
 
 
+_CSS_NAMED_COLORS = {
+    "black": "#000000", "silver": "#c0c0c0", "gray": "#808080", "grey": "#808080",
+    "white": "#ffffff", "maroon": "#800000", "red": "#ff0000", "purple": "#800080",
+    "fuchsia": "#ff00ff", "magenta": "#ff00ff", "green": "#008000", "lime": "#00ff00",
+    "olive": "#808000", "yellow": "#ffff00", "navy": "#000080", "blue": "#0000ff",
+    "teal": "#008080", "aqua": "#00ffff", "cyan": "#00ffff", "orange": "#ffa500",
+    "aliceblue": "#f0f8ff", "antiquewhite": "#faebd7", "aquamarine": "#7fffd4",
+    "azure": "#f0ffff", "beige": "#f5f5dc", "bisque": "#ffe4c4",
+    "blanchedalmond": "#ffebcd", "blueviolet": "#8a2be2", "brown": "#a52a2a",
+    "burlywood": "#deb887", "cadetblue": "#5f9ea0", "chartreuse": "#7fff00",
+    "chocolate": "#d2691e", "coral": "#ff7f50", "cornflowerblue": "#6495ed",
+    "cornsilk": "#fff8dc", "crimson": "#dc143c", "darkblue": "#00008b",
+    "darkcyan": "#008b8b", "darkgoldenrod": "#b8860b", "darkgray": "#a9a9a9",
+    "darkgreen": "#006400", "darkgrey": "#a9a9a9", "darkkhaki": "#bdb76b",
+    "darkmagenta": "#8b008b", "darkolivegreen": "#556b2f", "darkorange": "#ff8c00",
+    "darkorchid": "#9932cc", "darkred": "#8b0000", "darksalmon": "#e9967a",
+    "darkseagreen": "#8fbc8f", "darkslateblue": "#483d8b", "darkslategray": "#2f4f4f",
+    "darkslategrey": "#2f4f4f", "darkturquoise": "#00ced1", "darkviolet": "#9400d3",
+    "deeppink": "#ff1493", "deepskyblue": "#00bfff", "dimgray": "#696969",
+    "dimgrey": "#696969", "dodgerblue": "#1e90ff", "firebrick": "#b22222",
+    "floralwhite": "#fffaf0", "forestgreen": "#228b22", "gainsboro": "#dcdcdc",
+    "ghostwhite": "#f8f8ff", "gold": "#ffd700", "goldenrod": "#daa520",
+    "greenyellow": "#adff2f", "honeydew": "#f0fff0", "hotpink": "#ff69b4",
+    "indianred": "#cd5c5c", "indigo": "#4b0082", "ivory": "#fffff0",
+    "khaki": "#f0e68c", "lavender": "#e6e6fa", "lavenderblush": "#fff0f5",
+    "lawngreen": "#7cfc00", "lemonchiffon": "#fffacd", "lightblue": "#add8e6",
+    "lightcoral": "#f08080", "lightcyan": "#e0ffff", "lightgoldenrodyellow": "#fafad2",
+    "lightgray": "#d3d3d3", "lightgreen": "#90ee90", "lightgrey": "#d3d3d3",
+    "lightpink": "#ffb6c1", "lightsalmon": "#ffa07a", "lightseagreen": "#20b2aa",
+    "lightskyblue": "#87cefa", "lightslategray": "#778899", "lightslategrey": "#778899",
+    "lightsteelblue": "#b0c4de", "lightyellow": "#ffffe0", "limegreen": "#32cd32",
+    "linen": "#faf0e6", "mediumaquamarine": "#66cdaa", "mediumblue": "#0000cd",
+    "mediumorchid": "#ba55d3", "mediumpurple": "#9370db", "mediumseagreen": "#3cb371",
+    "mediumslateblue": "#7b68ee", "mediumspringgreen": "#00fa9a", "mediumturquoise": "#48d1cc",
+    "mediumvioletred": "#c71585", "midnightblue": "#191970", "mintcream": "#f5fffa",
+    "mistyrose": "#ffe4e1", "moccasin": "#ffe4b5", "navajowhite": "#ffdead",
+    "oldlace": "#fdf5e6", "olivedrab": "#6b8e23", "orangered": "#ff4500",
+    "orchid": "#da70d6", "palegoldenrod": "#eee8aa", "palegreen": "#98fb98",
+    "paleturquoise": "#afeeee", "palevioletred": "#db7093", "papayawhip": "#ffefd5",
+    "peachpuff": "#ffdab9", "peru": "#cd853f", "pink": "#ffc0cb",
+    "plum": "#dda0dd", "powderblue": "#b0e0e6", "rebeccapurple": "#663399",
+    "rosybrown": "#bc8f8f", "royalblue": "#4169e1", "saddlebrown": "#8b4513",
+    "salmon": "#fa8072", "sandybrown": "#f4a460", "seagreen": "#2e8b57",
+    "seashell": "#fff5ee", "sienna": "#a0522d", "skyblue": "#87ceeb",
+    "slateblue": "#6a5acd", "slategray": "#708090", "slategrey": "#708090",
+    "snow": "#fffafa", "springgreen": "#00ff7f", "steelblue": "#4682b4",
+    "tan": "#d2b48c", "thistle": "#d8bfd8", "tomato": "#ff6347",
+    "turquoise": "#40e0d0", "violet": "#ee82ee", "wheat": "#f5deb3",
+    "whitesmoke": "#f5f5f5", "yellowgreen": "#9acd32",
+}
+
+
+def _css_channel_to_byte(value: str) -> int:
+    value = value.strip()
+    if value.endswith("%"):
+        return max(0, min(255, int(round(float(value[:-1]) * 255.0 / 100.0))))
+    return max(0, min(255, int(float(value))))
+
+
 def _css_color(value: str) -> str | None:
     value = value.strip().lower()
-    if not value or value in {"transparent", "none"}:
+    if not value or value in {"transparent", "none", "inherit", "initial", "unset"}:
         return None
     if value.startswith("#"):
-        if len(value) == 4:
-            return "#" + "".join(ch * 2 for ch in value[1:])
-        if len(value) >= 7:
-            return value[:7]
-    match = re.match(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", value)
-    if match:
-        red, green, blue = (max(0, min(255, int(v))) for v in match.groups())
+        hex_value = re.sub(r"[^0-9a-f]", "", value[1:])
+        if len(hex_value) == 3:
+            return "#" + "".join(ch * 2 for ch in hex_value)
+        if len(hex_value) == 6:
+            return "#" + hex_value
+        if len(hex_value) >= 8:
+            # Qt may emit #AARRGGBB; RTF has no alpha, so keep the visible RGB part.
+            return "#" + hex_value[-6:]
+    rgb = re.search(
+        r"rgba?\(\s*([0-9]+(?:\.[0-9]+)?%?)\s*,\s*([0-9]+(?:\.[0-9]+)?%?)\s*,\s*([0-9]+(?:\.[0-9]+)?%?)",
+        value,
+    )
+    if rgb:
+        red, green, blue = (_css_channel_to_byte(v) for v in rgb.groups())
         return f"#{red:02x}{green:02x}{blue:02x}"
-    # Common names used by Qt and browsers. This is intentionally small.
-    names = {
-        "black": "#000000",
-        "white": "#ffffff",
-        "red": "#ff0000",
-        "green": "#008000",
-        "blue": "#0000ff",
-        "yellow": "#ffff00",
-        "cyan": "#00ffff",
-        "magenta": "#ff00ff",
-        "gray": "#808080",
-        "grey": "#808080",
-    }
-    return names.get(value)
+    hex_match = re.search(r"#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})\b", value)
+    if hex_match:
+        return _css_color("#" + hex_match.group(1))
+    for token in re.split(r"[\s,]+", value):
+        if token in _CSS_NAMED_COLORS:
+            return _CSS_NAMED_COLORS[token]
+    return _CSS_NAMED_COLORS.get(value)
 
 
 def _css_font_family(value: str) -> str:
@@ -1250,6 +1459,52 @@ def _css_font_family(value: str) -> str:
     return first[:128]
 
 
+def _set_color_index(color: str | None, color_names: dict[str, int], style: _RtfStyle, *, background: bool) -> None:
+    if not color:
+        return
+    index = color_names.setdefault(color, len(color_names) + 1)
+    if background:
+        style.bg_index = index
+    else:
+        style.fg_index = index
+
+
+def _css_box_values(value: str) -> tuple[str, str, str, str] | None:
+    parts = [part for part in value.replace(",", " ").split() if part]
+    if not parts:
+        return None
+    if len(parts) == 1:
+        top = right = bottom = left = parts[0]
+    elif len(parts) == 2:
+        top = bottom = parts[0]
+        right = left = parts[1]
+    elif len(parts) == 3:
+        top, right, bottom = parts
+        left = right
+    else:
+        top, right, bottom, left = parts[:4]
+    return top, right, bottom, left
+
+
+def _apply_margin_shorthand(raw_value: str, style: _RtfStyle) -> None:
+    values = _css_box_values(raw_value)
+    if values is None:
+        return
+    top, right, bottom, left = values
+    top_twips = _dimension_to_twips(top)
+    bottom_twips = _dimension_to_twips(bottom)
+    left_twips = _dimension_to_twips(left)
+    right_twips = _dimension_to_twips(right)
+    if top_twips is not None:
+        style.space_before_twips = max(0, top_twips)
+    if bottom_twips is not None:
+        style.space_after_twips = max(0, bottom_twips)
+    if left_twips is not None:
+        style.left_indent_twips = left_twips
+    if right_twips is not None:
+        style.right_indent_twips = right_twips
+
+
 def _parse_style_attribute(style_attr: str, style: _RtfStyle, color_names: dict[str, int]) -> None:
     for chunk in style_attr.split(";"):
         if ":" not in chunk:
@@ -1259,9 +1514,16 @@ def _parse_style_attribute(style_attr: str, style: _RtfStyle, color_names: dict[
         raw_value = raw_value.strip()
         value_lower = raw_value.lower()
         if key == "font-weight":
-            style.bold = value_lower == "bold" or (value_lower.isdigit() and int(value_lower) >= 600)
+            numeric_weight = re.search(r"\d+", value_lower)
+            style.bold = "bold" in value_lower or (numeric_weight is not None and int(numeric_weight.group(0)) >= 600)
         elif key == "font-style":
-            style.italic = "italic" in value_lower
+            style.italic = "italic" in value_lower or "oblique" in value_lower
+        elif key == "font-variant":
+            style.small_caps = "small-caps" in value_lower
+        elif key == "text-transform":
+            style.all_caps = "uppercase" in value_lower
+            if value_lower in {"none", "initial", "unset"}:
+                style.all_caps = False
         elif key == "text-decoration":
             style.underline = "underline" in value_lower
             style.strike = "line-through" in value_lower
@@ -1275,21 +1537,46 @@ def _parse_style_attribute(style_attr: str, style: _RtfStyle, color_names: dict[
         elif key == "font-family":
             style.font_family = _css_font_family(raw_value)
         elif key in {"color", "-qt-user-state"}:
-            color = _css_color(raw_value)
-            if color:
-                style.fg_index = color_names.setdefault(color, len(color_names) + 1)
+            _set_color_index(_css_color(raw_value), color_names, style, background=False)
         elif key in {"background-color", "background"}:
-            color = _css_color(raw_value)
-            if color:
-                style.bg_index = color_names.setdefault(color, len(color_names) + 1)
-        elif key == "vertical-align" and value_lower in {"super", "sub"}:
-            style.vertical = value_lower
+            _set_color_index(_css_color(raw_value), color_names, style, background=True)
+        elif key == "vertical-align":
+            if value_lower in {"super", "sub"}:
+                style.vertical = value_lower
+            elif value_lower in {"baseline", "initial", "inherit", "unset"}:
+                style.vertical = ""
+        elif key == "direction" and value_lower in {"rtl", "ltr"}:
+            style.direction = value_lower
+        elif key == "display" and value_lower == "none":
+            style.hidden = True
+        elif key == "visibility":
+            style.hidden = value_lower == "hidden"
+        elif key == "letter-spacing":
+            if value_lower in {"normal", "initial", "inherit", "unset"}:
+                style.letter_spacing_twips = None
+            else:
+                twips = _dimension_to_twips(raw_value)
+                if twips is not None:
+                    style.letter_spacing_twips = twips
         elif key == "text-align" and value_lower in {"left", "center", "right", "justify"}:
             style.align = value_lower
         elif key == "margin-left":
             twips = _dimension_to_twips(raw_value)
             if twips is not None:
                 style.left_indent_twips = twips
+        elif key in {"padding-left"}:
+            twips = _dimension_to_twips(raw_value)
+            if twips is not None:
+                style.left_indent_twips = (style.left_indent_twips or 0) + twips
+        elif key in {"-qt-block-indent", "-qt-list-indent"}:
+            match = re.search(r"(-?[0-9]+)", raw_value)
+            if match and style.left_indent_twips is None:
+                level = max(0, int(match.group(1)))
+                if level:
+                    # QTextEdit serializes logical block indent levels, not a CSS
+                    # length. RichTextBox used twips; half-inch per level is the
+                    # closest stable compatibility mapping.
+                    style.left_indent_twips = level * 720
         elif key == "margin-right":
             twips = _dimension_to_twips(raw_value)
             if twips is not None:
@@ -1303,37 +1590,11 @@ def _parse_style_attribute(style_attr: str, style: _RtfStyle, color_names: dict[
             if twips is not None:
                 style.space_after_twips = max(0, twips)
         elif key == "margin":
-            values = raw_value.split()
-            if values:
-                top = values[0]
-                right = values[1] if len(values) > 1 else top
-                bottom = values[2] if len(values) > 2 else top
-                left = values[3] if len(values) > 3 else right
-                top_twips = _dimension_to_twips(top)
-                bottom_twips = _dimension_to_twips(bottom)
-                left_twips = _dimension_to_twips(left)
-                right_twips = _dimension_to_twips(right)
-                if top_twips is not None:
-                    style.space_before_twips = max(0, top_twips)
-                if bottom_twips is not None:
-                    style.space_after_twips = max(0, bottom_twips)
-                if left_twips is not None:
-                    style.left_indent_twips = left_twips
-                if right_twips is not None:
-                    style.right_indent_twips = right_twips
+            _apply_margin_shorthand(raw_value, style)
         elif key == "line-height":
-            twips = _line_height_to_twips(raw_value, style)
-            if twips is not None:
-                style.line_spacing_twips = max(0, twips)
-        elif key == "-qt-block-indent":
-            match = re.search(r"(-?[0-9]+)", raw_value)
-            if match and style.left_indent_twips is None:
-                level = max(0, int(match.group(1)))
-                if level:
-                    # QTextEdit serializes logical block indent levels, not a CSS
-                    # length. RichTextBox used twips; half-inch per level is the
-                    # closest stable compatibility mapping.
-                    style.left_indent_twips = level * 720
+            parsed = _line_height_to_rtf(raw_value, style)
+            if parsed is not None:
+                style.line_spacing_twips, style.line_spacing_multiple = parsed
         elif key == "text-indent":
             twips = _dimension_to_twips(raw_value)
             if twips is not None:
@@ -1359,17 +1620,22 @@ def _dimension_to_twips(value: str) -> int | None:
     return int(round(points * 20))
 
 
-def _line_height_to_twips(value: str, style: _RtfStyle) -> int | None:
+def _line_height_to_rtf(value: str, style: _RtfStyle) -> tuple[int, bool] | None:
     value = value.strip().lower()
-    if not value or value == "normal":
+    if not value or value in {"normal", "inherit", "initial", "unset"}:
         return None
-    base_points = (style.fs_half_points / 2.0) if style.fs_half_points else 12.0
-    percent = re.search(r"(-?[0-9]+(?:\.[0-9]+)?)\s*%", value)
+    percent = re.fullmatch(r"(-?[0-9]+(?:\.[0-9]+)?)\s*%", value)
     if percent:
-        return int(round(base_points * (float(percent.group(1)) / 100.0) * 20))
+        # RTF ``\slmult1`` stores a multiple in 240ths of a line.
+        multiple = max(1, int(round(float(percent.group(1)) / 100.0 * 240)))
+        return multiple, True
     if re.fullmatch(r"-?[0-9]+(?:\.[0-9]+)?", value):
-        return int(round(base_points * float(value) * 20))
-    return _dimension_to_twips(value)
+        multiple = max(1, int(round(float(value) * 240)))
+        return multiple, True
+    twips = _dimension_to_twips(value)
+    if twips is None:
+        return None
+    return abs(twips), False
 
 
 def _dimension_to_px(value: str) -> int | None:
@@ -1490,7 +1756,7 @@ class _HtmlImage:
 
 
 class _HtmlToSegments(HTMLParser):
-    _BLOCK_TAGS = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6"}
+    _BLOCK_TAGS = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "center"}
     _HEADING_SIZES = {"h1": 48, "h2": 36, "h3": 28, "h4": 24, "h5": 20, "h6": 18}
 
     def __init__(self) -> None:
@@ -1518,11 +1784,24 @@ class _HtmlToSegments(HTMLParser):
             style.vertical = "super"
         elif tag == "sub":
             style.vertical = "sub"
+        elif tag in {"code", "kbd", "samp", "pre"}:
+            style.font_family = "Courier New"
+        elif tag == "small":
+            base = style.fs_half_points or 24
+            style.fs_half_points = max(1, int(round(base * 0.83)))
+        elif tag == "big":
+            base = style.fs_half_points or 24
+            style.fs_half_points = max(1, int(round(base * 1.2)))
         elif tag in self._HEADING_SIZES:
             style.bold = True
             style.fs_half_points = self._HEADING_SIZES[tag]
-            style.space_before_twips = 240
-            style.space_after_twips = 120
+            style.space_before_twips = 240 if style.space_before_twips is None else style.space_before_twips
+            style.space_after_twips = 120 if style.space_after_twips is None else style.space_after_twips
+        elif tag == "blockquote":
+            style.left_indent_twips = (style.left_indent_twips or 0) + 720
+            style.right_indent_twips = (style.right_indent_twips or 0) + 720
+        elif tag == "center":
+            style.align = "center"
         elif tag == "a":
             href = attr.get("href", "").strip()
             if href:
@@ -1531,19 +1810,23 @@ class _HtmlToSegments(HTMLParser):
                 # imported HTML did not explicitly specify text-decoration.
                 style.underline = True
         elif tag == "font":
-            color = _css_color(attr.get("color", ""))
-            if color:
-                style.fg_index = self.color_names.setdefault(color, len(self.color_names) + 1)
+            _set_color_index(_css_color(attr.get("color", "")), self.color_names, style, background=False)
             face = _css_font_family(attr.get("face", ""))
             if face:
                 style.font_family = face
-            size = attr.get("size")
-            if size and size.isdigit():
+            size = attr.get("size", "").strip()
+            if size and re.fullmatch(r"[+-]?\d+", size):
+                value = int(size)
+                if size.startswith(("+", "-")):
+                    value = 3 + value
                 # HTML font size 3 ~= 12pt; keep it conservative.
-                style.fs_half_points = max(1, int(size) * 8)
+                style.fs_half_points = max(1, min(96, value * 8))
+        if tag == "body":
+            _set_color_index(_css_color(attr.get("text", "")), self.color_names, style, background=False)
         align_attr = attr.get("align", "").strip().lower()
         if align_attr in {"left", "center", "right", "justify"}:
             style.align = align_attr
+        _set_color_index(_css_color(attr.get("bgcolor", "")), self.color_names, style, background=True)
         if "style" in attr:
             _parse_style_attribute(attr["style"], style, self.color_names)
         if style.font_family:
@@ -1689,6 +1972,12 @@ def _style_prefix(style: _RtfStyle, font_names: dict[str, int] | None = None) ->
         parts.append(rf"\sa{max(0, style.space_after_twips)}")
     if style.line_spacing_twips is not None and style.line_spacing_twips > 0:
         parts.append(rf"\sl{style.line_spacing_twips}")
+    if style.line_spacing_multiple is not None:
+        parts.append(rf"\slmult{1 if style.line_spacing_multiple else 0}")
+    if style.direction == "rtl":
+        parts.append(r"\rtlpar\rtlch")
+    elif style.direction == "ltr":
+        parts.append(r"\ltrpar\ltrch")
     if style.font_family and font_names and style.font_family in font_names:
         parts.append(rf"\f{font_names[style.font_family]}")
     if style.bold:
@@ -1699,6 +1988,14 @@ def _style_prefix(style: _RtfStyle, font_names: dict[str, int] | None = None) ->
         parts.append(r"\ul")
     if style.strike:
         parts.append(r"\strike")
+    if style.all_caps:
+        parts.append(r"\caps")
+    if style.small_caps:
+        parts.append(r"\scaps")
+    if style.hidden:
+        parts.append(r"\v")
+    if style.letter_spacing_twips is not None:
+        parts.append(rf"\expndtw{style.letter_spacing_twips}")
     if style.vertical == "super":
         parts.append(r"\super")
     elif style.vertical == "sub":

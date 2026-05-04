@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.21**.
+Aktueller Stand dieses Archivs: **0.10.22**.
 
 ## Start
 
@@ -63,6 +63,14 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+
+## Änderungen in 0.10.22
+
+- Die RTF-Brücke wurde weiter an WinForms-`RichTextBox` angenähert: `\plain` setzt jetzt nur Zeichenformat zurück und behält Absatzformat wie Ausrichtung, Einzug, Abstand und Zeilenhöhe. Dadurch verliert importiertes RTF nach Formatwechseln im selben Absatz weniger Struktur.
+- Weitere RTF-Steuerwörter werden gelesen und geschrieben: `\slmult`, `\cbpat`/`\chcbpat`, mehrere Unterstreichungsvarianten, `\caps`, `\scaps`, `\v`, `\rtlpar`/`\rtlch`, `\ltrpar`/`\ltrch` und `\expndtw`.
+- Font- und Farbtabelle sind robuster: WordPad-/Word-Fonttabellen mit `\*\falt`-Aliasgruppen werden sauber gelesen, und RTF-Farbtabellen ohne führenden Automatik-Farbslot werden kompatibel indiziert.
+- HTML/CSS→RTF erkennt mehr Formatierung: CSS-Farbnamen, `rgb(...)`/`rgba(...)`, `margin`-Kurzform, Prozent-/Faktor-`line-height`, `direction`, `letter-spacing`, `display:none`, `font-variant:small-caps`, `text-transform:uppercase`, `body text/bgcolor`, `font`-Attribute, `center`, `blockquote`, `code`, `small` und `big`.
+- Kombinierte Teilbaum-/Gesamtbaum-RTF-Exporte übernehmen die neuen Formatfelder ebenfalls.
 
 ## Änderungen in 0.10.21
 
