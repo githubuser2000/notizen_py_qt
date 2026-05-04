@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.16**.
+Aktueller Stand dieses Archivs: **0.10.17**.
 
 ## Start
 
@@ -63,6 +63,33 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+
+## Änderungen in 0.10.17
+
+- Der sichtbare GNOME-Startpfad aus 0.10.13 bis 0.10.16 bleibt bewusst erhalten. In dieser Runde wurde keine neue Display-/Wayland-Experimentierlogik eingebaut: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb` und kein pauschales Löschen von `DISPLAY` bleiben der sichere Standard.
+- Die RTF-Brücke wurde weiter an die alte WinForms-`RichTextBox` angenähert:
+  - alte Listenmarkierungen aus `\*\pntext` und `\*\listtext` bleiben sichtbar, statt als ignorierbare RTF-Ziele zu verschwinden,
+  - RTF-Hyperlinks in `\field`/`HYPERLINK`-Gruppen werden als Linktext in Plaintext/Suche erhalten und in HTML als `<a href=...>` ausgegeben,
+  - HTML-Hyperlinks werden beim RTF-Export wieder als `HYPERLINK`-Felder geschrieben,
+  - HTML-Tabellen werden beim RTF-Export nicht mehr zusammengeschoben, sondern mit Tabs zwischen Zellen und Zeilenumbrüchen zwischen Zeilen übertragen,
+  - geordnete und ungeordnete HTML-Listen bekommen robuste Textpräfixe,
+  - alte RTF-OLE-Objektgruppen verschwinden nicht mehr still, sondern werden als `[Objekt]` sichtbar markiert.
+- Kombinierter RTF-Export, „Teilbaum zusammenfassen“ und „Ganzen Baum zusammenfassen“ übernehmen jetzt auch Hyperlink-Felder aus alten RTF-Inhalten.
+- Neuer optionaler venv-Starter:
+
+```bash
+./notizen-starten-venv.sh
+```
+
+  Er erstellt bei Bedarf eine lokale `.venv`, installiert das Paket im editierbaren Modus mit Crypto-Extra und delegiert dann an den bestehenden sichtbaren Starter `notizen-starten.sh`.
+- Der Linux-/GNOME-Starter-Installer kann optional den venv-Starter verwenden:
+
+```bash
+./scripts/install_linux_launcher.sh --venv
+./scripts/install_linux_launcher.sh --desktop --venv
+```
+
+- Neue Tests prüfen RTF-Listenmarker, Tabellen, geordnete Listen, Hyperlink-Roundtrips, OLE-Platzhalter, kombinierten RTF-Export mit Links und den optionalen venv-Starter.
 
 ## Änderungen in 0.10.16
 

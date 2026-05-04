@@ -21,6 +21,8 @@ _SKIP_DESTINATIONS = {
     "info",
     "pict",
     "object",
+    "objclass",
+    "objdata",
     "header",
     "footer",
     "generator",
@@ -28,6 +30,14 @@ _SKIP_DESTINATIONS = {
     "themedata",
     "colorschememapping",
 }
+
+# RichTextBox/WPF list labels are often wrapped in ignorable destinations such
+# as ``{\*\pntext ...}`` or ``{\*\listtext ...}``.  They look optional to a
+# strict RTF reader, but they are the only readable bullet/number prefix for
+# Notizen.NET exports and copied content.  Keep these groups textual instead of
+# dropping them with other ``\*`` destinations.
+_TEXTUAL_IGNORABLE_DESTINATIONS = {"pntext", "listtext"}
+LEGACY_OBJECT_PLACEHOLDER = "[Objekt]"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +49,17 @@ class RtfImage:
     width_twips: int | None = None
     height_twips: int | None = None
     rtf_control: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RtfHyperlink:
+    """Hyperlink extracted from an RTF ``\field`` group."""
+
+    url: str
+    text: str
+    style: "RtfTextStyle | None" = None
+
+
 _TEXT_CONTROLS = {
     "par": "\n",
     "line": "\n",
@@ -128,6 +149,71 @@ def _parse_control(text: str, index: int) -> tuple[str, int | None, int, bool]:
     return word, number, j, consumed_space
 
 
+def _peek_ignorable_destination(text: str, backslash_index: int) -> str:
+    r"""Return the control word after a ``\*`` marker, if one follows."""
+
+    j = backslash_index + 2
+    while j < len(text) and text[j].isspace():
+        j += 1
+    if j < len(text) and text[j] == "\\":
+        word, _number, _new_index, _space = _parse_control(text, j + 1)
+        return word
+    return ""
+
+
+def _escape_html_text_with_breaks(text: str) -> str:
+    return escape(text).replace("\n", "<br/>").replace("\t", "\t")
+
+
+def _rtf_escape_field_url(url: str) -> str:
+    return (url or "").replace("\\", r"\\").replace('"', r'\"')
+
+
+def _rtf_hyperlink_field(url: str, display_text: str, prefix: str = "") -> str:
+    url = _rtf_escape_field_url(url)
+    display = _rtf_escape_text(display_text or url)
+    result = "{" + prefix + " " + display + "}" if prefix else display
+    return r'{\field{\*\fldinst HYPERLINK "' + url + r'"}{\fldrslt ' + result + '}}'
+
+
+def _extract_balanced_destination(rtf: str, index: int, destination: str) -> str | None:
+    if not rtf.startswith("{\\" + destination, index):
+        return None
+    end = _find_group_end(rtf, index)
+    return None if end < 0 else rtf[index : end + 1]
+
+
+def _extract_object_at(rtf: str, index: int) -> tuple[str, int] | None:
+    if not rtf.startswith(r"{\object", index):
+        return None
+    end = _find_group_end(rtf, index)
+    if end < 0:
+        return None
+    return LEGACY_OBJECT_PLACEHOLDER, end + 1
+
+
+def _extract_field_at(rtf: str, index: int) -> tuple[RtfHyperlink, int] | None:
+    if not rtf.startswith(r"{\field", index):
+        return None
+    end = _find_group_end(rtf, index)
+    if end < 0:
+        return None
+    group = rtf[index : end + 1]
+    inst_match = re.search(r'HYPERLINK\s+(?:"((?:\\.|[^"\\])*)"|([^\\{}\s]+))', group, re.IGNORECASE)
+    if not inst_match:
+        return None
+    url = (inst_match.group(1) or inst_match.group(2) or "").replace(r'\"', '"').replace(r"\\", "\\")
+    result_start = group.find(r"{\fldrslt")
+    display = ""
+    if result_start >= 0:
+        result_end = _find_group_end(group, result_start)
+        if result_end >= 0:
+            display = _rtf_fragment_to_plain(group[result_start : result_end + 1], rtf_ansi_encoding(group)).strip()
+    if not display:
+        display = url
+    return RtfHyperlink(url=url, text=display), end + 1
+
+
 @dataclass(slots=True)
 class _RtfStyle:
     bold: bool = False
@@ -138,6 +224,7 @@ class _RtfStyle:
     fg_index: int = 0
     bg_index: int = 0
     font_family: str = ""
+    hyperlink_url: str = ""
 
     def copy(self) -> "_RtfStyle":
         return _RtfStyle(
@@ -149,6 +236,7 @@ class _RtfStyle:
             fg_index=self.fg_index,
             bg_index=self.bg_index,
             font_family=self.font_family,
+            hyperlink_url=self.hyperlink_url,
         )
 
 
@@ -176,7 +264,7 @@ class RtfTextSegment:
     style: RtfTextStyle
 
 
-RtfContentPart = RtfTextSegment | RtfImage
+RtfContentPart = RtfTextSegment | RtfImage | RtfHyperlink
 
 
 @dataclass(slots=True)
@@ -459,6 +547,17 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
         state = stack[-1]
         ch = rtf[i]
         if ch == "{":
+            field_result = _extract_field_at(rtf, i)
+            if field_result is not None and not state.skip:
+                hyperlink, i = field_result
+                yield hyperlink.text
+                continue
+            object_result = _extract_object_at(rtf, i)
+            if object_result is not None:
+                placeholder, i = object_result
+                if not state.skip:
+                    yield placeholder
+                continue
             stack.append(state.copy())
             i += 1
             continue
@@ -473,8 +572,13 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
                 continue
             nxt = rtf[i + 1]
             if nxt == "*":
-                stack[-1].ignorable_destination = True
-                stack[-1].skip = True
+                destination = _peek_ignorable_destination(rtf, i)
+                if destination in _TEXTUAL_IGNORABLE_DESTINATIONS:
+                    stack[-1].ignorable_destination = False
+                    stack[-1].skip = False
+                else:
+                    stack[-1].ignorable_destination = True
+                    stack[-1].skip = True
                 i += 2
                 continue
             if nxt in "{}\\":
@@ -535,6 +639,11 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
         yield ch
 
 
+def _rtf_fragment_to_plain(fragment: str, encoding: str = "cp1252") -> str:
+    text = _combine_surrogate_pairs("".join(_rtf_iter_plain(fragment, encoding))).replace("\r\n", "\n").replace("\r", "\n")
+    return "\n".join(line.rstrip() for line in text.split("\n"))
+
+
 def rtf_to_plain_text(rtf: str) -> str:
     """Extract readable text from WinForms/RTF content.
 
@@ -587,7 +696,7 @@ def _style_to_css(style: _RtfStyle, colors: list[str]) -> str:
     return "; ".join(rules)
 
 
-def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[str | RtfImage, _RtfStyle]]:
+def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[str | RtfImage | RtfHyperlink, _RtfStyle]]:
     fonts = extract_font_table(rtf)
     stack: list[_RtfState] = [_RtfState(skip=False, uc=1, style=_RtfStyle())]
     i = 0
@@ -599,6 +708,17 @@ def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[
             if image_result is not None and not state.skip and state.style is not None:
                 image, i = image_result
                 yield image, state.style.copy()
+                continue
+            field_result = _extract_field_at(rtf, i)
+            if field_result is not None and not state.skip and state.style is not None:
+                hyperlink, i = field_result
+                yield hyperlink, state.style.copy()
+                continue
+            object_result = _extract_object_at(rtf, i)
+            if object_result is not None:
+                placeholder, i = object_result
+                if not state.skip and state.style is not None:
+                    yield placeholder, state.style.copy()
                 continue
             stack.append(state.copy())
             i += 1
@@ -614,8 +734,13 @@ def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[
                 continue
             nxt = rtf[i + 1]
             if nxt == "*":
-                stack[-1].ignorable_destination = True
-                stack[-1].skip = True
+                destination = _peek_ignorable_destination(rtf, i)
+                if destination in _TEXTUAL_IGNORABLE_DESTINATIONS:
+                    stack[-1].ignorable_destination = False
+                    stack[-1].skip = False
+                else:
+                    stack[-1].ignorable_destination = True
+                    stack[-1].skip = True
                 i += 2
                 continue
             if nxt in "{}\\":
@@ -759,6 +884,21 @@ def rtf_to_content_parts(rtf: str) -> list[RtfContentPart]:
             current_style = None
             continue
         resolved = _resolve_style(style, colors)
+        if isinstance(token, RtfHyperlink):
+            flush()
+            link_style = resolved if resolved.underline else RtfTextStyle(
+                bold=resolved.bold,
+                italic=resolved.italic,
+                underline=True,
+                strike=resolved.strike,
+                fs_half_points=resolved.fs_half_points,
+                fg_color=resolved.fg_color,
+                bg_color=resolved.bg_color,
+                font_family=resolved.font_family,
+            )
+            parts.append(RtfHyperlink(url=token.url, text=token.text, style=link_style))
+            current_style = None
+            continue
         if resolved != current_style:
             flush()
             current_style = resolved
@@ -799,12 +939,28 @@ def rtf_to_text_segments(rtf: str) -> list[RtfTextSegment]:
             else:
                 segments.append(RtfTextSegment(text, current_style))
 
-    for ch, style in _rtf_iter_html(rtf, rtf_ansi_encoding(rtf)):
+    for token, style in _rtf_iter_html_tokens(rtf, rtf_ansi_encoding(rtf)):
+        if isinstance(token, RtfImage):
+            flush()
+            current_style = None
+            continue
         resolved = _resolve_style(style, colors)
+        text = token.text if isinstance(token, RtfHyperlink) else token
+        if isinstance(token, RtfHyperlink) and not resolved.underline:
+            resolved = RtfTextStyle(
+                bold=resolved.bold,
+                italic=resolved.italic,
+                underline=True,
+                strike=resolved.strike,
+                fs_half_points=resolved.fs_half_points,
+                fg_color=resolved.fg_color,
+                bg_color=resolved.bg_color,
+                font_family=resolved.font_family,
+            )
         if resolved != current_style:
             flush()
             current_style = resolved
-        current_text.append(ch)
+        current_text.append(text)
     flush()
     return segments
 
@@ -843,6 +999,18 @@ def rtf_to_html(rtf: str) -> str:
         if isinstance(token, RtfImage):
             flush()
             out.append(_image_to_html(token))
+            current_css = None
+            continue
+        if isinstance(token, RtfHyperlink):
+            flush()
+            css = _style_to_css(style, colors)
+            if "text-decoration" not in css:
+                css = (css + "; " if css else "") + "text-decoration:underline"
+            href = escape(token.url, quote=True)
+            style_attr = f' style="{escape(css, quote=True)}"' if css else ""
+            out.append(f'<a href="{href}"{style_attr}>')
+            out.append(_escape_html_text_with_breaks(token.text))
+            out.append("</a>")
             current_css = None
             continue
         ch = token
@@ -1105,6 +1273,8 @@ class _HtmlToSegments(HTMLParser):
         self.stack: list[_RtfStyle] = [_RtfStyle()]
         self.segments: list[_HtmlSegment | _HtmlImage] = []
         self.skip_depth = 0
+        self.list_stack: list[dict[str, int | str]] = []
+        self.table_row_has_cell: list[bool] = []
 
     def _push(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         style = self.stack[-1].copy()
@@ -1117,6 +1287,13 @@ class _HtmlToSegments(HTMLParser):
             style.underline = True
         elif tag in {"s", "strike", "del"}:
             style.strike = True
+        elif tag == "a":
+            href = attr.get("href", "").strip()
+            if href:
+                style.hyperlink_url = href
+                # WinForms/RichTextBox shows field links underlined even when the
+                # imported HTML did not explicitly specify text-decoration.
+                style.underline = True
         elif tag == "font":
             color = _css_color(attr.get("color", ""))
             if color:
@@ -1161,9 +1338,41 @@ class _HtmlToSegments(HTMLParser):
             else:
                 self._append("[Bild]")
             return
+        if tag in {"ul", "ol"}:
+            if self._needs_paragraph_break():
+                self._append("\n")
+            self.list_stack.append({"type": tag, "counter": 0})
+            self._push(tag, attrs)
+            return
         if tag == "li":
-            self._append("• ")
-        elif tag in {"p", "div"} and self._needs_paragraph_break():
+            if self._needs_paragraph_break():
+                self._append("\n")
+            if self.list_stack and self.list_stack[-1].get("type") == "ol":
+                self.list_stack[-1]["counter"] = int(self.list_stack[-1].get("counter", 0)) + 1
+                self._append(f"{self.list_stack[-1]['counter']}. ")
+            else:
+                self._append("• ")
+            self._push(tag, attrs)
+            return
+        if tag in {"table", "tbody", "thead", "tfoot"}:
+            if self._needs_paragraph_break():
+                self._append("\n")
+            self._push(tag, attrs)
+            return
+        if tag == "tr":
+            if self._needs_paragraph_break():
+                self._append("\n")
+            self.table_row_has_cell.append(False)
+            self._push(tag, attrs)
+            return
+        if tag in {"td", "th"}:
+            if self.table_row_has_cell:
+                if self.table_row_has_cell[-1]:
+                    self._append("\t")
+                self.table_row_has_cell[-1] = True
+            self._push(tag, attrs)
+            return
+        if tag in {"p", "div"} and self._needs_paragraph_break():
             self._append("\n")
         self._push(tag, attrs)
 
@@ -1174,10 +1383,34 @@ class _HtmlToSegments(HTMLParser):
             return
         if tag in {"br", "img"}:
             return
+        if tag in {"ul", "ol"}:
+            if self.list_stack:
+                self.list_stack.pop()
+            if len(self.stack) > 1:
+                self.stack.pop()
+            if self._needs_paragraph_break():
+                self._append("\n")
+            return
+        if tag == "tr":
+            if len(self.stack) > 1:
+                self.stack.pop()
+            if self.table_row_has_cell:
+                self.table_row_has_cell.pop()
+            self._append("\n")
+            return
+        if tag in {"p", "div", "li"}:
+            if len(self.stack) > 1:
+                self.stack.pop()
+            self._append("\n")
+            return
+        if tag in {"td", "th", "table", "tbody", "thead", "tfoot", "a"}:
+            if len(self.stack) > 1:
+                self.stack.pop()
+            if tag in {"table", "tbody", "thead", "tfoot"} and self._needs_paragraph_break():
+                self._append("\n")
+            return
         if len(self.stack) > 1:
             self.stack.pop()
-        if tag in {"p", "div", "li"}:
-            self._append("\n")
 
     def handle_data(self, data: str) -> None:
         if self.skip_depth:
@@ -1265,6 +1498,9 @@ def html_to_rtf(html_text: str) -> str:
         if not text:
             continue
         prefix = _style_prefix(segment.style, parser.font_names)
+        if segment.style.hyperlink_url:
+            body_parts.append(_rtf_hyperlink_field(segment.style.hyperlink_url, text, prefix))
+            continue
         escaped_text = _rtf_escape_text(text)
         if prefix:
             body_parts.append("{" + prefix + " " + escaped_text + "}")

@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.16**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.17**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -8,7 +8,7 @@ Aktiver Portierungsstand: **0.10.16**. Diese Datei beschreibt die aktuelle seman
 |---|---|---|
 | `Notizen.vb`, `Notizen.Designer.vb` | `src/notizen_py_qt/app.py` | Hauptfenster, Menüs, Toolbar, Baum, Editor, Dialoge und Legacy-Aktionen sind semantisch portiert. |
 | `Baum.vb`, `Baum_Kontext_.vb` | `app.py`, `models.py`, `node_clipboard.py` | Baumoperationen, Einfügen/Ausschneiden/Kopieren, Drag-and-drop-nahe Modellpflege, Doppelklick-Umbenennung, Knotenfarben, Auf-/Zu-Funktionen, `PrevVisibleNode`-Löschauswahl, alte `neu_neben_knoten`-Einfügeposition und Teilbaum-Zusammenfassung sind portiert. |
-| `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB/WMF/EMF-RTF-Brücke, RTF-Codepage-Auswertung über `\ansicpg`, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
+| `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB/WMF/EMF-RTF-Brücke, RTF-Codepage-Auswertung über `\ansicpg`, alte Listenmarker `\*\pntext`/`\*\listtext`, RTF-Hyperlink-Felder, sichtbare OLE-Objektplatzhalter, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
 | `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `legacy_validation.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting, unbekannte Notizattribute, sparse Desktop-Notizattribute, Datenschutz-Validator und die alte Autosave-Schutzbedingung sind portiert. |
 | `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
 | `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen sind in 0.10.15 deutlich näher am alten WinForms-Verhalten: rahmenlos, kompakte `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Wayland-taugliches System-Move/-Resize, Read-only-RichText-Fläche, Opacity-, Farb- und Kontextmenülogik. |
@@ -21,6 +21,16 @@ Aktiver Portierungsstand: **0.10.16**. Diese Datei beschreibt die aktuelle seman
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
 
+
+## In 0.10.17 weitergeführt
+
+- Der Startpfad bleibt absichtlich wie in 0.10.13 bis 0.10.16: sichtbar-first, `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb`, kein pauschales Löschen von `DISPLAY`. Diese Runde verändert keine GNOME-/Wayland-Displaystrategie.
+- `rtf_utils.py` behandelt alte RichTextBox-Listenmarker in `\*\pntext` und `\*\listtext` nicht mehr als komplett zu überspringende Ziele. Dadurch bleiben Bullet- und Nummernpräfixe in Suche, Statistik, Export und Zusammenfassungen sichtbar.
+- RTF-Hyperlinks aus `\field`/`HYPERLINK`-Gruppen werden als `RtfHyperlink`-Inhaltsteil erhalten. Plaintext nutzt den sichtbaren Linktext, HTML schreibt `<a href=...>`, und kombinierter RTF-Export schreibt wieder ein Hyperlink-Feld.
+- HTML-Tabellen, geordnete Listen, ungeordnete Listen und Hyperlinks werden beim Rückweg nach RTF textstrukturell robuster abgebildet: Tabellenzellen werden durch Tabs getrennt, Tabellenzeilen durch Zeilenumbrüche, Listenpunkte durch alte sichtbare Präfixe.
+- Alte RTF-OLE-Objektgruppen (`\object`/`\objdata`) verschwinden nicht mehr still. Sie werden als `[Objekt]` sichtbar markiert, solange keine echte OLE-Einbettung in Qt implementiert ist.
+- `exporters.py` übernimmt Hyperlink-Inhaltsteile in Baum-/Teilbaum-Zusammenfassungen und kombinierten RTF-Exporten.
+- `notizen-starten-venv.sh` ergänzt einen optionalen lokalen venv-Startpfad. `scripts/install_linux_launcher.sh --venv` kann GNOME-Starter auf diesen venv-Pfad zeigen lassen, ohne den normalen Starter zu verändern.
 
 ## In 0.10.16 weitergeführt
 

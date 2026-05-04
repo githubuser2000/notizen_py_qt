@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.16.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.17.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -85,3 +85,7 @@ Der Nutzerwunsch war, zuerst Desktop-Notizen näher an WinForms zu bringen und d
 ## Weiterführung 0.10.16
 
 Die aktuelle Nutzer-Rückmeldung meldete zwei Regressions: Desktop-Notizen zeigten zwar den Verschiebe-Cursor, ließen sich unter GNOME aber nicht tatsächlich verschieben, und der GNOME-Menüstarter zeigte kein Fenster mehr. Deshalb wurde die Desktop-Notiz-Bewegung auf Qt/Wayland-Systemdrag umgestellt, während der manuelle WinForms-Pfad als Fallback bleibt. Der Menüstart wurde konservativ gehärtet: ein gutes von GNOME geliefertes `DISPLAY` wird nicht mehr überschrieben; `NOTIZEN_KEEP_DISPLAY=1` wird in den `.desktop`-Start übernommen. Zusätzlich wurde die im Audit offene Config-Roundtrip-Lücke für unbekannte Attribute an bekannten Config-Elementen geschlossen.
+
+## Weiterführung 0.10.17
+
+Diese Runde folgt weiter der großen Rest-Transpilierungsuntersuchung, ohne den sichtbar funktionierenden GNOME-Startpfad erneut umzubauen. Schwerpunkt ist jetzt die alte RichTextBox-/RTF-Fidelity aus `inhalt.vb`, `kontext_inhalt.vb` und den Zusammenfassungs-/Exportpfaden in `Notizen.vb`: alte Listenmarker aus ignorierbaren RTF-Zielen bleiben sichtbar, Hyperlink-Felder werden über Plaintext/HTML/RTF-Roundtrip erhalten, HTML-Tabellen und Listen werden strukturiert nach RTF übertragen, und OLE-Objekte verschwinden nicht mehr still. Zusätzlich gibt es einen optionalen lokalen venv-Starter für Systeme, auf denen Paketinstallation und System-Python-Umgebung getrennt bleiben sollen.

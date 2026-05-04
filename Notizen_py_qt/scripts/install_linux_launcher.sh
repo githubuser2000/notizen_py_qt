@@ -10,21 +10,26 @@ MIME_TARGET="$MIME_PACKAGE_DIR/notizen-py-qt.xml"
 DESKTOP_TARGET="$APP_DESKTOP_DIR/notizen-py-qt.desktop"
 ICON_TARGET="$ICON_DIR/notizen-py-qt.png"
 INSTALL_DESKTOP_SHORTCUT=0
+USE_VENV_LAUNCHER=0
 
 for arg in "$@"; do
     case "$arg" in
         --desktop|--schreibtisch)
             INSTALL_DESKTOP_SHORTCUT=1
             ;;
+        --venv)
+            USE_VENV_LAUNCHER=1
+            ;;
         -h|--help)
             cat <<'NOTIZEN_LAUNCHER_HELP'
 Installiert einen GNOME/Linux-Starter für Notizen PyQt.
 
 Aufruf:
-  scripts/install_linux_launcher.sh [--desktop]
+  scripts/install_linux_launcher.sh [--desktop] [--venv]
 
 Ohne Option wird ein Eintrag im Anwendungsmenü installiert.
 Mit --desktop wird zusätzlich eine anklickbare Datei auf dem Desktop/Schreibtisch abgelegt.
+Mit --venv nutzt der Starter den lokalen venv-Starter notizen-starten-venv.sh.
 NOTIZEN_LAUNCHER_HELP
             exit 0
             ;;
@@ -58,7 +63,12 @@ cat > "$MIME_TARGET" <<'EOF'
 EOF
 chmod 0644 "$MIME_TARGET"
 
-EXEC_PATH="$(escape_desktop_arg "$APPDIR/notizen-starten.sh")"
+if [[ "$USE_VENV_LAUNCHER" == 1 ]]; then
+    LAUNCHER_SCRIPT="$APPDIR/notizen-starten-venv.sh"
+else
+    LAUNCHER_SCRIPT="$APPDIR/notizen-starten.sh"
+fi
+EXEC_PATH="$(escape_desktop_arg "$LAUNCHER_SCRIPT")"
 cat > "$DESKTOP_TARGET" <<EOF
 [Desktop Entry]
 Version=1.0
@@ -75,6 +85,9 @@ MimeType=application/x-notizen-alx;
 EOF
 chmod 0644 "$DESKTOP_TARGET"
 chmod 0755 "$APPDIR/notizen-starten.sh" "$APPDIR/Notizen starten.sh"
+if [[ -f "$APPDIR/notizen-starten-venv.sh" ]]; then
+    chmod 0755 "$APPDIR/notizen-starten-venv.sh"
+fi
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$APP_DESKTOP_DIR" >/dev/null 2>&1 || true

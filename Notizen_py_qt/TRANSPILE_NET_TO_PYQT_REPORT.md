@@ -1,47 +1,87 @@
-# Weitertranspilierung Notizen.NET → Python/Qt 0.10.16
+# Weitertranspilierung Notizen.NET → Python/Qt 0.10.17
 
 ## Schwerpunkt
 
-Diese Runde bearbeitet zuerst die vom Nutzer gemeldeten Regressions aus 0.10.15: Desktop-Notizen ließen sich unter GNOME/Wayland nicht wirklich verschieben, obwohl der Cursor korrekt war; außerdem zeigte der GNOME-Menüstart kein sichtbares Fenster mehr. Danach wurde ein weiterer Punkt aus der Restanalyse umgesetzt: Legacy-Config-Passthrough für unbekannte Attribute an bekannten Config-Elementen.
+Diese Runde geht die nächste Position aus der großen Rest-Transpilierungsuntersuchung an: RichTextBox-/RTF-Fidelity und ein robusterer Installations-/Startpfad, ohne den zuletzt sichtbaren GNOME-Start erneut zu verändern.
 
-## Desktop-Notizen: Verschieben/Skalieren unter GNOME/Wayland
+Der sichtbare Startpfad aus 0.10.13 bis 0.10.16 bleibt erhalten: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb` und kein pauschales Löschen von `DISPLAY`. An GNOME-/Wayland-Displaylogik wurde in 0.10.17 bewusst nichts Neues experimentiert.
 
-0.10.15 portierte die alten `desknote.vb`-Hotzones, benutzte für das tatsächliche Verschieben aber weiterhin clientseitige `setGeometry()`-Moves. Unter GNOME/Wayland kann der Compositor solche Top-Level-Positionsänderungen ignorieren. Das erklärt den Nutzerbefund: Der Cursor sah korrekt aus, aber das Fenster bewegte sich nicht.
+## RTF-Listenmarker aus alter RichTextBox
 
-0.10.16 verwendet deshalb bei rahmenlosen Desktop-Notizen nach Möglichkeit:
+WinForms-`RichTextBox` speichert sichtbare Listenpräfixe häufig in RTF-Zielen wie `\*\pntext` und `\*\listtext`. Diese Ziele sind formal ignorierbar, enthalten aber den sichtbaren Bullet- oder Nummerntext.
 
-- `QWindow.startSystemMove()` für Verschieben,
-- `QWindow.startSystemResize()` mit rechter/unterer Kante für die untere rechte Resize-Zone.
+Der PyQt-Port überspringt diese Gruppen nun nicht mehr vollständig. Dadurch bleiben alte Listenmarker erhalten in:
 
-Die alte manuelle WinForms-Geometrie bleibt als Fallback erhalten, falls Qt oder die Plattform diese Systemfunktionen nicht bereitstellt. Für diesen Fallback wird `grabMouse()` genutzt, damit Mausbewegungen nach dem Druck auf die RichText-Fläche nicht verloren gehen.
+- Plaintext-Ausgabe,
+- Suche,
+- Statistik,
+- HTML-Brücke,
+- Baum-/Teilbaum-Zusammenfassungen,
+- Exporten.
 
-## GNOME-Menüstart
+## RTF-Hyperlinks
 
-Der sichtbare Startpfad aus 0.10.13/0.10.14 bleibt bewusst erhalten: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb`, kein pauschales Löschen von `DISPLAY`.
+Alte RTF-Hyperlinks werden über `\field`/`HYPERLINK`-Gruppen erkannt. Neu ist der Inhaltsteil `RtfHyperlink`.
 
-Geändert wurde nur die zu aggressive Umgebungsreparatur: Ein GNOME-Menüstart kann bereits ein gutes `DISPLAY=:0` liefern. Dieses darf nicht durch eine stale systemd- oder Shell-Umgebung überschrieben werden. Deshalb gilt jetzt:
+Damit gilt jetzt:
 
-- `.desktop`-Starts setzen `NOTIZEN_KEEP_DISPLAY=1`,
-- `apply_graphical_session_environment(...)` füllt fehlende Werte und repariert bekannte `DISPLAY=:1`-Shellfälle,
-- ein plausibles vorhandenes `DISPLAY=:0` bleibt unangetastet.
+- Plaintext nutzt den sichtbaren Linktext,
+- HTML-Ausgabe schreibt `<a href="...">...</a>`,
+- HTML-zu-RTF schreibt wieder RTF-`HYPERLINK`-Felder,
+- kombinierter RTF-Export und Zusammenfassungen behalten diese Felder.
 
-## Legacy-Config-Roundtrip
+## HTML-Tabellen und Listen im RTF-Rückweg
 
-Die Restanalyse markierte Config-Roundtrip als verbleibendes Risiko. 0.10.13/0.10.14 konservierten bereits Root-Attribute und unbekannte Zusatz-Elemente. 0.10.16 ergänzt nun unbekannte Attribute an bekannten Elementen:
+Die HTML-zu-RTF-Brücke wurde so erweitert, dass einfache Tabellen und Listen nicht mehr zu einem ungetrennten Textstrom werden:
 
-- `scrolls`, `language`, `open`, `files`, `ftp`, `saftycopies`, `autorun`, `desknotes`, `tray`, `main-form`, `x`,
-- Unterelemente wie `open/once-opened`, `tool-stripes/haupt`, `tool-stripes/elements`, `tool-stripes/font`, `tool-stripes/cutpastecopy`.
+- Tabellenzellen werden durch Tabs getrennt,
+- Tabellenzeilen durch Zeilenumbrüche,
+- ungeordnete Listen bekommen Bullet-Präfixe,
+- geordnete Listen bekommen stabile Nummernpräfixe.
 
-Beim Speichern überschreiben die aktiv portierten Standardattribute weiter ihre aktuellen Werte; fremde Zusatzattribute bleiben erhalten.
+Das ist kein vollständiger Tabellenrenderer, aber es erhält die textuelle Struktur alter Notizinhalte deutlich besser.
+
+## OLE-/Objektgruppen
+
+Alte RTF-Objekte (`\object`, `\objdata`) können von Qt nicht sinnvoll als WinForms-OLE-Objekte geöffnet werden. Bisher drohten solche Gruppen aber komplett zu verschwinden. 0.10.17 ersetzt sie deshalb sichtbar durch:
+
+```text
+[Objekt]
+```
+
+Damit ist wenigstens erkennbar, dass in der alten Notiz ein eingebettetes Objekt existierte.
+
+## Optionaler venv-Starter
+
+Neu ist:
+
+```bash
+./notizen-starten-venv.sh
+```
+
+Der Starter erstellt bei Bedarf eine lokale `.venv`, installiert das Paket im editierbaren Modus mit Crypto-Extra und delegiert dann an den bestehenden sichtbaren Starter `notizen-starten.sh`.
+
+Der Linux-/GNOME-Starter-Installer kann optional diesen venv-Starter verwenden:
+
+```bash
+./scripts/install_linux_launcher.sh --venv
+./scripts/install_linux_launcher.sh --desktop --venv
+```
+
+Der normale Starter bleibt unverändert erhalten.
 
 ## Neue Tests
 
-- `tests/test_desktop_menu_regressions_1016.py` prüft Display-Erhalt beim Menüstart, stale-Shell-Reparatur und dass die Desktop-Notiz-Klasse Qt-Systemdrag nutzt.
-- `tests/test_legacy_config_passthrough_1016.py` prüft unbekannte Attribute an bekannten Config-Elementen und Unterelementen.
+Neu hinzugekommen sind:
+
+- `tests/test_rtf_fidelity_1017.py`
+- `tests/test_launchers_1017.py`
+
+Sie prüfen Listenmarker, Hyperlink-Roundtrips, Tabellen-/Listenstruktur, OLE-Platzhalter, kombinierten RTF-Export mit Links und den optionalen venv-Starter.
 
 ## Bewusst nicht geändert
 
-Der Startpfad wurde nicht wieder auf harte Pure-Wayland- oder `DISPLAY`-Löschlogik umgestellt. Die Nutzeranforderung war, den sichtbar gewesenen Startpfad beizubehalten.
+Der GNOME-Startpfad wurde nicht erneut umgebaut. Die Nutzeranforderung war, das sichtbar gewesene Startverhalten zu erhalten. 0.10.17 konzentriert sich deshalb auf RTF-Fidelity und optionale Installationshärtung.
 
 ## Validierung
 

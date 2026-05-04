@@ -51,7 +51,16 @@ from .desktop_note_legacy import (
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, legacy_documents_notizen_dir, split_legacy_file_location
 from .search_results import SearchHitView, build_search_hit_views, legacy_search_result_label, legacy_search_snippet, node_path
 from .editor_legacy import legacy_clipboard_bullet_text, qt_bullet_insert_text
-from .rtf_utils import bmp_to_dib_bytes, dib_to_bmp_bytes, rtf_ansi_encoding
+from .rtf_utils import (
+    LEGACY_OBJECT_PLACEHOLDER,
+    RtfHyperlink,
+    bmp_to_dib_bytes,
+    dib_to_bmp_bytes,
+    html_to_rtf,
+    rtf_ansi_encoding,
+    rtf_to_html,
+    rtf_to_plain_text,
+)
 from .window_visibility import VisibleWindowGeometry, env_requests_window_reset, legacy_window_state_is_restorable, sanitize_legacy_window_geometry, should_start_minimized
 from .display_env import DisplayEnvironmentDecision, apply_graphical_session_environment, normalize_qt_display_environment, visible_start_requested
 from .i18n import (
@@ -145,6 +154,11 @@ __all__ = [
     "bmp_to_dib_bytes",
     "dib_to_bmp_bytes",
     "rtf_ansi_encoding",
+    "rtf_to_plain_text",
+    "rtf_to_html",
+    "html_to_rtf",
+    "RtfHyperlink",
+    "LEGACY_OBJECT_PLACEHOLDER",
     "VisibleWindowGeometry",
     "sanitize_legacy_window_geometry",
     "legacy_window_state_is_restorable",
@@ -175,4 +189,4 @@ __all__ = [
     "validate_alx_roundtrip_file",
 ]
 
-__version__ = "0.10.16"
+__version__ = "0.10.17"
