@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.20**.
+Aktueller Stand dieses Archivs: **0.10.21**.
 
 ## Start
 
@@ -63,6 +63,14 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+
+## Änderungen in 0.10.21
+
+- Das Programm setzt seine Laufzeit-Identität jetzt passend zum installierten Desktop-Starter: `RESOURCE_NAME=notizen-py-qt`, `QApplication.setDesktopFileName("notizen-py-qt")`, App-Anzeigename und Organisation werden beim Start gesetzt. Hauptfenster und Desktop-Haftnotizen bekommen zusätzlich das Notizen-Icon direkt als Qt-WindowIcon. Dadurch können GNOME, Wayland/X11-Window-Manager und Taskleisten das laufende Fenster besser mit `notizen-py-qt.desktop` und dem installierten Icon verbinden.
+- Der GNOME-Menüstarter bleibt beim bestätigten Direktstart ohne Shell-Wrapper, ergänzt aber `RESOURCE_NAME=notizen-py-qt`: `Exec=env NOTIZEN_RESET_WINDOW=1 RESOURCE_NAME=notizen-py-qt python3 -m notizen_py_qt --show --no-tray --reset-window %f`.
+- Die RTF-Brücke gibt Absatzformatierung jetzt als echte Absatz-HTML-Elemente aus: `\qc`, `\qr`, `\qj`, Einzüge, Abstand-vor/nach und Zeilenhöhe landen auf `<p style="...">`, nicht nur auf Inline-`<span>`. Das ist näher an QTextEdit und an der alten RichTextBox.
+- Weitere RTF-Felder wurden nachgezogen: `\upN`/`\dnN`, `\sbN`, `\saN`, `\slN`; HTML/CSS `margin-top`, `margin-bottom`, `line-height`, `margin`, `align=...`, Überschriften `<h1>` bis `<h6>` und Qt-Blockeinzüge werden wieder als RTF-Controls geschrieben.
+- `.alx`-Speichern/Laden wurde erneut geprüft und durch zusätzliche Regressionstests abgesichert: Baumreihenfolge, RTF-Rohinhalt, `isexpanded`, Farben, Desktop-Haftnotiz-Zustand (`visible`, `x`, `y`, `width`, `height`, `opacity`, `argb`) und unbekannte Legacy-Attribute bleiben im Kern-Roundtrip erhalten.
 
 ## Änderungen in 0.10.20
 

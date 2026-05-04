@@ -14,8 +14,8 @@ from notizen_py_qt.system_integration import (
 )
 
 
-def test_version_1020() -> None:
-    assert __version__ == "0.10.20"
+def test_version_1021() -> None:
+    assert __version__ == "0.10.21"
 
 
 def test_windows_module_open_command_quotes_percent_one() -> None:
@@ -58,7 +58,7 @@ def test_registry_preview_is_stable_and_human_readable() -> None:
 
 def test_linux_desktop_exec_keeps_visible_direct_module_flags() -> None:
     line = build_linux_desktop_exec()
-    assert line == "env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f"
+    assert line == "env NOTIZEN_RESET_WINDOW=1 RESOURCE_NAME=notizen-py-qt python3 -m notizen_py_qt --show --no-tray --reset-window %f"
 
 
 def test_new_installation_scripts_are_present() -> None:

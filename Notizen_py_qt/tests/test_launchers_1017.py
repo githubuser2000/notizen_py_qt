@@ -23,6 +23,6 @@ def test_optional_venv_launcher_shell_syntax_is_valid() -> None:
 def test_linux_launcher_installer_uses_gnome_safe_direct_exec() -> None:
     text = Path("scripts/install_linux_launcher.sh").read_text(encoding="utf-8")
     assert "--venv" in text  # accepted for compatibility, but no longer selected for GNOME Exec
-    assert "Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f" in text
+    assert "Exec=env NOTIZEN_RESET_WINDOW=1 RESOURCE_NAME=notizen-py-qt python3 -m notizen_py_qt --show --no-tray --reset-window %f" in text
     assert "USE_VENV_LAUNCHER" not in text
     assert "Exec=env NOTIZEN_RESET_WINDOW=1" in text

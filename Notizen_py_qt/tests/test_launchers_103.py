@@ -33,7 +33,7 @@ def test_desktop_launcher_uses_direct_python_module_start() -> None:
 
     assert os.access(launcher, os.X_OK)
     assert "Type=Application" in text
-    assert "Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f" in text
+    assert "Exec=env NOTIZEN_RESET_WINDOW=1 RESOURCE_NAME=notizen-py-qt python3 -m notizen_py_qt --show --no-tray --reset-window %f" in text
     assert "sh -c" not in text
     assert "notizen-starten.sh" not in text
 

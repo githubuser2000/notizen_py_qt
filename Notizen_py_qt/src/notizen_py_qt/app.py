@@ -61,6 +61,11 @@ from .search_results import SearchHitView, build_search_hit_views
 from .settings import AppSettings, legacy_autosave_should_save, normalize_autosave_seconds, normalize_window_state
 from .stats import collect_tree_stats
 
+APP_DESKTOP_ID = "notizen-py-qt"
+APP_DISPLAY_NAME = "Notizen PyQt"
+APP_ORGANIZATION_NAME = "Notizen.NET Migration"
+
+
 _DISPLAY_ENV_DECISION = normalize_qt_display_environment(sys.argv[1:])
 append_startup_log(
     "PRE_QT_ENV %s"
@@ -178,6 +183,44 @@ if QtWidgets is not None:
             pass
         return QtGui.QIcon()
 
+    def configure_qt_application_identity(app: Any | None = None) -> None:
+        """Set GNOME/Wayland/X11 runtime identity to match notizen-py-qt.desktop."""
+
+        os.environ.setdefault("RESOURCE_NAME", APP_DESKTOP_ID)
+        try:
+            QtCore.QCoreApplication.setApplicationName(APP_DESKTOP_ID)
+        except Exception:
+            pass
+        try:
+            QtCore.QCoreApplication.setOrganizationName(APP_ORGANIZATION_NAME)
+        except Exception:
+            pass
+        try:
+            from . import __version__ as _runtime_version
+
+            QtCore.QCoreApplication.setApplicationVersion(str(_runtime_version))
+        except Exception:
+            pass
+        if app is None:
+            return
+        try:
+            if hasattr(app, "setApplicationDisplayName"):
+                app.setApplicationDisplayName(APP_DISPLAY_NAME)
+        except Exception:
+            pass
+        try:
+            if hasattr(app, "setDesktopFileName"):
+                # Qt/GNOME expects the basename without the .desktop suffix.
+                app.setDesktopFileName(APP_DESKTOP_ID)
+        except Exception:
+            pass
+        try:
+            icon = app_icon()
+            if not icon.isNull():
+                app.setWindowIcon(icon)
+        except Exception:
+            pass
+
     def _event_pos(event: Any) -> Any:
         try:
             return event.position().toPoint()
@@ -236,6 +279,10 @@ if QtWidgets is not None:
             super().__init__(main_window, flags)
             self.main_window = main_window
             self.node = node
+            self.setObjectName(f"{APP_DESKTOP_ID}-desktop-note")
+            icon = app_icon()
+            if not icon.isNull():
+                self.setWindowIcon(icon)
             if self.node.desktop_note is None:
                 self.node.desktop_note = main_window.default_desktop_note_state()
             self.setWindowTitle(node.title)
@@ -1244,6 +1291,7 @@ if QtWidgets is not None:
             reset_window_geometry: bool = False,
         ) -> None:
             super().__init__()
+            self.setObjectName(APP_DESKTOP_ID)
             self.disable_tray = bool(disable_tray)
             self.force_tray_start = bool(force_tray_start)
             self.reset_window_geometry = bool(reset_window_geometry)
@@ -3824,7 +3872,10 @@ def main(argv: list[str] | None = None) -> int:
         print(str(QT_IMPORT_ERROR), file=sys.stderr)
         return 2
 
-    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv[:1])
+    os.environ.setdefault("RESOURCE_NAME", APP_DESKTOP_ID)
+    configure_qt_application_identity(None)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([APP_DESKTOP_ID])
+    configure_qt_application_identity(app)
     try:
         try:
             from . import __version__ as _runtime_version

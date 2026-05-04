@@ -65,7 +65,7 @@ Type=Application
 Name=Notizen PyQt
 GenericName=Notizenverwaltung
 Comment=Notizen.NET Python/Qt-Port sichtbar starten
-Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f
+Exec=env NOTIZEN_RESET_WINDOW=1 RESOURCE_NAME=notizen-py-qt python3 -m notizen_py_qt --show --no-tray --reset-window %f
 Path=$APPDIR_REAL
 Icon=notizen-py-qt
 Terminal=false
@@ -129,6 +129,6 @@ fi
 printf 'Anwendungsstarter installiert: %s\n' "$DESKTOP_TARGET"
 printf 'Entfernte alte Menü-Kopie (falls vorhanden): %s\n' "$STALE_DESKTOP_TARGET"
 printf 'ALX-Dateizuordnung: application/x-notizen-alx\n'
-printf 'GNOME Exec: env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %%f\n'
+printf 'GNOME Exec: env NOTIZEN_RESET_WINDOW=1 RESOURCE_NAME=notizen-py-qt python3 -m notizen_py_qt --show --no-tray --reset-window %%f\n'
 printf 'Direktstartdatei: %s\n' "$APPDIR/Notizen starten.sh"
 printf 'Diagnoseprotokoll bei Menüstart: %s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/notizen-py-qt/startup.log"

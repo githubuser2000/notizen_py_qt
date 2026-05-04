@@ -172,6 +172,7 @@ def build_linux_desktop_exec(
     *,
     python_executable: str | Path = "python3",
     reset_window_env: bool = True,
+    resource_name_env: str = "notizen-py-qt",
     visible: bool = True,
     no_tray: bool = True,
     reset_window: bool = True,
@@ -181,12 +182,16 @@ def build_linux_desktop_exec(
 
     GNOME menu activation proved unreliable with shell wrappers and nested
     quoting.  The menu entry therefore starts the Python module directly and
-    leaves only the reset-window environment override in front of it.
+    leaves only simple environment overrides in front of it.  RESOURCE_NAME
+    mirrors StartupWMClass so X11 window managers can associate the runtime
+    window with the installed icon.
     """
 
     args: list[str] = ["env"]
     if reset_window_env:
         args.append("NOTIZEN_RESET_WINDOW=1")
+    if resource_name_env:
+        args.append(f"RESOURCE_NAME={resource_name_env}")
     args.extend([os.fspath(python_executable), "-m", module])
     if visible:
         args.append("--show")

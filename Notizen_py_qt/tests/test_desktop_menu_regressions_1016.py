@@ -46,7 +46,7 @@ def test_graphical_session_repair_still_fixes_known_stale_shell_display() -> Non
 def test_menu_launchers_use_direct_module_exec_without_shell_quoting() -> None:
     project_desktop = Path("Notizen PyQt.desktop").read_text(encoding="utf-8")
     install_script = Path("scripts/install_linux_launcher.sh").read_text(encoding="utf-8")
-    direct_exec = "Exec=env NOTIZEN_RESET_WINDOW=1 python3 -m notizen_py_qt --show --no-tray --reset-window %f"
+    direct_exec = "Exec=env NOTIZEN_RESET_WINDOW=1 RESOURCE_NAME=notizen-py-qt python3 -m notizen_py_qt --show --no-tray --reset-window %f"
     assert direct_exec in project_desktop
     assert direct_exec in install_script
     assert "sh -c" not in project_desktop
