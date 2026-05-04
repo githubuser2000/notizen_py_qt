@@ -1,6 +1,6 @@
 # Notizen.NET → Python/Qt Mapping
 
-Aktiver Portierungsstand: **0.10.15**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
+Aktiver Portierungsstand: **0.10.16**. Diese Datei beschreibt die aktuelle semantische Zuordnung vom alten VB.NET/WinForms-Projekt zu den Python/Qt-Modulen. Die früheren Qt/QML-Zwischenschritte sind archiviert unter `legacy_build_metadata/` und nicht mehr Teil des aktiven Laufzeitpfads.
 
 ## Kernstruktur
 
@@ -11,7 +11,7 @@ Aktiver Portierungsstand: **0.10.15**. Diese Datei beschreibt die aktuelle seman
 | `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB/WMF/EMF-RTF-Brücke, RTF-Codepage-Auswertung über `\ansicpg`, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
 | `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `legacy_validation.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting, unbekannte Notizattribute, sparse Desktop-Notizattribute, Datenschutz-Validator und die alte Autosave-Schutzbedingung sind portiert. |
 | `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
-| `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen sind in 0.10.15 deutlich näher am alten WinForms-Verhalten: rahmenlos, kompakte `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Read-only-RichText-Fläche, Opacity-, Farb- und Kontextmenülogik. |
+| `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen sind in 0.10.15 deutlich näher am alten WinForms-Verhalten: rahmenlos, kompakte `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Wayland-taugliches System-Move/-Resize, Read-only-RichText-Fläche, Opacity-, Farb- und Kontextmenülogik. |
 | `einstellungen.vb` | `settings.py`, Settings-Dialog in `app.py` | Backups, Autosave, Sprache, Scrollleisten, Desktop-Notiz-Ränder, Autostart-Felder und zuletzt geöffnete Dateien sind portiert. |
 | `ftpkram.vb` | `ftp_sync.py`, FTP-Dialog in `app.py` | FTP-Öffnen/Speichern der ALX-Datei ist portiert. |
 | `wecker.vb`, `wecker.Designer.vb` | `alarms.py`, Alarm-Dialog in `app.py` | Einmalige und wiederholende Wecker sind portiert; 0.10.13 ergänzt die alte Aktiviert-Checkbox, Wochentags-Checkbox-Zuordnung und Intervall-Einheiten. |
@@ -21,6 +21,13 @@ Aktiver Portierungsstand: **0.10.15**. Diese Datei beschreibt die aktuelle seman
 | `Notizen.ico`, `Notizen.png` | `src/notizen_py_qt/resources/` | Programm-Icon und Ressource sind importiert. |
 
 
+
+## In 0.10.16 weitergeführt
+
+- Die Desktop-Notiz-Portierung aus 0.10.15 wurde gegen GNOME/Wayland gehärtet: Die Cursorzonen aus `desknote.vb` bleiben erhalten, aber tatsächliches Verschieben/Skalieren nutzt jetzt nach Möglichkeit `QWindow.startSystemMove()` und `QWindow.startSystemResize()`. Damit wird der Wayland-Compositor nicht mehr durch clientseitige Top-Level-`setGeometry()`-Moves blockiert.
+- Der alte manuelle WinForms-Geometriepfad bleibt als Fallback erhalten. Auf X11 oder älteren Qt-Versionen wird weiter mit `legacy_desknote_move_geometry(...)`, `legacy_desknote_resize_geometry(...)` und `grabMouse()` gearbeitet.
+- GNOME-Menüstarts schützen jetzt die vom Menü gelieferte Display-Umgebung. `apply_graphical_session_environment(...)` und `notizen-starten.sh` überschreiben ein gutes vorhandenes `DISPLAY=:0` nicht mehr mit potentiell stale systemd-Werten; repariert wird nur fehlendes oder bekannt problematisches `DISPLAY=:1`.
+- `settings.py` konserviert zusätzlich unbekannte Attribute an bekannten Config-Elementen und wichtigen Unterelementen (`open/once-opened`, `tool-stripes/haupt`, `tool-stripes/font`, `tool-stripes/elements`, `tool-stripes/cutpastecopy`). Das schließt eine der im Audit markierten Config-Roundtrip-Lücken.
 
 ## In 0.10.15 weitergeführt
 

@@ -12,7 +12,7 @@ Aus den bisherigen Projekt-Chats wurde für diese Portierungsrunde folgender Arb
 - Höherer Aufwand beziehungsweise bewusst vorsichtig zu behandeln sind Desktop-Notizen, RTF-Spezialfälle, FTP und stark WinForms-gebundene Eventlogik.
 - Die aktive Richtung dieses Archivs ist Python/Qt mit PySide6/PyQt6-Kompatibilitätslayer. Alte Slint/QML-Zwischenschritte sind Legacy-Material und nicht mehr aktiver Laufzeitpfad.
 
-Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.15.
+Konkrete Umsetzung dieser Runde steht in `TRANSPILE_NET_TO_PYQT_REPORT.md`; die aktuelle Archivversion ist 0.10.16.
 
 In dieser Runde zusätzlich übernommen: Die offenen nächsten Schritte aus den vorigen Chats lagen bei Einstellungs-/Autosave-Parität, Autostart, alten Config-Details und RichText-Spezialfällen. Darauf bauten 0.10.0 und diese 0.10.1-Runde gezielt auf.
 
@@ -80,3 +80,8 @@ Der Nutzerwunsch war ausdrücklich, den sichtbar funktionierenden GNOME-Start ni
 
 Der Nutzerwunsch war, zuerst Desktop-Notizen näher an WinForms zu bringen und den sichtbar funktionierenden Startpfad nicht wieder zu verändern. Diese Runde konzentriert sich deshalb auf `desknote.vb`, `desknote_kontext.vb` und `desknote_kontext_opacy.vb`: Desktop-Notizen sind nun rahmenlose kompakte Tool-Fenster mit alter `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Read-only-RichText-Fläche, Titel-Farbwechsel, 4000-ms-Collapse-Timer und testbarer Legacy-Geometrie. Der GNOME-Start bleibt sichtbar-first wie in 0.10.13/0.10.14.
 
+
+
+## Weiterführung 0.10.16
+
+Die aktuelle Nutzer-Rückmeldung meldete zwei Regressions: Desktop-Notizen zeigten zwar den Verschiebe-Cursor, ließen sich unter GNOME aber nicht tatsächlich verschieben, und der GNOME-Menüstarter zeigte kein Fenster mehr. Deshalb wurde die Desktop-Notiz-Bewegung auf Qt/Wayland-Systemdrag umgestellt, während der manuelle WinForms-Pfad als Fallback bleibt. Der Menüstart wurde konservativ gehärtet: ein gutes von GNOME geliefertes `DISPLAY` wird nicht mehr überschrieben; `NOTIZEN_KEEP_DISPLAY=1` wird in den `.desktop`-Start übernommen. Zusätzlich wurde die im Audit offene Config-Roundtrip-Lücke für unbekannte Attribute an bekannten Config-Elementen geschlossen.

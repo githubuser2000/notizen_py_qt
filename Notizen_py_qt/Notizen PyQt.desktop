@@ -4,7 +4,7 @@ Type=Application
 Name=Notizen PyQt
 GenericName=Notizenverwaltung
 Comment=Notizen.NET Python/Qt-Port sichtbar starten
-Exec=sh -c 'desktop_file="$1"; shift; appdir="$(dirname "$(readlink -f "$desktop_file")")"; exec "$appdir/notizen-starten.sh" --show --no-tray --reset-window "$@"' notizen-pyqt %k %f
+Exec=sh -c 'desktop_file="$1"; shift; appdir="$(dirname "$(readlink -f "$desktop_file")")"; export NOTIZEN_KEEP_DISPLAY=1; exec "$appdir/notizen-starten.sh" --show --no-tray --reset-window "$@"' notizen-pyqt %k %f
 Icon=notizen-py-qt
 Terminal=false
 Categories=Utility;TextEditor;Office;

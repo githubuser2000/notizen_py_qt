@@ -239,9 +239,16 @@ if QtWidgets is not None:
             self._geometry_transition = False
             self._drag_move = False
             self._drag_resize = False
+            self._system_drag_move = False
+            self._system_drag_resize = False
             self._drag_offset_x = 0
             self._drag_offset_y = 0
             self._title_dark = False
+
+            self._geometry_store_timer = QtCore.QTimer(self)
+            self._geometry_store_timer.setSingleShot(True)
+            self._geometry_store_timer.setInterval(500)
+            self._geometry_store_timer.timeout.connect(self._store_after_system_geometry_change)
 
             self.editor = QtWidgets.QTextEdit(self)
             self.editor.setAcceptRichText(True)
@@ -512,16 +519,104 @@ if QtWidgets is not None:
                 return QtGui.QCursor(POINTING_HAND_CURSOR)
             return QtGui.QCursor(SIZE_ALL_CURSOR)
 
+        def _bottom_right_resize_edges(self) -> Any:
+            try:
+                edge = QtCore.Qt.Edge
+                return edge.RightEdge | edge.BottomEdge
+            except Exception:
+                return QtCore.Qt.RightEdge | QtCore.Qt.BottomEdge
+
+        def _window_handle_for_system_drag(self) -> Any:
+            try:
+                handle = self.windowHandle()
+                if handle is None:
+                    self.createWinId()
+                    handle = self.windowHandle()
+                return handle
+            except Exception:
+                return None
+
+        def _try_start_system_move(self) -> bool:
+            """Ask Qt/the compositor to move this frameless window.
+
+            On GNOME/Wayland a client-side ``setGeometry`` drag can show the
+            right cursor yet still be ignored by the compositor.  Qt exposes
+            ``QWindow.startSystemMove`` for exactly this case.  X11 or older Qt
+            builds fall back to the manual WinForms-style geometry math below.
+            """
+
+            handle = self._window_handle_for_system_drag()
+            starter = getattr(handle, "startSystemMove", None)
+            if starter is None:
+                return False
+            try:
+                started = bool(starter())
+            except Exception:
+                return False
+            if started:
+                self._drag_move = False
+                self._drag_resize = False
+                self._system_drag_move = True
+                self._system_drag_resize = False
+                self._geometry_store_timer.start()
+            return started
+
+        def _try_start_system_resize(self) -> bool:
+            handle = self._window_handle_for_system_drag()
+            starter = getattr(handle, "startSystemResize", None)
+            if starter is None:
+                return False
+            try:
+                started = bool(starter(self._bottom_right_resize_edges()))
+            except Exception:
+                return False
+            if started:
+                self._drag_move = False
+                self._drag_resize = False
+                self._system_drag_move = False
+                self._system_drag_resize = True
+                self._geometry_store_timer.start()
+            return started
+
+        def _grab_for_manual_drag(self) -> None:
+            try:
+                self.grabMouse()
+            except Exception:
+                pass
+
+        def _release_manual_drag_grab(self) -> None:
+            try:
+                self.releaseMouse()
+            except Exception:
+                pass
+
         def _start_move(self, global_pos: Any) -> None:
+            if self._try_start_system_move():
+                return
             geo = self.geometry()
             self._drag_move = True
             self._drag_resize = False
+            self._system_drag_move = False
+            self._system_drag_resize = False
             self._drag_offset_x = int(global_pos.x()) - int(geo.x())
             self._drag_offset_y = int(global_pos.y()) - int(geo.y())
+            self._grab_for_manual_drag()
 
         def _start_resize(self) -> None:
+            if self._try_start_system_resize():
+                return
             self._drag_resize = True
             self._drag_move = False
+            self._system_drag_move = False
+            self._system_drag_resize = False
+            self._grab_for_manual_drag()
+
+        def _store_after_system_geometry_change(self) -> None:
+            if not (self._system_drag_move or self._system_drag_resize):
+                return
+            self._system_drag_move = False
+            self._system_drag_resize = False
+            self._store_after_user_geometry_change()
 
         def _handle_mouse_press(self, event: Any) -> bool:
             self._set_active_opacity()
@@ -575,8 +670,12 @@ if QtWidgets is not None:
             if self._drag_move or self._drag_resize:
                 self._drag_move = False
                 self._drag_resize = False
+                self._release_manual_drag_grab()
                 self._store_after_user_geometry_change()
                 self.update()
+                return True
+            if self._system_drag_move or self._system_drag_resize:
+                self._geometry_store_timer.start()
                 return True
             return False
 
@@ -669,8 +768,15 @@ if QtWidgets is not None:
             finally:
                 painter.end()
 
+        def moveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            if self._system_drag_move or self._system_drag_resize:
+                self._geometry_store_timer.start()
+            super().moveEvent(event)
+
         def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             self._layout_desknote()
+            if self._system_drag_move or self._system_drag_resize:
+                self._geometry_store_timer.start()
             super().resizeEvent(event)
 
         def closeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override

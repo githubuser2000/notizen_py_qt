@@ -1,62 +1,47 @@
-# Weitertranspilierung Notizen.NET → Python/Qt 0.10.15
+# Weitertranspilierung Notizen.NET → Python/Qt 0.10.16
 
 ## Schwerpunkt
 
-Diese Runde setzt die große Rest-Transpilierungsuntersuchung fort, aber priorisiert ausdrücklich zuerst die Desktop-Notizen. Der sichtbare GNOME-Startpfad aus 0.10.13/0.10.14 wurde bewusst nicht erneut umgebaut: Startdateien bleiben sichtbar-first mit `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb` bleibt erhalten und `DISPLAY` wird nicht pauschal gelöscht.
+Diese Runde bearbeitet zuerst die vom Nutzer gemeldeten Regressions aus 0.10.15: Desktop-Notizen ließen sich unter GNOME/Wayland nicht wirklich verschieben, obwohl der Cursor korrekt war; außerdem zeigte der GNOME-Menüstart kein sichtbares Fenster mehr. Danach wurde ein weiterer Punkt aus der Restanalyse umgesetzt: Legacy-Config-Passthrough für unbekannte Attribute an bekannten Config-Elementen.
 
-## Aus Notizen.NET weiter portiert
+## Desktop-Notizen: Verschieben/Skalieren unter GNOME/Wayland
 
-### `desknote.vb`
+0.10.15 portierte die alten `desknote.vb`-Hotzones, benutzte für das tatsächliche Verschieben aber weiterhin clientseitige `setGeometry()`-Moves. Unter GNOME/Wayland kann der Compositor solche Top-Level-Positionsänderungen ignorieren. Das erklärt den Nutzerbefund: Der Cursor sah korrekt aus, aber das Fenster bewegte sich nicht.
 
-Die alte WinForms-Desktop-Notiz war kein normales Editorfenster. Sie war ein rahmenloses Tool-Fenster mit einer kompakten RichTextBox-Fläche und einem nur bei Hover/Fokus sichtbaren Rand-/Titelbereich. 0.10.15 portiert diese Regeln deutlich genauer:
+0.10.16 verwendet deshalb bei rahmenlosen Desktop-Notizen nach Möglichkeit:
 
-- `FormBorderStyle.None` → rahmenloses Qt-Tool-Fenster.
-- `ShowInTaskbar=False`-Entsprechung über Tool-Fenster-Flags.
-- Alte `show2`-Startgeometrie: gespeicherte Vollgeometrie wird beim Anzeigen zu `x+12`, `y+32`, `width-26`, `height-48` kontrahiert.
-- Alte Hover-Geometrie: aktive Notiz expandiert um `x-12`, `y-32`, `width+26`, `height+48`.
-- Alte RichTextBox-Positionen: im Ruhezustand `(0,0,width,height)`, im aktiven Zustand `(12,32,width-26,height-48)`.
-- Desktop-Editor ist read-only und nutzt keine normalen Textinteraktionen; Doppelklick oder Tastendruck öffnet die Notiz im Hauptfenster.
-- Titelstreifen-Zonen: links ausblenden, rechts Desktop-Notiz entfernen, Mitte verschieben.
-- Untere rechte Hotzone skaliert die Notiz wie im alten `desknote_MouseMove`.
-- Titelklick toggelt die alte helle/dunkle Titelfarbe.
-- MouseLeave-/Collapse-Verhalten nutzt die alte 4000-ms-Timer-Idee und 3-Pixel-Toleranz.
-- Neue Notizen werden weiter mit alter Standardgröße, alter Opacity-Logik und alter Zufallsfarbe erzeugt.
+- `QWindow.startSystemMove()` für Verschieben,
+- `QWindow.startSystemResize()` mit rechter/unterer Kante für die untere rechte Resize-Zone.
 
-### `desknote_kontext.vb` und `desknote_kontext_opacy.vb`
+Die alte manuelle WinForms-Geometrie bleibt als Fallback erhalten, falls Qt oder die Plattform diese Systemfunktionen nicht bereitstellt. Für diesen Fallback wird `grabMouse()` genutzt, damit Mausbewegungen nach dem Druck auf die RichText-Fläche nicht verloren gehen.
 
-Das Kontextmenü bleibt funktional, aber näher an den alten Begriffen: Hintergrundfarbe, Transparenz, Ausblenden und Desktop-Notiz schließen. Die alte Transparenzsemantik bleibt erhalten: alte Menüwerte sind Transparenzwerte, intern wird daraus Qt-Opacity.
+## GNOME-Menüstart
 
-## Neue Legacy-API
+Der sichtbare Startpfad aus 0.10.13/0.10.14 bleibt bewusst erhalten: `--show --reset-window --no-tray`, `QT_QPA_PLATFORM=wayland;xcb`, kein pauschales Löschen von `DISPLAY`.
 
-`desktop_note_legacy.py` enthält jetzt Qt-unabhängige Helfer für die alten WinForms-Regeln:
+Geändert wurde nur die zu aggressive Umgebungsreparatur: Ein GNOME-Menüstart kann bereits ein gutes `DISPLAY=:0` liefern. Dieses darf nicht durch eine stale systemd- oder Shell-Umgebung überschrieben werden. Deshalb gilt jetzt:
 
-- `LegacyDeskNoteMouseAction`
-- `LegacyDeskNoteCursor`
-- `legacy_desknote_show2_geometry(...)`
-- `legacy_desknote_editor_rect(...)`
-- `legacy_desknote_label_geometry(...)`
-- `legacy_desknote_mouse_down_action(...)`
-- `legacy_desknote_mouse_move_action(...)`
-- `legacy_desknote_cursor_for_move_action(...)`
-- `legacy_desknote_move_geometry(...)`
-- `legacy_desknote_resize_geometry(...)`
-- `legacy_desknote_clamp_to_work_area(...)`
-- `legacy_desknote_point_outside(...)`
+- `.desktop`-Starts setzen `NOTIZEN_KEEP_DISPLAY=1`,
+- `apply_graphical_session_environment(...)` füllt fehlende Werte und repariert bekannte `DISPLAY=:1`-Shellfälle,
+- ein plausibles vorhandenes `DISPLAY=:0` bleibt unangetastet.
 
-Diese Funktionen sind aus `notizen_py_qt.__init__` exportiert und werden direkt getestet.
+## Legacy-Config-Roundtrip
+
+Die Restanalyse markierte Config-Roundtrip als verbleibendes Risiko. 0.10.13/0.10.14 konservierten bereits Root-Attribute und unbekannte Zusatz-Elemente. 0.10.16 ergänzt nun unbekannte Attribute an bekannten Elementen:
+
+- `scrolls`, `language`, `open`, `files`, `ftp`, `saftycopies`, `autorun`, `desknotes`, `tray`, `main-form`, `x`,
+- Unterelemente wie `open/once-opened`, `tool-stripes/haupt`, `tool-stripes/elements`, `tool-stripes/font`, `tool-stripes/cutpastecopy`.
+
+Beim Speichern überschreiben die aktiv portierten Standardattribute weiter ihre aktuellen Werte; fremde Zusatzattribute bleiben erhalten.
+
+## Neue Tests
+
+- `tests/test_desktop_menu_regressions_1016.py` prüft Display-Erhalt beim Menüstart, stale-Shell-Reparatur und dass die Desktop-Notiz-Klasse Qt-Systemdrag nutzt.
+- `tests/test_legacy_config_passthrough_1016.py` prüft unbekannte Attribute an bekannten Config-Elementen und Unterelementen.
 
 ## Bewusst nicht geändert
 
-Der GNOME-/Shell-Startpfad wurde nicht erneut experimentell verändert. Die Nutzer-Rückmeldung war, dass das Fenster zwischendurch sichtbar startete. 0.10.15 lässt diese sichtbare Startstrategie daher stehen und fokussiert auf Fachportierung.
-
-## Noch offen
-
-Die Desktop-Notizen sind deutlich näher am WinForms-Original, aber nicht jedes Pixel der alten GDI-/RichTextBox-Darstellung ist identisch. Offen bleiben vor allem:
-
-- visuelle Prüfung unter echter GNOME-/Qt-Sitzung,
-- vollständige Nachbildung der alten `set_clientsizes`-/Scrollbar-Autosize-Schleife,
-- pixelgenaue Paint-Optik des alten Titelstreifens,
-- eventuelle Sonderfälle alter RichTextBox-Scrollbars.
+Der Startpfad wurde nicht wieder auf harte Pure-Wayland- oder `DISPLAY`-Löschlogik umgestellt. Die Nutzeranforderung war, den sichtbar gewesenen Startpfad beizubehalten.
 
 ## Validierung
 

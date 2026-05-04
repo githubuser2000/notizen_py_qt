@@ -115,26 +115,39 @@ def apply_graphical_session_environment(
     session: Mapping[str, str],
     notes: list[str] | None = None,
 ) -> bool:
-    """Clone the graphical session variables used by the GNOME menu launcher.
+    """Copy only safe graphical session variables from systemd.
 
-    The user's failing log showed two different environments: the GNOME menu
-    launch used ``DISPLAY=:0`` and showed a window, while the interactive shell
-    inherited ``DISPLAY=:1`` and hung in GTK.  The safest default is therefore
-    not to delete ``DISPLAY``.  Instead, clone the display variables from the
-    desktop session when they are available.
+    The shell failure was a stale ``DISPLAY=:1``.  The GNOME menu regression is
+    the opposite danger: a valid menu environment can be overwritten by a stale
+    systemd user environment.  Therefore this helper now fills missing values
+    and repairs known-bad ``:1`` displays, but it does **not** replace an
+    already plausible display such as ``:0`` supplied by GNOME itself.
     """
 
     changed = False
     notes = notes if notes is not None else []
-    for key in ("XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DISPLAY"):
-        value = session.get(key, "")
-        if not value:
-            continue
+
+    def maybe_set(key: str, value: str, *, reason: str) -> None:
+        nonlocal changed
         old = env.get(key, "")
         if old != value:
             env[key] = value
             changed = True
-            notes.append(f"{key} {old or '<unset>'!r} -> {value!r} from graphical session")
+            notes.append(f"{key} {old or '<unset>'!r} -> {value!r} {reason}")
+
+    for key in ("XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP"):
+        value = session.get(key, "")
+        if value and not env.get(key, ""):
+            maybe_set(key, value, reason="from graphical session")
+
+    value = session.get("DISPLAY", "")
+    old = env.get("DISPLAY", "")
+    if value:
+        if not old:
+            maybe_set("DISPLAY", value, reason="from graphical session")
+        elif old in {":1", ":1.0"} and value not in {":1", ":1.0"}:
+            env.setdefault("NOTIZEN_ORIGINAL_DISPLAY", old)
+            maybe_set("DISPLAY", value, reason="from graphical session stale-shell repair")
     return changed
 
 

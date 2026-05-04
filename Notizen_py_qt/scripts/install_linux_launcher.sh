@@ -66,7 +66,7 @@ Type=Application
 Name=Notizen PyQt
 GenericName=Notizenverwaltung
 Comment=Notizen.NET Python/Qt-Port sichtbar starten
-Exec=$EXEC_PATH --show --no-tray --reset-window %f
+Exec=env NOTIZEN_KEEP_DISPLAY=1 $EXEC_PATH --show --no-tray --reset-window %f
 Icon=notizen-py-qt
 Terminal=false
 Categories=Utility;TextEditor;Office;

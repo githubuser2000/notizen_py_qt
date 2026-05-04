@@ -66,17 +66,27 @@ repair_display_from_session() {
         value="${line#*=}"
         [[ -n "$value" ]] || continue
         case "$key" in
-            DISPLAY|WAYLAND_DISPLAY|XDG_CURRENT_DESKTOP|XDG_SESSION_DESKTOP|XDG_RUNTIME_DIR)
+            XDG_RUNTIME_DIR|WAYLAND_DISPLAY|XDG_CURRENT_DESKTOP|XDG_SESSION_DESKTOP)
                 case "$key" in
-                    DISPLAY) old="${DISPLAY:-}" ;;
+                    XDG_RUNTIME_DIR) old="${XDG_RUNTIME_DIR:-}" ;;
                     WAYLAND_DISPLAY) old="${WAYLAND_DISPLAY:-}" ;;
                     XDG_CURRENT_DESKTOP) old="${XDG_CURRENT_DESKTOP:-}" ;;
                     XDG_SESSION_DESKTOP) old="${XDG_SESSION_DESKTOP:-}" ;;
-                    XDG_RUNTIME_DIR) old="${XDG_RUNTIME_DIR:-}" ;;
                 esac
-                if [[ "$old" != "$value" ]]; then
+                if [[ -z "$old" && "$old" != "$value" ]]; then
                     export "$key=$value"
                     notes+="$key:${old:-<unset>}->$value "
+                fi
+                ;;
+            DISPLAY)
+                old="${DISPLAY:-}"
+                if [[ -z "$old" ]]; then
+                    export DISPLAY="$value"
+                    notes+="DISPLAY:<unset>->$value "
+                elif [[ ( "$old" == ":1" || "$old" == ":1.0" ) && "$value" != ":1" && "$value" != ":1.0" ]]; then
+                    export NOTIZEN_ORIGINAL_DISPLAY="${NOTIZEN_ORIGINAL_DISPLAY:-$old}"
+                    export DISPLAY="$value"
+                    notes+="DISPLAY:$old->$value "
                 fi
                 ;;
         esac

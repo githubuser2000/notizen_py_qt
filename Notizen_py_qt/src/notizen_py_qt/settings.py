@@ -179,6 +179,8 @@ class AppSettings:
     window_height: int = 700
     window_state: str = "Normal"
     legacy_root_attributes: dict[str, str] = field(default_factory=dict)
+    legacy_known_element_attrs: dict[str, dict[str, str]] = field(default_factory=dict)
+    legacy_known_nested_element_attrs: dict[str, dict[str, str]] = field(default_factory=dict)
     legacy_passthrough_elements: list[str] = field(default_factory=list)
 
     @property
@@ -232,7 +234,49 @@ class AppSettings:
             "tray",
             "main-form",
         }
+        known_attrs = {
+            "scrolls": {"choice"},
+            "language": {"choice"},
+            "open": {"file", "directory"},
+            "files": set(LEGACY_RECENT_FILE_SLOTS),
+            "ftp": {"name", "pass", "host", "path"},
+            "saftycopies": {"amount"},
+            "autosave": {"seconds"},
+            "x": {"y", "z", "a"},
+            "tool-stripes": set(),
+            "autorun": {"if", "minimized"},
+            "desknotes": {"show_desknote_borders"},
+            "minimized-show-in": {"taskbar"},
+            "tray": {"gnome-safe-start", "gnome_safe_start"},
+            "main-form": {"x", "y", "width", "height", "windowstate"},
+        }
+        known_nested_attrs = {
+            "open/once-opened": {"file", "timestamp"},
+            "tool-stripes/haupt": {"x", "y"},
+            "tool-stripes/elements": {"x", "y"},
+            "tool-stripes/font": {"x", "y"},
+            "tool-stripes/cutpastecopy": {"x", "y"},
+        }
         self.legacy_root_attributes = dict(root.attrib)
+        self.legacy_known_element_attrs = {}
+        self.legacy_known_nested_element_attrs = {}
+        for element in list(root):
+            if element.tag not in known_top_level:
+                continue
+            extras = {key: value for key, value in element.attrib.items() if key not in known_attrs.get(element.tag, set())}
+            if extras:
+                self.legacy_known_element_attrs[element.tag] = extras
+            for child_element in list(element):
+                path = f"{element.tag}/{child_element.tag}"
+                if path not in known_nested_attrs:
+                    continue
+                child_extras = {
+                    key: value
+                    for key, value in child_element.attrib.items()
+                    if key not in known_nested_attrs[path]
+                }
+                if child_extras:
+                    self.legacy_known_nested_element_attrs[path] = child_extras
         self.legacy_passthrough_elements = [
             ET.tostring(element, encoding="unicode")
             for element in list(root)
@@ -364,57 +408,77 @@ class AppSettings:
 
     def save(self) -> None:
         self.config_dir.mkdir(parents=True, exist_ok=True)
+
+        def attrs_for(path: str, attrs: dict[str, str]) -> dict[str, str]:
+            extras = (
+                self.legacy_known_nested_element_attrs.get(path, {})
+                if "/" in path
+                else self.legacy_known_element_attrs.get(path, {})
+            )
+            merged = dict(extras)
+            merged.update(attrs)
+            return merged
+
         root = ET.Element("notizen-alx", dict(self.legacy_root_attributes))
-        ET.SubElement(root, "scrolls", {"choice": str(self.scrollbars_choice)})
-        ET.SubElement(root, "saftycopies", {"amount": str(self.backup_keep)})
+        ET.SubElement(root, "scrolls", attrs_for("scrolls", {"choice": str(self.scrollbars_choice)}))
+        ET.SubElement(root, "saftycopies", attrs_for("saftycopies", {"amount": str(self.backup_keep)}))
         ET.SubElement(
             root,
             "autorun",
-            {
-                "if": "yes" if self.autorun_enabled else "no",
-                "minimized": "yes" if self.autorun_minimized else "no",
-            },
+            attrs_for(
+                "autorun",
+                {
+                    "if": "yes" if self.autorun_enabled else "no",
+                    "minimized": "yes" if self.autorun_minimized else "no",
+                },
+            ),
         )
         ET.SubElement(
             root,
             "ftp",
-            {
-                "name": self.ftp_username,
-                "pass": self.ftp_password,
-                "host": self.ftp_host,
-                "path": self.ftp_path,
-            },
+            attrs_for(
+                "ftp",
+                {
+                    "name": self.ftp_username,
+                    "pass": self.ftp_password,
+                    "host": self.ftp_host,
+                    "path": self.ftp_path,
+                },
+            ),
         )
         recent = legacy_recent_slots_from_files(self.recent_files)
-        ET.SubElement(root, "files", recent)
-        ET.SubElement(root, "language", {"choice": self.language})
-        opened = ET.SubElement(root, "open", {"file": self.last_file, "directory": self.last_directory})
+        ET.SubElement(root, "files", attrs_for("files", recent))
+        ET.SubElement(root, "language", attrs_for("language", {"choice": self.language}))
+        opened = ET.SubElement(root, "open", attrs_for("open", {"file": self.last_file, "directory": self.last_directory}))
         ET.SubElement(
             opened,
             "once-opened",
-            {"file": self.open_once_file, "timestamp": self.open_once_timestamp},
+            attrs_for("open/once-opened", {"file": self.open_once_file, "timestamp": self.open_once_timestamp}),
         )
         ET.SubElement(
             root,
             "main-form",
-            {
-                "x": str(self.window_x),
-                "y": str(self.window_y),
-                "width": str(self.window_width),
-                "height": str(self.window_height),
-                "windowstate": normalize_window_state(self.window_state),
-            },
+            attrs_for(
+                "main-form",
+                {
+                    "x": str(self.window_x),
+                    "y": str(self.window_y),
+                    "width": str(self.window_width),
+                    "height": str(self.window_height),
+                    "windowstate": normalize_window_state(self.window_state),
+                },
+            ),
         )
-        ET.SubElement(root, "minimized-show-in", {"taskbar": "yes" if self.show_in_taskbar_when_minimized else "no"})
-        ET.SubElement(root, "tray", {"gnome-safe-start": "yes" if self.gnome_safe_tray_start else "no"})
-        ET.SubElement(root, "desknotes", {"show_desknote_borders": "yes" if self.show_desknote_borders else "no"})
-        tool_stripes = ET.SubElement(root, "tool-stripes")
+        ET.SubElement(root, "minimized-show-in", attrs_for("minimized-show-in", {"taskbar": "yes" if self.show_in_taskbar_when_minimized else "no"}))
+        ET.SubElement(root, "tray", attrs_for("tray", {"gnome-safe-start": "yes" if self.gnome_safe_tray_start else "no"}))
+        ET.SubElement(root, "desknotes", attrs_for("desknotes", {"show_desknote_borders": "yes" if self.show_desknote_borders else "no"}))
+        tool_stripes = ET.SubElement(root, "tool-stripes", attrs_for("tool-stripes", {}))
         positions = default_toolstrip_positions()
         positions.update(self.toolstrip_positions)
         for name in ("haupt", "elements", "font", "cutpastecopy"):
             x, y = positions[name]
-            ET.SubElement(tool_stripes, name, {"x": str(x), "y": str(y)})
-        ET.SubElement(root, "x", {"y": "0", "z": "0", "a": str(normalize_autosave_seconds(self.autosave_seconds))})
+            ET.SubElement(tool_stripes, name, attrs_for(f"tool-stripes/{name}", {"x": str(x), "y": str(y)}))
+        ET.SubElement(root, "x", attrs_for("x", {"y": "0", "z": "0", "a": str(normalize_autosave_seconds(self.autosave_seconds))}))
         existing_tags = {element.tag for element in list(root)}
         for xml_text in self.legacy_passthrough_elements:
             try:

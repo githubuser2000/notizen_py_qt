@@ -175,4 +175,4 @@ __all__ = [
     "validate_alx_roundtrip_file",
 ]
 
-__version__ = "0.10.15"
+__version__ = "0.10.16"

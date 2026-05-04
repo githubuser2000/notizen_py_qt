@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.15**.
+Aktueller Stand dieses Archivs: **0.10.16**.
 
 ## Start
 
@@ -63,6 +63,14 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+
+## Änderungen in 0.10.16
+
+- Regression bei Desktop-Notizen behoben: Unter GNOME/Wayland wird für rahmenlose Desktop-Notizen jetzt Qts compositor-seitiges `startSystemMove()` beziehungsweise `startSystemResize()` verwendet. Dadurch bleibt die WinForms-nahe Move-/Resize-Logik erhalten, aber der Fenstermanager darf das Fenster wirklich bewegen. Für X11/ältere Qt-Versionen bleibt die manuelle `setGeometry()`-Fallback-Logik mit `grabMouse()` aktiv.
+- GNOME-Menüstart stabilisiert, ohne den sichtbaren 0.10.13/0.10.14-Startpfad wieder umzubauen: Menü- und `.desktop`-Starts setzen jetzt `NOTIZEN_KEEP_DISPLAY=1`, damit ein von GNOME korrekt geliefertes `DISPLAY=:0` nicht durch eine stale systemd-/Shell-Umgebung überschrieben wird.
+- Die Display-Reparatur übernimmt systemd-Sessionwerte nur noch konservativ: fehlende Werte werden ergänzt, ein bekannt schlechtes `DISPLAY=:1` kann auf `:0` repariert werden, aber ein plausibles vorhandenes Menü-Display wird nicht mehr ersetzt.
+- Legacy-Config-Roundtrip erweitert: unbekannte Attribute an bekannten Config-Elementen wie `scrolls`, `language`, `open`, `files`, `ftp`, `main-form`, `desknotes` und `tool-stripes/*` bleiben jetzt beim Speichern erhalten. Damit werden alte oder externe Config-Zusätze nicht mehr unnötig gelöscht.
+- Neue Tests prüfen GNOME-Menü-Display-Erhalt, stale-Shell-Repair, Desktop-Notiz-Systemdrag-Härtung und bekannte Config-Attribut-Passthroughs.
 
 ## Änderungen in 0.10.15
 
