@@ -31,7 +31,23 @@ for item in src.rglob('*'):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, target)
 PY_COPY
-cp "$PROJECT_ROOT/Notizen PyQt.desktop" "$APPDIR/usr/share/applications/notizen-py-qt.desktop"
+cat > "$APPDIR/usr/share/applications/notizen-py-qt.desktop" <<'APPDIR_DESKTOP'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Notizen PyQt
+GenericName=Notizenverwaltung
+Comment=Notizen.NET Python/Qt-Port sichtbar starten
+Exec=AppRun %f
+Icon=notizen-py-qt
+Terminal=false
+Categories=Utility;TextEditor;Office;
+StartupNotify=true
+StartupWMClass=notizen-py-qt
+NoDisplay=false
+DBusActivatable=false
+MimeType=application/x-notizen-alx;
+APPDIR_DESKTOP
 cp "$PROJECT_ROOT/src/notizen_py_qt/resources/notizen.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/notizen-py-qt.png"
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/usr/bin/env bash
@@ -39,6 +55,8 @@ set -euo pipefail
 HERE="$(cd -- "$(dirname -- "$0")" && pwd)"
 APPDIR_PROJECT="$HERE/usr/src/notizen-py-qt"
 export PYTHONPATH="$APPDIR_PROJECT/src${PYTHONPATH:+:$PYTHONPATH}"
+export NOTIZEN_KEEP_DISPLAY="${NOTIZEN_KEEP_DISPLAY:-1}"
+export NOTIZEN_MENU_LAUNCH="${NOTIZEN_MENU_LAUNCH:-1}"
 export NOTIZEN_FORCE_VISIBLE="${NOTIZEN_FORCE_VISIBLE:-1}"
 export NOTIZEN_RESET_WINDOW="${NOTIZEN_RESET_WINDOW:-1}"
 exec python3 -m notizen_py_qt --show --reset-window --no-tray "$@"

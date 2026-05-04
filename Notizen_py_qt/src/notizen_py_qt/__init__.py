@@ -27,9 +27,18 @@ from .settings import (
 from .tray_support import decide_startup_tray_visibility, is_gnome_session
 from .startup import StartupTargetValidation, build_autostart_command, legacy_autostart_arguments, validate_legacy_startup_target
 from .desktop_note_legacy import (
+    LEGACY_DESKNOTE_AUTORESIZE_IDLE_MS,
+    LEGACY_DESKNOTE_AUTORESIZE_SCROLL_PAD,
+    LEGACY_DESKNOTE_AUTORESIZE_STEP,
+    LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD,
+    LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT,
     LegacyDeskNoteCursor,
     LegacyDeskNoteMouseAction,
     LegacyDeskNoteRect,
+    legacy_desknote_auto_resize_can_grow,
+    legacy_desknote_auto_resize_grow_both_step,
+    legacy_desknote_auto_resize_grow_width_step,
+    legacy_desknote_auto_resize_shrink_step,
     legacy_desknote_clamp_to_work_area,
     legacy_desknote_cursor_for_move_action,
     legacy_desknote_editor_rect,
@@ -140,9 +149,18 @@ __all__ = [
     "is_gnome_session",
     "legacy_opacity_percent_for_transparency_percent",
     "legacy_transparency_menu_options",
+    "LEGACY_DESKNOTE_AUTORESIZE_IDLE_MS",
+    "LEGACY_DESKNOTE_AUTORESIZE_SCROLL_PAD",
+    "LEGACY_DESKNOTE_AUTORESIZE_STEP",
+    "LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD",
+    "LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT",
     "LegacyDeskNoteMouseAction",
     "LegacyDeskNoteCursor",
     "LegacyDeskNoteRect",
+    "legacy_desknote_auto_resize_can_grow",
+    "legacy_desknote_auto_resize_grow_both_step",
+    "legacy_desknote_auto_resize_grow_width_step",
+    "legacy_desknote_auto_resize_shrink_step",
     "legacy_desknote_hover_geometry",
     "legacy_desknote_hidden_border_geometry",
     "legacy_desknote_opacity_for_active",
@@ -227,4 +245,4 @@ __all__ = [
     "windows_association_preview_lines",
 ]
 
-__version__ = "0.10.18"
+__version__ = "0.10.19"

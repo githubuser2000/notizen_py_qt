@@ -171,6 +171,8 @@ def build_linux_desktop_exec(
     launcher: str | Path,
     *,
     use_env_keep_display: bool = True,
+    menu_launch: bool | None = None,
+    force_visible_env: bool | None = None,
     visible: bool = True,
     no_tray: bool = True,
     reset_window: bool = True,
@@ -178,9 +180,20 @@ def build_linux_desktop_exec(
 ) -> str:
     """Build the Linux ``Exec=`` line used by the GNOME launcher."""
 
+    if menu_launch is None:
+        menu_launch = use_env_keep_display
+    if force_visible_env is None:
+        force_visible_env = use_env_keep_display
+
     args: list[str] = []
     if use_env_keep_display:
         args.extend(["env", "NOTIZEN_KEEP_DISPLAY=1"])
+    elif menu_launch or force_visible_env:
+        args.append("env")
+    if menu_launch:
+        args.append("NOTIZEN_MENU_LAUNCH=1")
+    if force_visible_env:
+        args.extend(["NOTIZEN_FORCE_VISIBLE=1", "NOTIZEN_RESET_WINDOW=1"])
     args.append(os.fspath(launcher))
     if visible:
         args.append("--show")

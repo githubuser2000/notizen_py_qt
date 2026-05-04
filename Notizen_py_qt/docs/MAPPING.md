@@ -11,7 +11,7 @@ Aktiver Portierungsstand: **0.10.18**. Diese Datei beschreibt die aktuelle seman
 | `inhalt.vb`, `kontext_inhalt.vb`, `fontsize.vb` | `app.py`, `rtf_utils.py` | RichText-Bearbeitung, Formatierungen, Datum, Bild-Einfügen inklusive BMP/DIB/WMF/EMF-RTF-Brücke, RTF-Codepage-Auswertung über `\ansicpg`, alte Listenmarker `\*\pntext`/`\*\listtext`, RTF-Hyperlink-Felder, sichtbare OLE-Objektplatzhalter, Fokus-abhängige Zwischenablage und RTF/HTML-Brücke sind portiert. |
 | `Datei.vb`, `xml_kram.vb`, `Autosavetimer_Tick` | `alx_io.py`, `settings.py`, `legacy_paths.py`, `legacy_validation.py`, `app.py` | ALX-Laden/Speichern, UTF-16-XML, GZip, `saftycopies`-Backupordner, Backup-Rotation, Passwortmodus, alte Config-Dateien, Standardordner `Documents/Notizen`, Legacy-Dateipfad-Splitting, unbekannte Notizattribute, sparse Desktop-Notizattribute, Datenschutz-Validator, Feedback-Zähler `x.y`/`x.z` und die alte Autosave-Schutzbedingung sind portiert. |
 | `suche.vb`, `suchergebnisse.vb` | `search_logic.py`, `search_results.py`, `SearchDialog`, Schnell-Suchleiste in `app.py` | Suche in aktuellem Knoten oder Gesamtbaum ist portiert; 0.10.5 ergänzt die sichtbare Ergebnisliste und die alte Ganzwort-Tokenregel. |
-| `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen sind in 0.10.15 deutlich näher am alten WinForms-Verhalten: rahmenlos, kompakte `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Wayland-taugliches System-Move/-Resize, Read-only-RichText-Fläche, Opacity-, Farb- und Kontextmenülogik. |
+| `desknote.vb`, `desknote_kontext.vb`, `desknote_kontext_opacy.vb` | `DesktopNoteWindow`, `DesktopNoteState`, `legacy_colors.py`, `desktop_note_legacy.py` | Desktop-Notizen sind deutlich näher am alten WinForms-Verhalten: rahmenlos, kompakte `show2`-Geometrie, Hover-Rand, Titelstreifen-Hide/Close-Zonen, Move-/Resize-Hotzones, Wayland-taugliches System-Move/-Resize, Read-only-RichText-Fläche, Opacity-, Farb- und Kontextmenülogik. In 0.10.19 ist außerdem `set_clientsizes()`/Scrollbar-Autosize mit 10-Pixel-Schritten, 111px-Mindesthöhe und Arbeitsbereich-Klemmung portiert. |
 | `einstellungen.vb` | `settings.py`, Settings-Dialog in `app.py` | Backups, Autosave, Sprache, Scrollleisten, Desktop-Notiz-Ränder, Autostart-Felder und zuletzt geöffnete Dateien sind portiert. |
 | `ftpkram.vb` | `ftp_sync.py`, FTP-Dialog in `app.py` | FTP-Öffnen/Speichern der ALX-Datei ist portiert; 0.10.18 ergänzt Prozentkodierung, Passwort-maskierte Anzeige und testbaren Fake-FTP-Adapter. |
 | `wecker.vb`, `wecker.Designer.vb` | `alarms.py`, Alarm-Dialog in `app.py` | Einmalige und wiederholende Wecker sind portiert; 0.10.13 ergänzt die alte Aktiviert-Checkbox, Wochentags-Checkbox-Zuordnung und Intervall-Einheiten. |
@@ -39,6 +39,13 @@ Aktiver Portierungsstand: **0.10.18**. Diese Datei beschreibt die aktuelle seman
 - `exporters.py` übernimmt Hyperlink-Inhaltsteile in Baum-/Teilbaum-Zusammenfassungen und kombinierten RTF-Exporten.
 - `notizen-starten-venv.sh` ergänzt einen optionalen lokalen venv-Startpfad. `scripts/install_linux_launcher.sh --venv` kann GNOME-Starter auf diesen venv-Pfad zeigen lassen, ohne den normalen Starter zu verändern.
 
+## In 0.10.19 weitergeführt
+
+- Die bislang offene `set_clientsizes`-/Scrollbar-Autosize-Schleife aus `desknote.vb` ist portiert: Desktop-Haftnotizen verkleinern sich zuerst bis knapp vor den Scrollbar-Fall und wachsen anschließend wieder in 10-Pixel-Schritten, mit der alten 111px-Mindesthöhe und Arbeitsbereichsgrenze.
+- `DesktopNoteWindow` triggert diese Größenkorrektur nach `show2()`, nach Text-/RTF-Neuladen und bei Scrollbereichsänderungen. Manuelle Benutzer-Resizes setzen wieder den alten `scroll_manual`-Schutz.
+- Der GNOME-Menüstart wurde erneut geprüft und gehärtet: installierte `.desktop`-Dateien verwenden einen absoluten Launcherpfad, erzwingen sichtbaren Start, setzen `NOTIZEN_MENU_LAUNCH=1`, löschen eine stale `Notizen PyQt.desktop`-Menükopie und aktualisieren Desktop-/MIME-Caches.
+- Noch offen für vollständige historische Gleichheit sind vor allem pixelgenaue Paint-Details der Desktop-Notiz-Ränder/Ecken sowie RichTextBox-/OLE-Sonderfälle jenseits der vorhandenen Platzhalter und Export-Brücken.
+
 ## In 0.10.16 weitergeführt
 
 - Die Desktop-Notiz-Portierung aus 0.10.15 wurde gegen GNOME/Wayland gehärtet: Die Cursorzonen aus `desknote.vb` bleiben erhalten, aber tatsächliches Verschieben/Skalieren nutzt jetzt nach Möglichkeit `QWindow.startSystemMove()` und `QWindow.startSystemResize()`. Damit wird der Wayland-Compositor nicht mehr durch clientseitige Top-Level-`setGeometry()`-Moves blockiert.
@@ -52,7 +59,7 @@ Aktiver Portierungsstand: **0.10.18**. Diese Datei beschreibt die aktuelle seman
 - `DesktopNoteWindow` ist jetzt kein normaler kleiner Editor mehr, sondern ein rahmenloses WinForms-nahes Tool-Fenster: die alte RichTextBox ist read-only, füllt im Ruhezustand die ganze kompakte Notiz und wird bei Hover/Fokus auf die alte Innenposition `(12,32)` verschoben.
 - `desktop_note_legacy.py` bildet die alten Zahlen aus `desknote.vb` testbar ab: `show2`-Geometrie, Hover-/Hidden-Geometrie, Titel-Label-Rechteck, Hide-/Close-Titelzonen, Move-/Resize-Mauszonen, Cursorzuordnung, Arbeitsbereich-Klemmung und MouseLeave-Toleranz.
 - Die Qt-Desktop-Notiz reagiert jetzt näher am Original: Titelstreifen links blendet aus, rechts entfernt die Desktop-Notiz, Doppelklick oder Tastendruck öffnet den Knoten im Hauptfenster, ein Titelklick toggelt die Titelfarbe und nach Verlassen wird wieder in die kompakte Form kollabiert.
-- Die noch offene vollständige visuelle Gleichheit betrifft vor allem die alte `set_clientsizes`-/Scrollbar-Autosize-Schleife und pixelgenaue Paint-Optik; die zentralen WinForms-Geometrie- und Interaktionsregeln sind jetzt aber als Code und Tests nachgezogen.
+- Die früher offene `set_clientsizes`-/Scrollbar-Autosize-Schleife ist in 0.10.19 nachgezogen. Die noch offene vollständige visuelle Gleichheit betrifft vor allem pixelgenaue Paint-Optik der Ränder/Ecken; die zentralen WinForms-Geometrie-, Resize- und Interaktionsregeln sind jetzt als Code und Tests nachgezogen.
 
 ## In 0.10.14 weitergeführt
 

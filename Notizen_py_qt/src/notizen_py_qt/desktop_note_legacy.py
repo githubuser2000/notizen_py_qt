@@ -12,6 +12,10 @@ LEGACY_DESKNOTE_HEADER_HEIGHT = 40
 LEGACY_DESKNOTE_HEADER_BUTTON_WIDTH = 36
 LEGACY_DESKNOTE_BOTTOM_HOTZONE_HEIGHT = 40
 LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT = 111
+LEGACY_DESKNOTE_AUTORESIZE_STEP = 10
+LEGACY_DESKNOTE_AUTORESIZE_SCROLL_PAD = 6
+LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD = 11
+LEGACY_DESKNOTE_AUTORESIZE_IDLE_MS = 400
 LEGACY_DESKNOTE_SCREEN_EDGE_MARGIN = 80
 LEGACY_DESKNOTE_MOUSE_TOLERANCE = 3
 
@@ -48,6 +52,82 @@ class LegacyDeskNoteRect:
 
 def _clamp_positive(value: int, minimum: int = 1) -> int:
     return max(minimum, int(value))
+
+
+def legacy_desknote_auto_resize_can_grow(
+    rect: LegacyDeskNoteRect,
+    work_area_width: int,
+    work_area_height: int,
+    *,
+    pad: int = LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD,
+) -> bool:
+    """Return whether ``set_clientsizes`` may still grow the old form.
+
+    The WinForms code stopped growing when either edge would cross the working
+    area minus eleven pixels: ``Me.Width < Screen.WorkingArea.Width - X - 11``
+    and likewise for height.
+    """
+
+    return (
+        int(rect.width) < int(work_area_width) - int(rect.x) - int(pad)
+        and int(rect.height) < int(work_area_height) - int(rect.y) - int(pad)
+    )
+
+
+def legacy_desknote_auto_resize_shrink_step(
+    rect: LegacyDeskNoteRect,
+    *,
+    step: int = LEGACY_DESKNOTE_AUTORESIZE_STEP,
+    min_height: int = LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT,
+) -> LegacyDeskNoteRect:
+    """Return one diagonal shrink step from ``set_clientsizes_a``.
+
+    ``desknote.vb`` reduced width and height together by ten pixels until the
+    text viewport became slightly too small or the form hit the legacy 111px
+    minimum height guard.
+    """
+
+    next_width = _clamp_positive(int(rect.width) - int(step))
+    next_height = max(int(min_height), int(rect.height) - int(step))
+    return LegacyDeskNoteRect(int(rect.x), int(rect.y), next_width, next_height)
+
+
+def legacy_desknote_auto_resize_grow_both_step(
+    rect: LegacyDeskNoteRect,
+    work_area_width: int,
+    work_area_height: int,
+    *,
+    step: int = LEGACY_DESKNOTE_AUTORESIZE_STEP,
+    pad: int = LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD,
+) -> LegacyDeskNoteRect:
+    """Return one width+height grow step from ``set_clientsizes_b``."""
+
+    max_width = max(1, int(work_area_width) - int(rect.x) - int(pad))
+    max_height = max(1, int(work_area_height) - int(rect.y) - int(pad))
+    if not legacy_desknote_auto_resize_can_grow(rect, work_area_width, work_area_height, pad=pad):
+        return rect
+    return LegacyDeskNoteRect(
+        int(rect.x),
+        int(rect.y),
+        min(max_width, int(rect.width) + int(step)),
+        min(max_height, int(rect.height) + int(step)),
+    )
+
+
+def legacy_desknote_auto_resize_grow_width_step(
+    rect: LegacyDeskNoteRect,
+    work_area_width: int,
+    work_area_height: int,
+    *,
+    step: int = LEGACY_DESKNOTE_AUTORESIZE_STEP,
+    pad: int = LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD,
+) -> LegacyDeskNoteRect:
+    """Return one width-only grow step from ``set_clientsizes_c``."""
+
+    max_width = max(1, int(work_area_width) - int(rect.x) - int(pad))
+    if not legacy_desknote_auto_resize_can_grow(rect, work_area_width, work_area_height, pad=pad):
+        return rect
+    return LegacyDeskNoteRect(int(rect.x), int(rect.y), min(max_width, int(rect.width) + int(step)), int(rect.height))
 
 
 def legacy_opacity_percent_for_transparency_percent(transparency_percent: int | str | None) -> int:

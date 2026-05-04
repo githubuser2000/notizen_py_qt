@@ -27,6 +27,11 @@ from .legacy_colors import legacy_light_color_argb
 from .legacy_paths import LEGACY_DEFAULT_FILENAME, ensure_legacy_documents_notizen_dir
 from .models import DesktopNoteState, NoteDocument, NoteNode, legacy_can_move_before_target, legacy_delete_fallback_node, legacy_move_before_target, legacy_new_next_node, legacy_paste_clone
 from .desktop_note_legacy import (
+    LEGACY_DESKNOTE_AUTORESIZE_IDLE_MS,
+    LEGACY_DESKNOTE_AUTORESIZE_SCROLL_PAD,
+    LEGACY_DESKNOTE_AUTORESIZE_STEP,
+    LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD,
+    LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT,
     LegacyDeskNoteCursor,
     LegacyDeskNoteMouseAction,
     LegacyDeskNoteRect,
@@ -251,11 +256,18 @@ if QtWidgets is not None:
             self._drag_offset_x = 0
             self._drag_offset_y = 0
             self._title_dark = False
+            self._scroll_manual = True
+            self._auto_resize_in_progress = False
 
             self._geometry_store_timer = QtCore.QTimer(self)
             self._geometry_store_timer.setSingleShot(True)
             self._geometry_store_timer.setInterval(500)
             self._geometry_store_timer.timeout.connect(self._store_after_system_geometry_change)
+
+            self._auto_resize_timer = QtCore.QTimer(self)
+            self._auto_resize_timer.setSingleShot(True)
+            self._auto_resize_timer.setInterval(LEGACY_DESKNOTE_AUTORESIZE_IDLE_MS)
+            self._auto_resize_timer.timeout.connect(self._set_clientsizes)
 
             self.editor = QtWidgets.QTextEdit(self)
             self.editor.setAcceptRichText(True)
@@ -273,6 +285,12 @@ if QtWidgets is not None:
             )
             self.editor.installEventFilter(self)
             self.editor.viewport().installEventFilter(self)
+            try:
+                self.editor.document().contentsChanged.connect(self._schedule_auto_resize_from_content)
+                self.editor.verticalScrollBar().rangeChanged.connect(lambda _minimum, _maximum: self._schedule_auto_resize_from_scroll())
+                self.editor.horizontalScrollBar().rangeChanged.connect(lambda _minimum, _maximum: self._schedule_auto_resize_from_scroll())
+            except Exception:
+                pass
 
             self.title_label = QtWidgets.QLabel(node.title, self)
             self.title_label.setAlignment(ALIGN_CENTER)
@@ -353,6 +371,9 @@ if QtWidgets is not None:
             self._restore_geometry()
             self.show()
             self.raise_()
+            self._scroll_manual = False
+            self._schedule_auto_resize(150)
+            QtCore.QTimer.singleShot(1000, self._schedule_auto_resize)
 
         def _layout_desknote(self) -> None:
             editor_rect = legacy_desknote_editor_rect(self.width(), self.height(), expanded=self._expanded)
@@ -365,6 +386,152 @@ if QtWidgets is not None:
                 fg = "black" if self._title_dark else "whitesmoke"
                 self.title_label.setStyleSheet(f"background: transparent; color: {fg};")
             self.update()
+
+        def _schedule_auto_resize(self, delay_ms: int | None = None) -> None:
+            if self._loading or self._auto_resize_in_progress:
+                return
+            if self._drag_move or self._drag_resize or self._system_drag_move or self._system_drag_resize:
+                return
+            try:
+                if delay_ms is None:
+                    self._auto_resize_timer.start()
+                else:
+                    self._auto_resize_timer.start(max(0, int(delay_ms)))
+            except Exception:
+                pass
+
+        def _schedule_auto_resize_from_content(self) -> None:
+            if self._loading or self._auto_resize_in_progress:
+                return
+            self._scroll_manual = False
+            self._schedule_auto_resize()
+
+        def _schedule_auto_resize_from_scroll(self) -> None:
+            if self._loading or self._auto_resize_in_progress or self._scroll_manual:
+                return
+            self._schedule_auto_resize()
+
+        def _candidate_editor_viewport_size(self, window_width: int, window_height: int) -> tuple[int, int]:
+            editor_rect = legacy_desknote_editor_rect(window_width, window_height, expanded=self._expanded)
+            try:
+                chrome_width = max(0, int(self.editor.width()) - int(self.editor.viewport().width()))
+                chrome_height = max(0, int(self.editor.height()) - int(self.editor.viewport().height()))
+            except Exception:
+                chrome_width = 0
+                chrome_height = 0
+            return (
+                max(1, int(editor_rect.width) - chrome_width),
+                max(1, int(editor_rect.height) - chrome_height),
+            )
+
+        def _document_overflow_for_window_size(self, window_width: int, window_height: int) -> tuple[bool, bool, bool]:
+            viewport_width, viewport_height = self._candidate_editor_viewport_size(window_width, window_height)
+            document = self.editor.document()
+            old_text_width = document.textWidth()
+            try:
+                document.setTextWidth(max(1, viewport_width))
+                doc_size = document.size()
+                ideal_width = document.idealWidth()
+            finally:
+                document.setTextWidth(old_text_width)
+            vertical_overflow = float(doc_size.height()) > float(viewport_height + LEGACY_DESKNOTE_AUTORESIZE_SCROLL_PAD)
+            horizontal_overflow = False
+            try:
+                no_wrap = self.editor.lineWrapMode() == QtWidgets.QTextEdit.LineWrapMode.NoWrap
+            except Exception:
+                try:
+                    no_wrap = self.editor.lineWrapMode() == QtWidgets.QTextEdit.NoWrap
+                except Exception:
+                    no_wrap = False
+            if no_wrap:
+                horizontal_overflow = float(ideal_width) > float(viewport_width + LEGACY_DESKNOTE_AUTORESIZE_SCROLL_PAD)
+            return (not vertical_overflow and not horizontal_overflow, vertical_overflow, horizontal_overflow)
+
+        def _work_area_max_window_size(self, rect: LegacyDeskNoteRect) -> tuple[int, int]:
+            try:
+                screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+                if screen is not None:
+                    available = screen.availableGeometry()
+                    right = int(available.x()) + int(available.width())
+                    bottom = int(available.y()) + int(available.height())
+                    return (
+                        max(80, right - int(rect.x) - LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD),
+                        max(LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT, bottom - int(rect.y) - LEGACY_DESKNOTE_AUTORESIZE_WORK_AREA_PAD),
+                    )
+            except Exception:
+                pass
+            return max(80, int(rect.width)), max(LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT, int(rect.height))
+
+        def _auto_resize_target_rect(self) -> LegacyDeskNoteRect:
+            current = self._current_rect()
+            max_width, max_height = self._work_area_max_window_size(current)
+            width = max(80, min(int(current.width), max_width))
+            height = max(LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT, min(int(current.height), max_height))
+            step = LEGACY_DESKNOTE_AUTORESIZE_STEP
+
+            # VB ``set_clientsizes_a``: first shrink diagonally until the next
+            # step would make a scrollbar necessary or hit the 111px guard.
+            for _ in range(500):
+                next_width = width - step
+                next_height = height - step
+                if next_width < 80 or next_height < LEGACY_DESKNOTE_MIN_AUTOSIZE_HEIGHT:
+                    break
+                fits, _vertical, _horizontal = self._document_overflow_for_window_size(next_width, next_height)
+                if not fits:
+                    break
+                width = next_width
+                height = next_height
+
+            # VB ``set_clientsizes_b``: grow width and height while scrollbars
+            # are still required and the working area allows more room.
+            for _ in range(500):
+                fits, vertical, horizontal = self._document_overflow_for_window_size(width, height)
+                if fits:
+                    break
+                old = (width, height)
+                if vertical:
+                    if width < max_width:
+                        width = min(max_width, width + step)
+                    if height < max_height:
+                        height = min(max_height, height + step)
+                # VB ``set_clientsizes_c``: if height still overflows, continue
+                # widening only; with word-wrap this often removes the vertical
+                # scrollbar without making the form taller.
+                if (vertical or horizontal) and width < max_width:
+                    width = min(max_width, width + step)
+                if old == (width, height):
+                    break
+
+            return LegacyDeskNoteRect(int(current.x), int(current.y), width, height)
+
+        def _set_clientsizes(self) -> None:
+            """Port of ``desknote.vb`` ``set_clientsizes`` for sticky notes.
+
+            The old form reacted to RichTextBox scroll range changes by shrinking
+            first and then growing in ten-pixel steps until the text viewport fit
+            again.  Manual user resize/move disables this automatic correction
+            until note text changes or a new scroll range appears.
+            """
+
+            if self._loading or self._auto_resize_in_progress:
+                return
+            if self._scroll_manual:
+                return
+            if self._drag_move or self._drag_resize or self._system_drag_move or self._system_drag_resize:
+                return
+            current = self._current_rect()
+            target = self._auto_resize_target_rect()
+            self._scroll_manual = True
+            if target == current:
+                return
+            self._set_active_opacity()
+            self._auto_resize_in_progress = True
+            try:
+                self._set_geometry_rect(target, transition=False)
+            finally:
+                self._auto_resize_in_progress = False
+            self._store_after_user_geometry_change()
+            self._restore_inactive_opacity()
 
         def _apply_background(self) -> None:
             state = self.node.desktop_note or DesktopNoteState()
@@ -385,12 +552,16 @@ if QtWidgets is not None:
             if self._geometry_transition:
                 return
             geo = self._current_rect()
+            # ``desktop_note`` stores the logical expanded WinForms rectangle;
+            # ``show2`` derives the compact text-only geometry from it.  Persist
+            # the inverse transform when the visible note is currently collapsed.
+            logical = geo if self._expanded else legacy_desknote_hover_geometry(geo)
             if self.node.desktop_note is None:
                 self.node.desktop_note = DesktopNoteState()
-            self.node.desktop_note.x = geo.x
-            self.node.desktop_note.y = geo.y
-            self.node.desktop_note.width = geo.width
-            self.node.desktop_note.height = geo.height
+            self.node.desktop_note.x = logical.x
+            self.node.desktop_note.y = logical.y
+            self.node.desktop_note.width = logical.width
+            self.node.desktop_note.height = logical.height
             self.node.desktop_note.visible = self.isVisible() if visible is None else visible
             self.node.desktop_note.opacity = legacy_desknote_opacity_for_inactive(self._desired_opacity)
 
@@ -402,12 +573,16 @@ if QtWidgets is not None:
 
         def reload_from_node(self) -> None:
             self._loading = True
-            self.setWindowTitle(self.node.title)
-            self.title_label.setText(self.node.title)
-            self.editor.setHtml(rtf_to_html(self.node.rtf))
-            self._apply_background()
-            self._layout_desknote()
-            self._loading = False
+            try:
+                self.setWindowTitle(self.node.title)
+                self.title_label.setText(self.node.title)
+                self.editor.setHtml(rtf_to_html(self.node.rtf))
+                self._apply_background()
+                self._layout_desknote()
+            finally:
+                self._loading = False
+            self._scroll_manual = False
+            self._schedule_auto_resize(150)
 
         def _show_context_menu(self, global_pos: Any) -> None:
             menu = QtWidgets.QMenu(self)
@@ -569,6 +744,7 @@ if QtWidgets is not None:
             return started
 
         def _try_start_system_resize(self) -> bool:
+            self._scroll_manual = True
             handle = self._window_handle_for_system_drag()
             starter = getattr(handle, "startSystemResize", None)
             if starter is None:
@@ -610,6 +786,7 @@ if QtWidgets is not None:
             self._grab_for_manual_drag()
 
         def _start_resize(self) -> None:
+            self._scroll_manual = True
             if self._try_start_system_resize():
                 return
             self._drag_resize = True
@@ -619,10 +796,13 @@ if QtWidgets is not None:
             self._grab_for_manual_drag()
 
         def _store_after_system_geometry_change(self) -> None:
+            resized = self._system_drag_resize
             if not (self._system_drag_move or self._system_drag_resize):
                 return
             self._system_drag_move = False
             self._system_drag_resize = False
+            if resized:
+                self._scroll_manual = True
             self._store_after_user_geometry_change()
 
         def _handle_mouse_press(self, event: Any) -> bool:

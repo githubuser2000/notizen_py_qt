@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.18**.
+Aktueller Stand dieses Archivs: **0.10.19**.
 
 ## Start
 
@@ -62,6 +62,16 @@ Eine Installation als Python-Paket funktioniert weiterhin:
 python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
+
+
+## Änderungen in 0.10.19
+
+- Desktop-Haftnotizen haben jetzt die fehlende Auto-Resize-Portierung aus `desknote.vb`: Die alte `set_clientsizes()`-Logik reagiert wieder auf RichText-/Scrollbar-Änderungen, schrumpft zuerst diagonal in 10-Pixel-Schritten, wächst danach wieder bis der Inhalt passt, respektiert die 111-Pixel-Mindesthöhe und klemmt am verfügbaren Arbeitsbereich.
+- Neue und neu geladene Desktop-Haftnotizen planen nach `show2()` beziehungsweise Textänderungen automatisch einen Resize-Lauf. Manuelle Benutzer-Resizes werden respektiert und nicht sofort wieder überschrieben.
+- Die gespeicherte Desktop-Notiz-Geometrie wird wieder als logisches WinForms-Rechteck behandelt. Dadurch wird nicht mehr versehentlich die kompakte Hover-/Ruhe-Geometrie als dauerhafte Größe gespeichert.
+- Der GNOME-Menüstarter ist gehärtet: Der installierte Starter nutzt einen absoluten `notizen-starten.sh`-Pfad, setzt zusätzlich `NOTIZEN_MENU_LAUNCH=1`, `NOTIZEN_FORCE_VISIBLE=1` und `NOTIZEN_RESET_WINDOW=1`, markiert den Starter soweit möglich als vertrauenswürdig, aktualisiert Desktop-/MIME-Caches und entfernt eine alte stale Menü-Kopie `Notizen PyQt.desktop` aus `~/.local/share/applications`.
+- AppDir-Starter verwenden jetzt `Exec=AppRun %f`, statt die Projekt-`.desktop`-Datei mit relativem Skriptpfad in das AppDir zu kopieren.
+- Audit der noch nicht vollständig nachtranspilierten Bereiche: offen sind vor allem pixelgenaue WinForms-Paint-Details der Haftnotiz-Ecken/Ränder, vollständige OLE-/RichTextBox-Semantik über die vorhandenen Platzhalter hinaus, alte FTP-Dialog-UI-Details und historische Windows-/ClickOnce-Installationsdetails. Die sicherheitskritischen/benutzersichtbaren Desktop-Notiz-Geometrien und der GNOME-Menüstart sind in dieser Runde nachgezogen.
 
 
 ## Änderungen in 0.10.18
