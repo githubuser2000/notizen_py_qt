@@ -1656,20 +1656,29 @@ if QtWidgets is not None:
             return action
 
         def _style_rtf_toolstrip_actions(self) -> None:
-            """Keep RTF actions prominent, but let the toolbar show icons only."""
+            """Keep RTF actions prominent while the toolbar itself stays icon-only."""
 
             try:
                 priority = QtGui.QAction.Priority.HighPriority
             except Exception:
                 priority = None
             if priority is not None:
-                for action in (self.regular_action, self.bold_action, self.italic_action, self.underline_action, self.strike_action):
+                for action in (
+                    self.regular_action,
+                    self.bold_action,
+                    self.italic_action,
+                    self.underline_action,
+                    self.strike_action,
+                ):
                     try:
                         action.setPriority(priority)
                     except Exception:
                         pass
 
         def _standard_toolbar_icon(self, standard_name: str) -> Any:
+            # Kept for compatibility with older code paths, but toolbar icons are
+            # now drawn explicitly so no desktop theme can replace them with
+            # generic square placeholders.
             try:
                 style = self.style()
                 if style is None:
@@ -1678,241 +1687,444 @@ if QtWidgets is not None:
             except Exception:
                 return QtGui.QIcon()
 
-        def _draw_toolbar_icon(self, kind: str, size: int = 36) -> Any:
-            """Draw small consistent toolbar icons without visible text labels.
+        def _draw_toolbar_icon(self, kind: str, size: int = 44) -> Any:
+            """Draw one distinctive, theme-independent toolbar icon.
 
-            The Notizen.NET toolbar used compact text glyphs.  In the PyQt port the
-            toolbar is deliberately icon-only, so these pictograms avoid visible
-            abbreviations while keeping the menus/tooltips descriptive.
+            The old migration used text-only buttons.  The current toolbar must be
+            icon-only, so every visible command receives a semantic pictogram here
+            instead of falling back to standard desktop theme icons.  That avoids
+            the GNOME/Qt cases where unknown standard icons become identical
+            empty squares.
             """
 
             pixmap = QtGui.QPixmap(size, size)
-            pixmap.fill(QtGui.QColor(0, 0, 0, 0))
+            pixmap.fill(QtCore.Qt.GlobalColor.transparent)
             painter = QtGui.QPainter(pixmap)
             try:
                 painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
             except Exception:
-                try:
-                    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
-                except Exception:
-                    pass
+                painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+
+            u = size / 44.0
             stroke = QtGui.QColor(45, 52, 64)
-            accent = QtGui.QColor(46, 134, 193)
-            warm = QtGui.QColor(244, 208, 63)
-            ok = QtGui.QColor(39, 174, 96)
-            danger = QtGui.QColor(192, 57, 43)
-            pen = QtGui.QPen(stroke)
-            pen.setWidthF(max(2.2, size / 13.5))
-            try:
-                pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-                pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
-            except Exception:
-                pass
-            painter.setPen(pen)
-            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            u = size / 36.0
+            blue = QtGui.QColor(36, 120, 190)
+            green = QtGui.QColor(46, 154, 88)
+            yellow = QtGui.QColor(238, 185, 49)
+            orange = QtGui.QColor(218, 118, 39)
+            red = QtGui.QColor(201, 66, 66)
+            purple = QtGui.QColor(126, 87, 194)
+            cyan = QtGui.QColor(24, 151, 164)
+            grey = QtGui.QColor(116, 124, 137)
+            white = QtGui.QColor(255, 255, 255)
+            pale = {
+                "file": QtGui.QColor(231, 243, 255),
+                "tree": QtGui.QColor(231, 248, 235),
+                "edit": QtGui.QColor(246, 246, 248),
+                "rtf": QtGui.QColor(246, 246, 248),
+                "color": QtGui.QColor(255, 247, 218),
+                "danger": QtGui.QColor(255, 238, 238),
+                "note": QtGui.QColor(255, 250, 214),
+                "misc": QtGui.QColor(238, 244, 255),
+            }
 
-            def set_pen(color=stroke, width=None):
-                p = QtGui.QPen(color)
-                p.setWidthF(width if width is not None else max(2.2, size / 13.5))
+            def group_for(k: str) -> str:
+                if k.startswith(("file_", "open_", "save_", "backup_", "print_", "export_", "import_", "ftp", "close_doc")):
+                    return "file"
+                if k.startswith(("tree_", "move_", "expand", "collapse", "toggle", "unify")):
+                    return "tree"
+                if k in {"delete_node", "delete_text", "exit_app"}:
+                    return "danger"
+                if k in {"desktop_note", "sticky_note"}:
+                    return "note"
+                if k in {"text_color", "highlight", "bg_color", "fg_color"}:
+                    return "color"
+                if k in {"bold", "italic", "underline", "strike", "regular", "bigger", "smaller", "align_left", "align_center", "align_right", "align_justify", "bullet", "scrollbars"}:
+                    return "rtf"
+                if k in {"cut", "copy", "paste", "paste_child", "undo", "redo", "rename", "insert_image", "insert_date", "search"}:
+                    return "edit"
+                return "misc"
+
+            def set_pen(color=stroke, width: float | None = None) -> None:
+                pen = QtGui.QPen(color)
+                pen.setWidthF(width if width is not None else max(2.0, size / 18.0))
                 try:
-                    p.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-                    p.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+                    pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+                    pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
                 except Exception:
                     pass
-                painter.setPen(p)
+                painter.setPen(pen)
 
-            def line(x1, y1, x2, y2):
+            def no_pen() -> None:
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+
+            def no_brush() -> None:
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+
+            def brush(color: Any) -> None:
+                painter.setBrush(color)
+
+            def line(x1: float, y1: float, x2: float, y2: float, color=stroke, width: float | None = None) -> None:
+                set_pen(color, width)
                 painter.drawLine(QtCore.QPointF(x1 * u, y1 * u), QtCore.QPointF(x2 * u, y2 * u))
 
-            def rect(x, y, w, h, fill=None, radius=3):
+            def rect(x: float, y: float, w: float, h: float, fill: Any | None = None, outline=stroke, radius: float = 3.0, width: float | None = None) -> None:
+                set_pen(outline, width)
                 if fill is None:
-                    painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                    no_brush()
                 else:
-                    painter.setBrush(fill)
+                    brush(fill)
                 painter.drawRoundedRect(QtCore.QRectF(x * u, y * u, w * u, h * u), radius * u, radius * u)
-                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                no_brush()
 
-            def circle(cx, cy, r, fill=None):
+            def circle(cx: float, cy: float, r: float, fill: Any | None = None, outline=stroke, width: float | None = None) -> None:
+                set_pen(outline, width)
                 if fill is None:
-                    painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                    no_brush()
                 else:
-                    painter.setBrush(fill)
+                    brush(fill)
                 painter.drawEllipse(QtCore.QPointF(cx * u, cy * u), r * u, r * u)
-                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                no_brush()
 
-            def text_lines(x=9, widths=(17, 14, 19), y0=10, gap=7, color=stroke, width=None, slant=0):
-                set_pen(color, width)
+            def dot(cx: float, cy: float, r: float, color=stroke) -> None:
+                no_pen()
+                brush(color)
+                painter.drawEllipse(QtCore.QPointF(cx * u, cy * u), r * u, r * u)
+                no_brush()
+                set_pen()
+
+            def plus(cx: float, cy: float, color=green) -> None:
+                line(cx, cy - 5, cx, cy + 5, color, max(2.5, size / 14.5))
+                line(cx - 5, cy, cx + 5, cy, color, max(2.5, size / 14.5))
+
+            def minus(cx: float, cy: float, color=red) -> None:
+                line(cx - 5, cy, cx + 5, cy, color, max(2.5, size / 14.5))
+
+            def cross(cx: float, cy: float, color=red) -> None:
+                line(cx - 4.5, cy - 4.5, cx + 4.5, cy + 4.5, color, max(2.5, size / 15.0))
+                line(cx + 4.5, cy - 4.5, cx - 4.5, cy + 4.5, color, max(2.5, size / 15.0))
+
+            def arrow_right(x: float, y: float, color=blue) -> None:
+                line(x - 6, y, x + 5, y, color, max(2.4, size / 16.0))
+                line(x + 5, y, x + 1, y - 4, color, max(2.4, size / 16.0))
+                line(x + 5, y, x + 1, y + 4, color, max(2.4, size / 16.0))
+
+            def arrow_left(x: float, y: float, color=blue) -> None:
+                line(x + 6, y, x - 5, y, color, max(2.4, size / 16.0))
+                line(x - 5, y, x - 1, y - 4, color, max(2.4, size / 16.0))
+                line(x - 5, y, x - 1, y + 4, color, max(2.4, size / 16.0))
+
+            def arrow_down(x: float, y: float, color=blue) -> None:
+                line(x, y - 6, x, y + 5, color, max(2.4, size / 16.0))
+                line(x, y + 5, x - 4, y + 1, color, max(2.4, size / 16.0))
+                line(x, y + 5, x + 4, y + 1, color, max(2.4, size / 16.0))
+
+            def arrow_up(x: float, y: float, color=blue) -> None:
+                line(x, y + 6, x, y - 5, color, max(2.4, size / 16.0))
+                line(x, y - 5, x - 4, y - 1, color, max(2.4, size / 16.0))
+                line(x, y - 5, x + 4, y - 1, color, max(2.4, size / 16.0))
+
+            def text_lines(x: float = 11, y0: float = 14, widths=(18, 14, 20), gap: float = 7, color=stroke, width: float | None = None, slant: float = 0) -> None:
                 for idx, w in enumerate(widths):
                     y = y0 + idx * gap
-                    line(x + slant * idx, y, x + w + slant * idx, y)
-                set_pen(stroke)
+                    line(x + slant * idx, y, x + w + slant * idx, y, color, width)
 
-            if kind == "page_plus":
-                rect(9, 5, 17, 24)
-                line(22, 5, 26, 9)
-                line(26, 9, 22, 9)
-                text_lines(12, (10, 12), 14, 6)
-                set_pen(accent)
-                line(29, 22, 29, 32); line(24, 27, 34, 27)
-                set_pen()
-            elif kind == "printer":
-                rect(7, 12, 22, 11); rect(11, 4, 14, 9); rect(11, 23, 14, 8)
-                circle(25, 17, 1.2, accent)
-            elif kind == "tree_add":
-                line(8, 6, 8, 30); line(8, 12, 17, 12); line(8, 24, 17, 24)
-                rect(18, 8, 9, 8); rect(18, 20, 9, 8)
-                set_pen(accent); line(30, 21, 30, 31); line(25, 26, 35, 26); set_pen()
+            def draw_page(x=10, y=6, w=19, h=27, fill=white) -> None:
+                rect(x, y, w, h, fill, stroke, 2.6)
+                line(x + w - 5, y, x + w, y + 5, grey, max(1.5, size / 24.0))
+                line(x + w, y + 5, x + w - 5, y + 5, grey, max(1.5, size / 24.0))
+
+            def draw_folder(x=7, y=13, w=28, h=20) -> None:
+                rect(x, y, w, h, QtGui.QColor(255, 218, 93), stroke, 2.8)
+                line(x + 2, y, x + 9, y - 5, stroke, max(2.0, size / 18.0))
+                line(x + 9, y - 5, x + 17, y - 5, stroke, max(2.0, size / 18.0))
+
+            def draw_disk(x=9, y=7) -> None:
+                rect(x, y, 25, 28, QtGui.QColor(95, 158, 217), stroke, 3)
+                rect(x + 5, y + 3, 13, 7, white, grey, 1.5)
+                rect(x + 6, y + 18, 13, 8, white, stroke, 1.5)
+                line(x + 21, y + 4, x + 21, y + 11, stroke, max(1.6, size / 24.0))
+
+            def draw_printer() -> None:
+                rect(8, 16, 28, 13, QtGui.QColor(230, 233, 238), stroke, 3)
+                rect(13, 7, 18, 11, white, stroke, 2)
+                rect(13, 27, 18, 8, white, stroke, 2)
+                dot(31, 22, 1.6, green)
+
+            def draw_tree(x=8, y=8) -> None:
+                line(x, y, x, y + 26, green, max(2.0, size / 17.0))
+                line(x, y + 7, x + 9, y + 7, green)
+                line(x, y + 19, x + 9, y + 19, green)
+                rect(x + 10, y + 3, 10, 8, white, stroke, 2)
+                rect(x + 10, y + 15, 10, 8, white, stroke, 2)
+
+            def draw_pencil() -> None:
+                line(12, 30, 29, 13, orange, max(4.0, size / 10.5))
+                line(27, 11, 32, 16, stroke, max(2.4, size / 16.0))
+                line(10, 32, 14, 28, stroke, max(2.0, size / 18.0))
+
+            def draw_magnifier() -> None:
+                circle(18, 18, 8, None, stroke)
+                line(24, 24, 34, 34, blue, max(3.0, size / 13.0))
+
+            def draw_clock(cx=22, cy=22, r=9) -> None:
+                circle(cx, cy, r, None, stroke)
+                line(cx, cy, cx, cy - 5, stroke, max(1.8, size / 22.0))
+                line(cx, cy, cx + 5, cy + 2, stroke, max(1.8, size / 22.0))
+
+            def draw_palette() -> None:
+                circle(20, 20, 12, QtGui.QColor(255, 248, 225), stroke)
+                dot(15, 16, 2, red); dot(21, 14, 2, blue); dot(25, 20, 2, green); dot(18, 25, 2, yellow)
+                circle(27, 27, 3, pale["color"], pale["color"], width=1)
+
+            def draw_brush(color=blue) -> None:
+                line(26, 11, 13, 24, stroke, max(3.4, size / 12.0))
+                rect(9, 23, 8, 7, color, stroke, 2)
+
+            def draw_globe() -> None:
+                circle(22, 22, 12, None, cyan)
+                line(10, 22, 34, 22, cyan, max(1.7, size / 25.0))
+                line(22, 10, 22, 34, cyan, max(1.7, size / 25.0))
+                line(14, 15, 30, 15, cyan, max(1.4, size / 28.0))
+                line(14, 29, 30, 29, cyan, max(1.4, size / 28.0))
+
+            # subtle colored card behind every glyph, but never as the only pictogram
+            bg = pale[group_for(kind)]
+            rect(3, 3, 38, 38, bg, QtGui.QColor(212, 217, 224), 7, max(1.0, size / 44.0))
+            set_pen()
+
+            if kind == "new_file":
+                draw_page(); text_lines(13, 16, (12, 10), 6); plus(33, 31)
+            elif kind == "open_file":
+                draw_folder(); arrow_up(31, 14, blue)
+            elif kind == "save_file":
+                draw_disk()
+            elif kind == "save_as":
+                draw_disk(); draw_pencil()
+            elif kind == "backup_create":
+                draw_disk(7, 7); draw_clock(31, 30, 7)
+            elif kind == "backup_open":
+                draw_folder(); draw_clock(31, 30, 7)
+            elif kind == "close_doc":
+                draw_page(); cross(31, 31)
+            elif kind == "exit_app":
+                rect(10, 8, 16, 28, white, stroke, 2); arrow_right(30, 22, red)
+            elif kind == "password":
+                circle(16, 23, 5, None, stroke); line(20, 23, 34, 23, yellow, max(3.0, size / 13.5)); line(29, 23, 29, 28, yellow); line(33, 23, 33, 27, yellow)
+            elif kind == "ftp":
+                draw_globe(); arrow_right(31, 13, blue); arrow_left(13, 31, green)
+            elif kind == "print_note":
+                draw_printer(); draw_page(17, 8, 11, 14)
+            elif kind == "print_subtree":
+                draw_printer(); draw_tree(10, 5)
+            elif kind == "print_all":
+                draw_printer(); rect(14, 6, 12, 8, white, stroke, 1.8); rect(18, 9, 12, 8, white, stroke, 1.8)
+            elif kind.startswith("import_"):
+                draw_page(); arrow_down(31, 16, green)
+                if kind == "import_rtf":
+                    draw_brush(purple)
+                elif kind == "import_config":
+                    draw_clock(18, 24, 6)
+                else:
+                    text_lines(14, 17, (11, 13, 9), 5)
+            elif kind.startswith("export_"):
+                draw_page(); arrow_right(31, 22, blue)
+                if "html" in kind:
+                    line(13, 18, 17, 14, purple); line(13, 18, 17, 22, purple); line(23, 14, 27, 18, purple); line(23, 22, 27, 18, purple)
+                elif "rtf" in kind:
+                    draw_brush(purple)
+                elif "unicode" in kind:
+                    draw_globe()
+                elif "ansi" in kind:
+                    dot(15, 16, 1.4, grey); dot(20, 16, 1.4, grey); dot(25, 16, 1.4, grey); text_lines(14, 22, (13,), 5)
+                else:
+                    text_lines(13, 16, (12, 15, 9), 5)
+                if "all" in kind:
+                    plus(13, 31, green)
+                if "node" in kind:
+                    draw_tree(7, 25)
+            elif kind == "tree_child":
+                draw_tree(); plus(34, 30)
             elif kind == "tree_sibling":
-                line(8, 6, 8, 30); line(8, 12, 17, 12); line(8, 24, 17, 24)
-                rect(18, 8, 9, 8); rect(18, 20, 9, 8)
-                set_pen(accent); line(30, 7, 30, 17); line(25, 12, 35, 12); set_pen()
+                draw_tree(); plus(34, 12)
             elif kind == "rename":
-                rect(6, 24, 17, 6, warm)
-                set_pen(accent); line(10, 23, 25, 8); line(24, 7, 29, 12); set_pen()
-            elif kind == "unify":
-                rect(6, 8, 9, 8); rect(6, 22, 9, 8); rect(22, 15, 9, 8, ok)
-                line(15, 12, 22, 18); line(15, 26, 22, 20)
-            elif kind == "sticky_note":
-                rect(6, 5, 24, 26, QtGui.QColor(255, 244, 150))
-                text_lines(11, (15, 15, 10), 13, 6)
+                draw_page(8, 9, 20, 25); draw_pencil()
+            elif kind in {"delete_node", "delete_text"}:
+                if kind == "delete_text":
+                    text_lines(11, 14, (18, 14, 17), 6)
+                else:
+                    draw_tree(7, 9)
+                cross(31, 29)
+            elif kind == "unify_subtree":
+                rect(8, 10, 9, 8, white, stroke, 2); rect(8, 26, 9, 8, white, stroke, 2); rect(27, 18, 9, 8, QtGui.QColor(209, 242, 221), stroke, 2); line(17, 14, 27, 21, green); line(17, 30, 27, 23, green)
+            elif kind == "unify_all":
+                draw_tree(6, 7); rect(28, 18, 8, 8, QtGui.QColor(209, 242, 221), stroke, 2); arrow_right(27, 22, green)
+            elif kind == "desktop_note":
+                rect(8, 7, 27, 30, QtGui.QColor(255, 238, 111), stroke, 3); text_lines(13, 15, (15, 15, 10), 6); line(27, 37, 35, 29, yellow)
+            elif kind == "bg_color":
+                rect(8, 8, 26, 25, QtGui.QColor(255, 238, 111), stroke, 3); draw_brush(yellow)
+            elif kind == "fg_color":
+                text_lines(10, 14, (22, 18, 20), 7); draw_palette()
+            elif kind == "move_up":
+                draw_tree(8, 10); arrow_up(33, 15, blue)
+            elif kind == "move_down":
+                draw_tree(8, 8); arrow_down(33, 27, blue)
+            elif kind == "toggle_node":
+                draw_tree(8, 9); arrow_right(33, 22, blue)
+            elif kind == "expand_all":
+                draw_tree(6, 7); arrow_down(34, 16, green); arrow_down(34, 29, green)
+            elif kind == "collapse_all":
+                draw_tree(6, 7); arrow_up(34, 16, red); arrow_up(34, 29, red)
+            elif kind == "cut":
+                circle(14, 14, 3, white, stroke); circle(14, 30, 3, white, stroke); line(17, 16, 31, 8, grey); line(17, 28, 31, 36, grey); line(21, 22, 34, 10, grey)
+            elif kind == "copy":
+                rect(11, 13, 17, 21, white, stroke, 2); rect(17, 8, 17, 21, QtGui.QColor(239, 247, 255), stroke, 2)
+            elif kind == "paste":
+                rect(10, 11, 24, 28, white, stroke, 3); rect(15, 6, 14, 8, QtGui.QColor(255, 248, 225), stroke, 2); arrow_down(30, 27, green)
+            elif kind == "paste_child":
+                rect(9, 11, 21, 27, white, stroke, 3); draw_tree(25, 19); plus(34, 33)
+            elif kind == "undo":
+                arrow_left(18, 22, blue); line(14, 22, 31, 22, blue); line(31, 22, 31, 30, blue)
+            elif kind == "redo":
+                arrow_right(26, 22, green); line(13, 22, 30, 22, green); line(13, 22, 13, 30, green)
+            elif kind == "insert_image":
+                rect(7, 9, 30, 25, white, stroke, 3); dot(16, 17, 2.5, yellow); line(10, 31, 19, 22, green); line(19, 22, 25, 28, green); line(25, 28, 35, 17, green)
+            elif kind == "insert_date":
+                rect(8, 10, 28, 28, white, stroke, 3); line(13, 6, 13, 15); line(31, 6, 31, 15); line(8, 18, 36, 18); draw_clock(25, 29, 6)
             elif kind == "search":
-                circle(15, 15, 8); line(21, 21, 31, 31)
+                draw_magnifier()
             elif kind == "alarm":
-                circle(18, 20, 9); line(18, 20, 18, 14); line(18, 20, 23, 22); line(11, 8, 7, 4); line(25, 8, 29, 4)
+                circle(22, 24, 11, QtGui.QColor(255, 250, 250), stroke); line(22, 24, 22, 16); line(22, 24, 28, 27); line(13, 11, 8, 7, red); line(31, 11, 36, 7, red)
             elif kind == "stats":
-                rect(7, 21, 5, 9, accent); rect(16, 15, 5, 15, ok); rect(25, 9, 5, 21, warm)
-            elif kind == "import":
-                rect(7, 7, 22, 23); set_pen(accent); line(18, 8, 18, 24); line(13, 19, 18, 24); line(23, 19, 18, 24); set_pen()
-            elif kind == "image":
-                rect(6, 7, 24, 20); circle(13, 13, 2.2, warm); line(9, 24, 16, 17); line(16, 17, 21, 22); line(21, 22, 28, 14)
-            elif kind == "date":
-                rect(7, 8, 22, 21); line(11, 5, 11, 12); line(25, 5, 25, 12); line(7, 15, 29, 15); circle(18, 22, 3.2, accent)
+                rect(10, 25, 5, 10, blue, stroke, 1.5); rect(19, 18, 5, 17, green, stroke, 1.5); rect(28, 11, 5, 24, yellow, stroke, 1.5)
+            elif kind == "about":
+                circle(22, 22, 13, QtGui.QColor(232, 243, 255), blue); line(22, 20, 22, 30, blue); dot(22, 14, 1.8, blue)
+            elif kind == "settings":
+                circle(22, 22, 5, white, stroke); 
+                for x1, y1, x2, y2 in ((22,7,22,12),(22,32,22,37),(7,22,12,22),(32,22,37,22),(11,11,15,15),(29,29,33,33),(29,15,33,11),(11,33,15,29)):
+                    line(x1, y1, x2, y2, grey, max(2.2, size / 17.0))
+            elif kind == "regular":
+                text_lines(10, 14, (22, 17, 22), 7); line(31, 10, 11, 33, red, max(2.5, size / 16.0))
             elif kind == "bold":
-                # thick text rows: no letter abbreviation, just heavy formatted text
-                text_lines(8, (22, 18, 22), 11, 7, stroke, width=max(4.2, size / 7.5))
+                text_lines(9, 13, (25, 20, 25), 8, stroke, max(4.2, size / 9.0))
             elif kind == "italic":
-                # slanted text rows
-                text_lines(8, (21, 17, 22), 10, 7, stroke, width=max(2.6, size / 12), slant=3)
-                line(25, 8, 17, 29)
+                text_lines(9, 12, (23, 18, 23), 8, stroke, max(2.4, size / 16.0), slant=3.5); line(30, 10, 19, 34, purple)
             elif kind == "underline":
-                text_lines(9, (19, 17), 11, 7)
-                set_pen(accent, max(3.0, size / 10)); line(9, 28, 28, 28); set_pen()
+                text_lines(10, 13, (22, 17), 8); line(9, 33, 32, 33, blue, max(3.0, size / 13.5))
             elif kind == "strike":
-                text_lines(9, (19, 17, 19), 10, 7)
-                set_pen(danger, max(3.0, size / 10)); line(7, 18, 30, 18); set_pen()
-            elif kind == "normal":
-                text_lines(9, (19, 16, 19), 10, 7)
-                set_pen(accent); line(28, 8, 8, 28); set_pen()
+                text_lines(10, 13, (22, 17, 22), 8); line(8, 22, 34, 22, red, max(3.0, size / 13.5))
             elif kind == "bigger":
-                text_lines(7, (16, 13, 16), 12, 6)
-                set_pen(accent); line(28, 10, 28, 22); line(22, 16, 34, 16); set_pen()
+                text_lines(8, 15, (15, 13, 15), 7); arrow_up(32, 18, green)
             elif kind == "smaller":
-                text_lines(7, (16, 13, 16), 12, 6)
-                set_pen(accent); line(22, 16, 34, 16); set_pen()
+                text_lines(8, 13, (15, 13, 15), 7); arrow_down(32, 27, red)
+            elif kind == "align_left":
+                text_lines(10, 13, (24, 18, 24, 14), 6)
+            elif kind == "align_center":
+                line(10, 13, 34, 13); line(14, 19, 30, 19); line(9, 25, 35, 25); line(15, 31, 29, 31)
+            elif kind == "align_right":
+                line(10, 13, 34, 13); line(16, 19, 34, 19); line(10, 25, 34, 25); line(20, 31, 34, 31)
+            elif kind == "align_justify":
+                for y in (13, 19, 25, 31):
+                    line(10, y, 34, y)
             elif kind == "text_color":
-                text_lines(10, (16, 12), 10, 7)
-                painter.setPen(QtCore.Qt.PenStyle.NoPen); painter.setBrush(accent)
-                painter.drawRoundedRect(QtCore.QRectF(8*u, 28*u, 22*u, 4*u), 1.4*u, 1.4*u)
-                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush); set_pen()
+                text_lines(11, 14, (20, 16), 7); no_pen(); brush(blue); painter.drawRoundedRect(QtCore.QRectF(9*u, 33*u, 26*u, 5*u), 2*u, 2*u); no_brush(); set_pen()
             elif kind == "highlight":
-                painter.setPen(QtCore.Qt.PenStyle.NoPen); painter.setBrush(warm)
-                painter.drawRoundedRect(QtCore.QRectF(8*u, 18*u, 22*u, 8*u), 2*u, 2*u)
-                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush); set_pen(); text_lines(10, (16, 12), 12, 7)
+                no_pen(); brush(QtGui.QColor(255, 226, 84)); painter.drawRoundedRect(QtCore.QRectF(9*u, 23*u, 26*u, 9*u), 2*u, 2*u); no_brush(); set_pen(); text_lines(11, 14, (20, 16), 7)
             elif kind == "bullet":
-                circle(8, 11, 2.0, stroke); circle(8, 18, 2.0, stroke); circle(8, 25, 2.0, stroke)
-                line(14, 11, 28, 11); line(14, 18, 28, 18); line(14, 25, 28, 25)
+                dot(12, 14, 2, stroke); dot(12, 22, 2, stroke); dot(12, 30, 2, stroke); line(18, 14, 33, 14); line(18, 22, 33, 22); line(18, 30, 33, 30)
             elif kind == "scrollbars":
-                rect(5, 5, 26, 26); line(5, 25, 31, 25); line(25, 5, 25, 31); line(29, 10, 29, 21); line(10, 29, 21, 29)
+                rect(8, 8, 28, 28, white, stroke, 3); line(8, 29, 36, 29, grey); line(29, 8, 29, 36, grey); arrow_down(33, 22, blue); arrow_right(22, 33, blue)
             else:
-                rect(7, 7, 22, 22)
+                # Deliberately distinctive fallback: diamond with question slash,
+                # never just an empty square.  Tests use icon kind coverage to keep
+                # normal toolbar actions away from this branch.
+                rect(9, 9, 26, 26, QtGui.QColor(255, 245, 245), red, 5)
+                line(13, 31, 31, 13, red)
+                circle(22, 22, 5, None, red)
+
             painter.end()
             return QtGui.QIcon(pixmap)
 
         def _assign_toolbar_icons(self) -> None:
-            custom_icons = {
-                self.new_action: "page_plus",
-                self.print_note_action: "printer",
-                self.print_subtree_action: "printer",
-                self.print_all_action: "printer",
-                self.add_child_action: "tree_add",
-                self.add_sibling_action: "tree_sibling",
-                self.rename_action: "rename",
-                self.unify_action: "unify",
-                self.unify_root_action: "unify",
-                self.desk_note_action: "sticky_note",
-                self.search_action: "search",
-                self.alarm_action: "alarm",
-                self.stats_action: "stats",
-                self.import_txt_action: "import",
-                self.import_rtf_action: "import",
-                self.insert_image_action: "image",
-                self.insert_date_action: "date",
-                self.regular_action: "normal",
-                self.bold_action: "bold",
-                self.italic_action: "italic",
-                self.underline_action: "underline",
-                self.strike_action: "strike",
-                self.bigger_action: "bigger",
-                self.smaller_action: "smaller",
-                self.text_color_action: "text_color",
-                self.highlight_color_action: "highlight",
-                self.bullet_action: "bullet",
-                self.cycle_scrollbars_action: "scrollbars",
-            }
-            standard_icons = {
-                self.open_action: "SP_DialogOpenButton",
-                self.save_action: "SP_DialogSaveButton",
-                self.save_as_action: "SP_DialogSaveButton",
-                self.backup_now_action: "SP_BrowserReload",
-                self.open_backup_action: "SP_DialogOpenButton",
-                self.close_doc_action: "SP_DialogCloseButton",
-                self.exit_action: "SP_DialogCloseButton",
-                self.password_action: "SP_DialogResetButton",
-                self.ftp_action: "SP_DriveNetIcon",
-                self.export_html_action: "SP_ArrowRight",
-                self.export_rtf_action: "SP_ArrowRight",
-                self.export_txt_action: "SP_ArrowRight",
-                self.export_ansi_txt_action: "SP_ArrowRight",
-                self.export_unicode_txt_action: "SP_ArrowRight",
-                self.export_all_html_action: "SP_ArrowRight",
-                self.export_all_rtf_action: "SP_ArrowRight",
-                self.export_all_txt_action: "SP_ArrowRight",
-                self.export_all_ansi_txt_action: "SP_ArrowRight",
-                self.export_all_unicode_txt_action: "SP_ArrowRight",
-                self.export_node_rtf_action: "SP_ArrowRight",
-                self.delete_action: "SP_TrashIcon",
-                self.bg_color_action: "SP_DriveFDIcon",
-                self.fg_color_action: "SP_DriveHDIcon",
-                self.move_up_action: "SP_ArrowUp",
-                self.move_down_action: "SP_ArrowDown",
-                self.expand_current_action: "SP_ArrowRight",
-                self.expand_all_action: "SP_ArrowDown",
-                self.collapse_all_action: "SP_ArrowLeft",
-                self.cut_action: "SP_FileIcon",
-                self.copy_action: "SP_FileIcon",
-                self.paste_action: "SP_DialogApplyButton",
-                self.paste_child_action: "SP_DialogApplyButton",
-                self.delete_text_action: "SP_TrashIcon",
-                self.import_config_action: "SP_ComputerIcon",
-                self.about_action: "SP_MessageBoxInformation",
-                self.settings_action: "SP_FileDialogDetailedView",
-            }
-            for action, kind in custom_icons.items():
+            icon_specs = [
+                ("new_action", "new_file"),
+                ("open_action", "open_file"),
+                ("save_action", "save_file"),
+                ("save_as_action", "save_as"),
+                ("backup_now_action", "backup_create"),
+                ("open_backup_action", "backup_open"),
+                ("close_doc_action", "close_doc"),
+                ("print_note_action", "print_note"),
+                ("print_subtree_action", "print_subtree"),
+                ("print_all_action", "print_all"),
+                ("exit_action", "exit_app"),
+                ("password_action", "password"),
+                ("ftp_action", "ftp"),
+                ("import_txt_action", "import_txt"),
+                ("import_rtf_action", "import_rtf"),
+                ("export_html_action", "export_html"),
+                ("export_rtf_action", "export_rtf"),
+                ("export_txt_action", "export_txt"),
+                ("export_ansi_txt_action", "export_ansi"),
+                ("export_unicode_txt_action", "export_unicode"),
+                ("export_all_html_action", "export_all_html"),
+                ("export_all_rtf_action", "export_all_rtf"),
+                ("export_all_txt_action", "export_all_txt"),
+                ("export_all_ansi_txt_action", "export_all_ansi"),
+                ("export_all_unicode_txt_action", "export_all_unicode"),
+                ("export_node_rtf_action", "export_node_rtf"),
+                ("add_child_action", "tree_child"),
+                ("add_sibling_action", "tree_sibling"),
+                ("rename_action", "rename"),
+                ("delete_action", "delete_node"),
+                ("unify_action", "unify_subtree"),
+                ("unify_root_action", "unify_all"),
+                ("desk_note_action", "desktop_note"),
+                ("bg_color_action", "bg_color"),
+                ("fg_color_action", "fg_color"),
+                ("move_up_action", "move_up"),
+                ("move_down_action", "move_down"),
+                ("expand_current_action", "toggle_node"),
+                ("expand_all_action", "expand_all"),
+                ("collapse_all_action", "collapse_all"),
+                ("undo_action", "undo"),
+                ("redo_action", "redo"),
+                ("cut_action", "cut"),
+                ("copy_action", "copy"),
+                ("paste_action", "paste"),
+                ("paste_child_action", "paste_child"),
+                ("delete_text_action", "delete_text"),
+                ("insert_image_action", "insert_image"),
+                ("insert_date_action", "insert_date"),
+                ("search_action", "search"),
+                ("alarm_action", "alarm"),
+                ("regular_action", "regular"),
+                ("bold_action", "bold"),
+                ("italic_action", "italic"),
+                ("underline_action", "underline"),
+                ("strike_action", "strike"),
+                ("bigger_action", "bigger"),
+                ("smaller_action", "smaller"),
+                ("align_left_action", "align_left"),
+                ("align_center_action", "align_center"),
+                ("align_right_action", "align_right"),
+                ("align_justify_action", "align_justify"),
+                ("text_color_action", "text_color"),
+                ("highlight_color_action", "highlight"),
+                ("bullet_action", "bullet"),
+                ("cycle_scrollbars_action", "scrollbars"),
+                ("import_config_action", "import_config"),
+                ("stats_action", "stats"),
+                ("about_action", "about"),
+                ("settings_action", "settings"),
+            ]
+            for attr, kind in icon_specs:
+                action = getattr(self, attr, None)
+                if action is None:
+                    continue
                 try:
                     action.setIcon(self._draw_toolbar_icon(kind))
                 except Exception:
                     pass
-            for action, std_name in standard_icons.items():
-                try:
-                    icon = self._standard_toolbar_icon(std_name)
-                    if icon is not None and not icon.isNull():
-                        action.setIcon(icon)
-                    elif action.icon().isNull():
-                        action.setIcon(self._draw_toolbar_icon("page_plus"))
-                except Exception:
-                    pass
-            for action in list(custom_icons) + list(standard_icons):
                 try:
                     if not action.toolTip():
                         action.setToolTip(action.text())
@@ -1962,6 +2174,8 @@ if QtWidgets is not None:
             self.expand_all_action = self._act("Alle auf", self.expand_all_nodes)
             self.collapse_all_action = self._act("Alle zu", self.collapse_all_nodes)
 
+            self.undo_action = self._act("Rückgängig", self.undo_edit, "Ctrl+Z")
+            self.redo_action = self._act("Wiederholen", self.redo_edit, "Ctrl+Y")
             self.cut_action = self._act("Ausschneiden", self.cut_anything, "Ctrl+X")
             self.copy_action = self._act("Kopieren", self.copy_anything, "Ctrl+C")
             self.paste_action = self._act("Einfügen", self.paste_anything, "Ctrl+V")
@@ -1998,6 +2212,10 @@ if QtWidgets is not None:
             self.text_color_action.setObjectName("fgcolorToolStripMenuItem")
             self.highlight_color_action = self._act("Texthintergrund", self.choose_text_background)
             self.highlight_color_action.setObjectName("bgcolorToolStripMenuItem")
+            self.align_left_action = self._act("Linksbündig", self.align_left, checkable=True)
+            self.align_center_action = self._act("Zentriert", self.align_center, checkable=True)
+            self.align_right_action = self._act("Rechtsbündig", self.align_right, checkable=True)
+            self.align_justify_action = self._act("Blocksatz", self.align_justify, checkable=True)
             self.bullet_action = self._act("Aufzählungspunkt", self.insert_bullet)
             self.bullet_action.setObjectName("ToolStrip_dot")
 
@@ -2040,6 +2258,9 @@ if QtWidgets is not None:
             self.file_menu.addAction(self.exit_action)
 
             self.edit_menu = self.menuBar().addMenu("Bearbeiten")
+            self.edit_menu.addAction(self.undo_action)
+            self.edit_menu.addAction(self.redo_action)
+            self.edit_menu.addSeparator()
             self.edit_menu.addAction(self.cut_action)
             self.edit_menu.addAction(self.copy_action)
             self.edit_menu.addAction(self.paste_action)
@@ -2113,6 +2334,8 @@ if QtWidgets is not None:
                 self.tree.addAction(action)
 
             for action in (
+                self.undo_action,
+                self.redo_action,
                 self.cut_action,
                 self.copy_action,
                 self.paste_action,
@@ -2135,6 +2358,10 @@ if QtWidgets is not None:
                 self.regular_action,
                 self.bigger_action,
                 self.smaller_action,
+                self.align_left_action,
+                self.align_center_action,
+                self.align_right_action,
+                self.align_justify_action,
                 self.text_color_action,
                 self.highlight_color_action,
                 self.bullet_action,
@@ -2142,7 +2369,7 @@ if QtWidgets is not None:
                 self.editor.addAction(action)
 
         def _configure_toolbar(self, toolbar: Any) -> None:
-            """Configure compact icon-only toolbars that can be stacked across multiple rows."""
+            """Configure compact icon-only toolbars arranged as three usable rows."""
             try:
                 toolbar.setToolButtonStyle(_enum(QtCore.Qt, "ToolButtonStyle", "ToolButtonIconOnly"))
             except Exception:
@@ -2156,17 +2383,17 @@ if QtWidgets is not None:
             except Exception:
                 pass
             try:
-                toolbar.setIconSize(QtCore.QSize(22, 22))
+                toolbar.setIconSize(QtCore.QSize(24, 24))
             except Exception:
                 pass
             try:
-                toolbar.setMinimumHeight(34)
+                toolbar.setMinimumHeight(36)
             except Exception:
                 pass
             try:
                 toolbar.setStyleSheet(
-                    "QToolBar { spacing: 2px; padding: 2px 4px; }"
-                    "QToolButton { min-width: 26px; min-height: 26px; max-width: 30px; max-height: 30px; padding: 2px; margin: 1px; }"
+                    "QToolBar { spacing: 3px; padding: 2px 4px; }"
+                    "QToolButton { min-width: 28px; min-height: 28px; max-width: 32px; max-height: 32px; padding: 2px; margin: 1px; }"
                 )
             except Exception:
                 pass
@@ -2182,13 +2409,12 @@ if QtWidgets is not None:
                 pass
 
         def _create_toolbars(self) -> None:
-            # Arrange the command strip over three compact rows instead of one oversized row.
+            """Build a compact three-row command strip closer to Notizen.NET."""
             file_bar = self.addToolBar("Datei")
             self._configure_toolbar(file_bar)
             for action in (
                 self.new_action,
                 self.open_action,
-                self.ftp_action,
                 self.save_action,
                 self.save_as_action,
                 self.backup_now_action,
@@ -2198,22 +2424,23 @@ if QtWidgets is not None:
                 self.export_txt_action,
                 self.export_rtf_action,
                 self.export_html_action,
+                self.ftp_action,
+                self.settings_action,
+                self.about_action,
             ):
                 file_bar.addAction(action)
+
             try:
                 self.addToolBarBreak()
             except Exception:
                 pass
-            node_bar = self.addToolBar("Neu/Entf.")
+            node_bar = self.addToolBar("Knoten/Bearbeiten")
             self._configure_toolbar(node_bar)
             for action in (
                 self.add_child_action,
                 self.add_sibling_action,
                 self.rename_action,
                 self.delete_action,
-                self.copy_action,
-                self.cut_action,
-                self.paste_action,
                 self.move_up_action,
                 self.move_down_action,
                 self.expand_current_action,
@@ -2222,21 +2449,22 @@ if QtWidgets is not None:
                 self.unify_action,
                 self.unify_root_action,
                 self.desk_note_action,
-            ):
-                node_bar.addAction(action)
-            edit_bar = self.addToolBar("Import/Suche")
-            self._configure_toolbar(edit_bar)
-            for action in (
-                self.import_txt_action,
-                self.import_rtf_action,
+                self.undo_action,
+                self.redo_action,
+                self.cut_action,
+                self.copy_action,
+                self.paste_action,
+                self.search_action,
                 self.insert_image_action,
                 self.insert_date_action,
-                self.search_action,
+                self.import_txt_action,
+                self.import_rtf_action,
                 self.alarm_action,
                 self.stats_action,
                 self.import_config_action,
             ):
-                edit_bar.addAction(action)
+                node_bar.addAction(action)
+
             try:
                 self.addToolBarBreak()
             except Exception:
@@ -2244,22 +2472,6 @@ if QtWidgets is not None:
             font_bar = self.addToolBar("RTF-Formatierung")
             font_bar.setObjectName("ToolStrip_fontstyle")
             self._configure_toolbar(font_bar)
-            self.font_family_combo = QtWidgets.QFontComboBox()
-            self.font_family_combo.setObjectName("ToolStrip_fonts")
-            self.font_family_combo.setToolTip("Schriftart")
-            self.font_family_combo.currentFontChanged.connect(self.apply_font_family)
-            self.font_family_combo.setMaximumWidth(170)
-            self._style_toolbar_field_widget(self.font_family_combo)
-            for action in (
-                self.regular_action,
-                self.bold_action,
-                self.italic_action,
-                self.underline_action,
-                self.strike_action,
-                self.bigger_action,
-                self.smaller_action,
-            ):
-                font_bar.addAction(action)
             self.font_size_spin = QtWidgets.QSpinBox()
             self.font_size_spin.setObjectName("ToolStrip_fontsizenumber")
             self.font_size_spin.setRange(6, 99)
@@ -2268,13 +2480,30 @@ if QtWidgets is not None:
             self.font_size_spin.setToolTip("Schriftgröße")
             self.font_size_spin.valueChanged.connect(self.apply_font_size)
             self._style_toolbar_field_widget(self.font_size_spin)
+            self.font_family_combo = QtWidgets.QFontComboBox()
+            self.font_family_combo.setObjectName("ToolStrip_fonts")
+            self.font_family_combo.setToolTip("Schriftart")
+            self.font_family_combo.currentFontChanged.connect(self.apply_font_family)
+            self.font_family_combo.setMaximumWidth(170)
+            self._style_toolbar_field_widget(self.font_family_combo)
             font_bar.addWidget(self.font_size_spin)
             font_bar.addWidget(self.font_family_combo)
             for action in (
-                self.bullet_action,
-                self.cycle_scrollbars_action,
+                self.regular_action,
+                self.bold_action,
+                self.italic_action,
+                self.underline_action,
+                self.strike_action,
+                self.bigger_action,
+                self.smaller_action,
+                self.align_left_action,
+                self.align_center_action,
+                self.align_right_action,
+                self.align_justify_action,
                 self.text_color_action,
                 self.highlight_color_action,
+                self.bullet_action,
+                self.cycle_scrollbars_action,
             ):
                 font_bar.addAction(action)
 
@@ -2337,6 +2566,12 @@ if QtWidgets is not None:
 
             self.new_action.setText(self.tr("Strip1_2", "Neue Datei"))
             self.open_action.setText(self.tr("Strip1_3", "Öffnen"))
+            self.undo_action.setText("Rückgängig")
+            self.redo_action.setText("Wiederholen")
+            self.align_left_action.setText("Linksbündig")
+            self.align_center_action.setText("Zentriert")
+            self.align_right_action.setText("Rechtsbündig")
+            self.align_justify_action.setText("Blocksatz")
             self.save_action.setText(self.tr("Strip1_4", "Speichern"))
             self.save_as_action.setText(self.tr("Strip1_5", "Speichern unter"))
             self.backup_now_action.setText("Jetzt Sicherung erstellen")
@@ -4035,8 +4270,60 @@ if QtWidgets is not None:
                     self.strike_action.setChecked(fmt.fontStrikeOut())
                 except Exception:
                     pass
+                try:
+                    alignment = self.editor.alignment()
+                    align_left = _enum(QtCore.Qt, "AlignmentFlag", "AlignLeft")
+                    align_hcenter = _enum(QtCore.Qt, "AlignmentFlag", "AlignHCenter")
+                    align_right = _enum(QtCore.Qt, "AlignmentFlag", "AlignRight")
+                    align_justify = _enum(QtCore.Qt, "AlignmentFlag", "AlignJustify")
+                    self.align_left_action.setChecked(bool(alignment & align_left) and not bool(alignment & (align_hcenter | align_right | align_justify)))
+                    self.align_center_action.setChecked(bool(alignment & align_hcenter))
+                    self.align_right_action.setChecked(bool(alignment & align_right))
+                    self.align_justify_action.setChecked(bool(alignment & align_justify))
+                except Exception:
+                    pass
             finally:
                 self._updating_format_controls = False
+
+        def undo_edit(self) -> None:
+            try:
+                self.editor.undo()
+            except Exception:
+                return
+            self.save_current_editor_to_node()
+            self.update_format_controls()
+
+        def redo_edit(self) -> None:
+            try:
+                self.editor.redo()
+            except Exception:
+                return
+            self.save_current_editor_to_node()
+            self.update_format_controls()
+
+        def _set_alignment(self, alignment: Any) -> None:
+            cursor = self.editor.textCursor()
+            if cursor.hasSelection():
+                block_fmt = cursor.blockFormat()
+                block_fmt.setAlignment(alignment)
+                cursor.mergeBlockFormat(block_fmt)
+                self.editor.setTextCursor(cursor)
+            else:
+                self.editor.setAlignment(alignment)
+            self.save_current_editor_to_node()
+            self.update_format_controls()
+
+        def align_left(self, checked: bool = False) -> None:
+            self._set_alignment(_enum(QtCore.Qt, "AlignmentFlag", "AlignLeft"))
+
+        def align_center(self, checked: bool = False) -> None:
+            self._set_alignment(_enum(QtCore.Qt, "AlignmentFlag", "AlignHCenter"))
+
+        def align_right(self, checked: bool = False) -> None:
+            self._set_alignment(_enum(QtCore.Qt, "AlignmentFlag", "AlignRight"))
+
+        def align_justify(self, checked: bool = False) -> None:
+            self._set_alignment(_enum(QtCore.Qt, "AlignmentFlag", "AlignJustify"))
 
         def toggle_bold(self, checked: bool | None = None) -> None:
             fmt = self.editor.currentCharFormat()

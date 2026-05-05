@@ -45,19 +45,24 @@ def test_desktop_note_bottom_hint_and_lowering_are_ported() -> None:
     assert "self.raise_()" not in APP_SOURCE.split("class DesktopNoteWindow", 1)[1].split("class SearchDialog", 1)[0]
 
 
-def test_rtf_toolbar_matches_net_compact_label_order() -> None:
+def test_rtf_toolbar_is_icon_only_and_keeps_net_format_commands() -> None:
     for snippet in (
-        'self.regular_action = self._act("N", self.reset_char_format)',
-        'self.bold_action = self._act("B", self.toggle_bold, "Ctrl+B", checkable=True)',
-        'self.italic_action = self._act("K", self.toggle_italic, "Ctrl+I", checkable=True)',
-        'self.underline_action = self._act("U", self.toggle_underline, checkable=True)',
-        'self.strike_action = self._act("D", self.toggle_strike, checkable=True)',
-        'self.bigger_action = self._act("+", lambda: self.change_font_size(+1), "Ctrl++")',
-        'self.smaller_action = self._act("-", lambda: self.change_font_size(-1), "Ctrl+-")',
+        'self.regular_action = self._act("Normal", self.reset_char_format)',
+        'self.bold_action = self._act("Fett", self.toggle_bold, "Ctrl+B", checkable=True)',
+        'self.italic_action = self._act("Kursiv", self.toggle_italic, "Ctrl+I", checkable=True)',
+        'self.underline_action = self._act("Unterstrichen", self.toggle_underline, checkable=True)',
+        'self.strike_action = self._act("Durchgestrichen", self.toggle_strike, checkable=True)',
+        'self.bigger_action = self._act("Schrift größer", lambda: self.change_font_size(+1), "Ctrl++")',
+        'self.smaller_action = self._act("Schrift kleiner", lambda: self.change_font_size(-1), "Ctrl+-")',
+        'self.align_left_action = self._act("Linksbündig", self.align_left, checkable=True)',
+        'self.align_center_action = self._act("Zentriert", self.align_center, checkable=True)',
+        'self.align_right_action = self._act("Rechtsbündig", self.align_right, checkable=True)',
+        'self.align_justify_action = self._act("Blocksatz", self.align_justify, checkable=True)',
+        "ToolButtonIconOnly",
         "font_bar.addAction(action)",
-        "self.font_family_combo.setMaximumWidth(180)",
+        "self.font_family_combo.setMaximumWidth(170)",
     ):
         assert snippet in APP_SOURCE
-    assert "self.bold_action.setFont(bold_font)" in APP_SOURCE
-    assert "self.italic_action.setFont(italic_font)" in APP_SOURCE
-    assert "self.underline_action.setFont(underline_font)" in APP_SOURCE
+    assert "ToolButtonTextOnly" not in APP_SOURCE
+    assert "_draw_toolbar_icon" in APP_SOURCE
+    assert "generic square placeholders" in APP_SOURCE

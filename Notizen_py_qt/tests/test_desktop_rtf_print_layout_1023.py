@@ -76,7 +76,8 @@ def test_net_like_main_layout_and_rtf_toolbar_are_present() -> None:
         "bgcolorToolStripMenuItem",
     ):
         assert object_name in APP_SOURCE
-    assert "ToolButtonTextOnly" in APP_SOURCE
+    assert "ToolButtonIconOnly" in APP_SOURCE
+    assert "ToolButtonTextOnly" not in APP_SOURCE
 
 
 def test_print_uses_pyside_compatible_print_method() -> None:

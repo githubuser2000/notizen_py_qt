@@ -14,8 +14,8 @@ from notizen_py_qt.system_integration import (
 )
 
 
-def test_version_1025() -> None:
-    assert __version__ == "0.10.25"
+def test_version_1029() -> None:
+    assert __version__ == "0.10.29"
 
 
 def test_windows_module_open_command_quotes_percent_one() -> None:
