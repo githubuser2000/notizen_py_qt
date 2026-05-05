@@ -1656,23 +1656,8 @@ if QtWidgets is not None:
             return action
 
         def _style_rtf_toolstrip_actions(self) -> None:
-            """Use the compact N/B/K/U/D/+/- labels from Notizen.NET's ToolStrip."""
+            """Keep RTF actions prominent, but let the toolbar show icons only."""
 
-            try:
-                bold_font = QtGui.QFont()
-                bold_font.setBold(True)
-                self.bold_action.setFont(bold_font)
-                italic_font = QtGui.QFont()
-                italic_font.setItalic(True)
-                self.italic_action.setFont(italic_font)
-                underline_font = QtGui.QFont()
-                underline_font.setUnderline(True)
-                self.underline_action.setFont(underline_font)
-                strike_font = QtGui.QFont()
-                strike_font.setStrikeOut(True)
-                self.strike_action.setFont(strike_font)
-            except Exception:
-                pass
             try:
                 priority = QtGui.QAction.Priority.HighPriority
             except Exception:
@@ -1683,6 +1668,256 @@ if QtWidgets is not None:
                         action.setPriority(priority)
                     except Exception:
                         pass
+
+        def _standard_toolbar_icon(self, standard_name: str) -> Any:
+            try:
+                style = self.style()
+                if style is None:
+                    return QtGui.QIcon()
+                return style.standardIcon(_enum(QtWidgets.QStyle, "StandardPixmap", standard_name))
+            except Exception:
+                return QtGui.QIcon()
+
+        def _draw_toolbar_icon(self, kind: str, size: int = 36) -> Any:
+            """Draw small consistent toolbar icons without visible text labels.
+
+            The Notizen.NET toolbar used compact text glyphs.  In the PyQt port the
+            toolbar is deliberately icon-only, so these pictograms avoid visible
+            abbreviations while keeping the menus/tooltips descriptive.
+            """
+
+            pixmap = QtGui.QPixmap(size, size)
+            pixmap.fill(QtGui.QColor(0, 0, 0, 0))
+            painter = QtGui.QPainter(pixmap)
+            try:
+                painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+            except Exception:
+                try:
+                    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+                except Exception:
+                    pass
+            stroke = QtGui.QColor(45, 52, 64)
+            accent = QtGui.QColor(46, 134, 193)
+            warm = QtGui.QColor(244, 208, 63)
+            ok = QtGui.QColor(39, 174, 96)
+            danger = QtGui.QColor(192, 57, 43)
+            pen = QtGui.QPen(stroke)
+            pen.setWidthF(max(2.2, size / 13.5))
+            try:
+                pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+            except Exception:
+                pass
+            painter.setPen(pen)
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            u = size / 36.0
+
+            def set_pen(color=stroke, width=None):
+                p = QtGui.QPen(color)
+                p.setWidthF(width if width is not None else max(2.2, size / 13.5))
+                try:
+                    p.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+                    p.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+                except Exception:
+                    pass
+                painter.setPen(p)
+
+            def line(x1, y1, x2, y2):
+                painter.drawLine(QtCore.QPointF(x1 * u, y1 * u), QtCore.QPointF(x2 * u, y2 * u))
+
+            def rect(x, y, w, h, fill=None, radius=3):
+                if fill is None:
+                    painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                else:
+                    painter.setBrush(fill)
+                painter.drawRoundedRect(QtCore.QRectF(x * u, y * u, w * u, h * u), radius * u, radius * u)
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+
+            def circle(cx, cy, r, fill=None):
+                if fill is None:
+                    painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                else:
+                    painter.setBrush(fill)
+                painter.drawEllipse(QtCore.QPointF(cx * u, cy * u), r * u, r * u)
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+
+            def text_lines(x=9, widths=(17, 14, 19), y0=10, gap=7, color=stroke, width=None, slant=0):
+                set_pen(color, width)
+                for idx, w in enumerate(widths):
+                    y = y0 + idx * gap
+                    line(x + slant * idx, y, x + w + slant * idx, y)
+                set_pen(stroke)
+
+            if kind == "page_plus":
+                rect(9, 5, 17, 24)
+                line(22, 5, 26, 9)
+                line(26, 9, 22, 9)
+                text_lines(12, (10, 12), 14, 6)
+                set_pen(accent)
+                line(29, 22, 29, 32); line(24, 27, 34, 27)
+                set_pen()
+            elif kind == "printer":
+                rect(7, 12, 22, 11); rect(11, 4, 14, 9); rect(11, 23, 14, 8)
+                circle(25, 17, 1.2, accent)
+            elif kind == "tree_add":
+                line(8, 6, 8, 30); line(8, 12, 17, 12); line(8, 24, 17, 24)
+                rect(18, 8, 9, 8); rect(18, 20, 9, 8)
+                set_pen(accent); line(30, 21, 30, 31); line(25, 26, 35, 26); set_pen()
+            elif kind == "tree_sibling":
+                line(8, 6, 8, 30); line(8, 12, 17, 12); line(8, 24, 17, 24)
+                rect(18, 8, 9, 8); rect(18, 20, 9, 8)
+                set_pen(accent); line(30, 7, 30, 17); line(25, 12, 35, 12); set_pen()
+            elif kind == "rename":
+                rect(6, 24, 17, 6, warm)
+                set_pen(accent); line(10, 23, 25, 8); line(24, 7, 29, 12); set_pen()
+            elif kind == "unify":
+                rect(6, 8, 9, 8); rect(6, 22, 9, 8); rect(22, 15, 9, 8, ok)
+                line(15, 12, 22, 18); line(15, 26, 22, 20)
+            elif kind == "sticky_note":
+                rect(6, 5, 24, 26, QtGui.QColor(255, 244, 150))
+                text_lines(11, (15, 15, 10), 13, 6)
+            elif kind == "search":
+                circle(15, 15, 8); line(21, 21, 31, 31)
+            elif kind == "alarm":
+                circle(18, 20, 9); line(18, 20, 18, 14); line(18, 20, 23, 22); line(11, 8, 7, 4); line(25, 8, 29, 4)
+            elif kind == "stats":
+                rect(7, 21, 5, 9, accent); rect(16, 15, 5, 15, ok); rect(25, 9, 5, 21, warm)
+            elif kind == "import":
+                rect(7, 7, 22, 23); set_pen(accent); line(18, 8, 18, 24); line(13, 19, 18, 24); line(23, 19, 18, 24); set_pen()
+            elif kind == "image":
+                rect(6, 7, 24, 20); circle(13, 13, 2.2, warm); line(9, 24, 16, 17); line(16, 17, 21, 22); line(21, 22, 28, 14)
+            elif kind == "date":
+                rect(7, 8, 22, 21); line(11, 5, 11, 12); line(25, 5, 25, 12); line(7, 15, 29, 15); circle(18, 22, 3.2, accent)
+            elif kind == "bold":
+                # thick text rows: no letter abbreviation, just heavy formatted text
+                text_lines(8, (22, 18, 22), 11, 7, stroke, width=max(4.2, size / 7.5))
+            elif kind == "italic":
+                # slanted text rows
+                text_lines(8, (21, 17, 22), 10, 7, stroke, width=max(2.6, size / 12), slant=3)
+                line(25, 8, 17, 29)
+            elif kind == "underline":
+                text_lines(9, (19, 17), 11, 7)
+                set_pen(accent, max(3.0, size / 10)); line(9, 28, 28, 28); set_pen()
+            elif kind == "strike":
+                text_lines(9, (19, 17, 19), 10, 7)
+                set_pen(danger, max(3.0, size / 10)); line(7, 18, 30, 18); set_pen()
+            elif kind == "normal":
+                text_lines(9, (19, 16, 19), 10, 7)
+                set_pen(accent); line(28, 8, 8, 28); set_pen()
+            elif kind == "bigger":
+                text_lines(7, (16, 13, 16), 12, 6)
+                set_pen(accent); line(28, 10, 28, 22); line(22, 16, 34, 16); set_pen()
+            elif kind == "smaller":
+                text_lines(7, (16, 13, 16), 12, 6)
+                set_pen(accent); line(22, 16, 34, 16); set_pen()
+            elif kind == "text_color":
+                text_lines(10, (16, 12), 10, 7)
+                painter.setPen(QtCore.Qt.PenStyle.NoPen); painter.setBrush(accent)
+                painter.drawRoundedRect(QtCore.QRectF(8*u, 28*u, 22*u, 4*u), 1.4*u, 1.4*u)
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush); set_pen()
+            elif kind == "highlight":
+                painter.setPen(QtCore.Qt.PenStyle.NoPen); painter.setBrush(warm)
+                painter.drawRoundedRect(QtCore.QRectF(8*u, 18*u, 22*u, 8*u), 2*u, 2*u)
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush); set_pen(); text_lines(10, (16, 12), 12, 7)
+            elif kind == "bullet":
+                circle(8, 11, 2.0, stroke); circle(8, 18, 2.0, stroke); circle(8, 25, 2.0, stroke)
+                line(14, 11, 28, 11); line(14, 18, 28, 18); line(14, 25, 28, 25)
+            elif kind == "scrollbars":
+                rect(5, 5, 26, 26); line(5, 25, 31, 25); line(25, 5, 25, 31); line(29, 10, 29, 21); line(10, 29, 21, 29)
+            else:
+                rect(7, 7, 22, 22)
+            painter.end()
+            return QtGui.QIcon(pixmap)
+
+        def _assign_toolbar_icons(self) -> None:
+            custom_icons = {
+                self.new_action: "page_plus",
+                self.print_note_action: "printer",
+                self.print_subtree_action: "printer",
+                self.print_all_action: "printer",
+                self.add_child_action: "tree_add",
+                self.add_sibling_action: "tree_sibling",
+                self.rename_action: "rename",
+                self.unify_action: "unify",
+                self.unify_root_action: "unify",
+                self.desk_note_action: "sticky_note",
+                self.search_action: "search",
+                self.alarm_action: "alarm",
+                self.stats_action: "stats",
+                self.import_txt_action: "import",
+                self.import_rtf_action: "import",
+                self.insert_image_action: "image",
+                self.insert_date_action: "date",
+                self.regular_action: "normal",
+                self.bold_action: "bold",
+                self.italic_action: "italic",
+                self.underline_action: "underline",
+                self.strike_action: "strike",
+                self.bigger_action: "bigger",
+                self.smaller_action: "smaller",
+                self.text_color_action: "text_color",
+                self.highlight_color_action: "highlight",
+                self.bullet_action: "bullet",
+                self.cycle_scrollbars_action: "scrollbars",
+            }
+            standard_icons = {
+                self.open_action: "SP_DialogOpenButton",
+                self.save_action: "SP_DialogSaveButton",
+                self.save_as_action: "SP_DialogSaveButton",
+                self.backup_now_action: "SP_BrowserReload",
+                self.open_backup_action: "SP_DialogOpenButton",
+                self.close_doc_action: "SP_DialogCloseButton",
+                self.exit_action: "SP_DialogCloseButton",
+                self.password_action: "SP_DialogResetButton",
+                self.ftp_action: "SP_DriveNetIcon",
+                self.export_html_action: "SP_ArrowRight",
+                self.export_rtf_action: "SP_ArrowRight",
+                self.export_txt_action: "SP_ArrowRight",
+                self.export_ansi_txt_action: "SP_ArrowRight",
+                self.export_unicode_txt_action: "SP_ArrowRight",
+                self.export_all_html_action: "SP_ArrowRight",
+                self.export_all_rtf_action: "SP_ArrowRight",
+                self.export_all_txt_action: "SP_ArrowRight",
+                self.export_all_ansi_txt_action: "SP_ArrowRight",
+                self.export_all_unicode_txt_action: "SP_ArrowRight",
+                self.export_node_rtf_action: "SP_ArrowRight",
+                self.delete_action: "SP_TrashIcon",
+                self.bg_color_action: "SP_DriveFDIcon",
+                self.fg_color_action: "SP_DriveHDIcon",
+                self.move_up_action: "SP_ArrowUp",
+                self.move_down_action: "SP_ArrowDown",
+                self.expand_current_action: "SP_ArrowRight",
+                self.expand_all_action: "SP_ArrowDown",
+                self.collapse_all_action: "SP_ArrowLeft",
+                self.cut_action: "SP_FileIcon",
+                self.copy_action: "SP_FileIcon",
+                self.paste_action: "SP_DialogApplyButton",
+                self.paste_child_action: "SP_DialogApplyButton",
+                self.delete_text_action: "SP_TrashIcon",
+                self.import_config_action: "SP_ComputerIcon",
+                self.about_action: "SP_MessageBoxInformation",
+                self.settings_action: "SP_FileDialogDetailedView",
+            }
+            for action, kind in custom_icons.items():
+                try:
+                    action.setIcon(self._draw_toolbar_icon(kind))
+                except Exception:
+                    pass
+            for action, std_name in standard_icons.items():
+                try:
+                    icon = self._standard_toolbar_icon(std_name)
+                    if icon is not None and not icon.isNull():
+                        action.setIcon(icon)
+                    elif action.icon().isNull():
+                        action.setIcon(self._draw_toolbar_icon("page_plus"))
+                except Exception:
+                    pass
+            for action in list(custom_icons) + list(standard_icons):
+                try:
+                    if not action.toolTip():
+                        action.setToolTip(action.text())
+                except Exception:
+                    pass
 
         def _create_actions(self) -> None:
             self.new_action = self._act("Neue Datei", self.new_document, "Ctrl+N")
@@ -1737,25 +1972,25 @@ if QtWidgets is not None:
             self.search_action = self._act("Suchen", self.show_search, "Ctrl+F")
             self.alarm_action = self._act("Wecker", self.show_alarm_dialog, "Ctrl+Space")
 
-            self.bold_action = self._act("B", self.toggle_bold, "Ctrl+B", checkable=True)
+            self.bold_action = self._act("Fett", self.toggle_bold, "Ctrl+B", checkable=True)
             self.bold_action.setToolTip("Fett")
             self.bold_action.setObjectName("ToolStrip_bold")
-            self.italic_action = self._act("K", self.toggle_italic, "Ctrl+I", checkable=True)
+            self.italic_action = self._act("Kursiv", self.toggle_italic, "Ctrl+I", checkable=True)
             self.italic_action.setToolTip("Kursiv")
             self.italic_action.setObjectName("ToolStrip_italic")
-            self.underline_action = self._act("U", self.toggle_underline, checkable=True)
+            self.underline_action = self._act("Unterstrichen", self.toggle_underline, checkable=True)
             self.underline_action.setToolTip("Unterstrichen")
             self.underline_action.setObjectName("ToolStrip_underline")
-            self.strike_action = self._act("D", self.toggle_strike, checkable=True)
+            self.strike_action = self._act("Durchgestrichen", self.toggle_strike, checkable=True)
             self.strike_action.setToolTip("Durchgestrichen")
             self.strike_action.setObjectName("ToolStrip_strikeout")
-            self.regular_action = self._act("N", self.reset_char_format)
+            self.regular_action = self._act("Normal", self.reset_char_format)
             self.regular_action.setToolTip("Normal")
             self.regular_action.setObjectName("ToolStrip_regular")
-            self.bigger_action = self._act("+", lambda: self.change_font_size(+1), "Ctrl++")
+            self.bigger_action = self._act("Schrift größer", lambda: self.change_font_size(+1), "Ctrl++")
             self.bigger_action.setToolTip("Schrift größer")
             self.bigger_action.setObjectName("ToolStrip_bigger")
-            self.smaller_action = self._act("-", lambda: self.change_font_size(-1), "Ctrl+-")
+            self.smaller_action = self._act("Schrift kleiner", lambda: self.change_font_size(-1), "Ctrl+-")
             self.smaller_action.setToolTip("Schrift kleiner")
             self.smaller_action.setObjectName("ToolStrip_smaller")
             self._style_rtf_toolstrip_actions()
@@ -1772,6 +2007,8 @@ if QtWidgets is not None:
             self.stats_action = self._act("Statistik", self.show_stats_dialog)
             self.about_action = self._act("Info", self.show_about)
             self.settings_action = self._act("Einstellungen", self.show_settings_dialog)
+
+            self._assign_toolbar_icons()
 
         def _create_menus(self) -> None:
             self.file_menu = self.menuBar().addMenu("&Menü")
@@ -1904,19 +2141,50 @@ if QtWidgets is not None:
             ):
                 self.editor.addAction(action)
 
-        def _toolbar_text_only(self, toolbar: Any) -> None:
+        def _configure_toolbar(self, toolbar: Any) -> None:
+            """Configure compact icon-only toolbars that can be stacked across multiple rows."""
             try:
-                toolbar.setToolButtonStyle(_enum(QtCore.Qt, "ToolButtonStyle", "ToolButtonTextOnly"))
+                toolbar.setToolButtonStyle(_enum(QtCore.Qt, "ToolButtonStyle", "ToolButtonIconOnly"))
             except Exception:
                 pass
             try:
                 toolbar.setMovable(False)
             except Exception:
                 pass
+            try:
+                toolbar.setFloatable(False)
+            except Exception:
+                pass
+            try:
+                toolbar.setIconSize(QtCore.QSize(22, 22))
+            except Exception:
+                pass
+            try:
+                toolbar.setMinimumHeight(34)
+            except Exception:
+                pass
+            try:
+                toolbar.setStyleSheet(
+                    "QToolBar { spacing: 2px; padding: 2px 4px; }"
+                    "QToolButton { min-width: 26px; min-height: 26px; max-width: 30px; max-height: 30px; padding: 2px; margin: 1px; }"
+                )
+            except Exception:
+                pass
+
+        def _style_toolbar_field_widget(self, widget: Any) -> None:
+            try:
+                widget.setMinimumHeight(28)
+            except Exception:
+                pass
+            try:
+                widget.setStyleSheet("padding: 1px 4px; margin: 1px;")
+            except Exception:
+                pass
 
         def _create_toolbars(self) -> None:
+            # Arrange the command strip over three compact rows instead of one oversized row.
             file_bar = self.addToolBar("Datei")
-            self._toolbar_text_only(file_bar)
+            self._configure_toolbar(file_bar)
             for action in (
                 self.new_action,
                 self.open_action,
@@ -1932,8 +2200,12 @@ if QtWidgets is not None:
                 self.export_html_action,
             ):
                 file_bar.addAction(action)
+            try:
+                self.addToolBarBreak()
+            except Exception:
+                pass
             node_bar = self.addToolBar("Neu/Entf.")
-            self._toolbar_text_only(node_bar)
+            self._configure_toolbar(node_bar)
             for action in (
                 self.add_child_action,
                 self.add_sibling_action,
@@ -1953,7 +2225,7 @@ if QtWidgets is not None:
             ):
                 node_bar.addAction(action)
             edit_bar = self.addToolBar("Import/Suche")
-            self._toolbar_text_only(edit_bar)
+            self._configure_toolbar(edit_bar)
             for action in (
                 self.import_txt_action,
                 self.import_rtf_action,
@@ -1965,14 +2237,19 @@ if QtWidgets is not None:
                 self.import_config_action,
             ):
                 edit_bar.addAction(action)
+            try:
+                self.addToolBarBreak()
+            except Exception:
+                pass
             font_bar = self.addToolBar("RTF-Formatierung")
             font_bar.setObjectName("ToolStrip_fontstyle")
-            self._toolbar_text_only(font_bar)
+            self._configure_toolbar(font_bar)
             self.font_family_combo = QtWidgets.QFontComboBox()
             self.font_family_combo.setObjectName("ToolStrip_fonts")
             self.font_family_combo.setToolTip("Schriftart")
             self.font_family_combo.currentFontChanged.connect(self.apply_font_family)
-            self.font_family_combo.setMaximumWidth(180)
+            self.font_family_combo.setMaximumWidth(170)
+            self._style_toolbar_field_widget(self.font_family_combo)
             for action in (
                 self.regular_action,
                 self.bold_action,
@@ -1987,9 +2264,10 @@ if QtWidgets is not None:
             self.font_size_spin.setObjectName("ToolStrip_fontsizenumber")
             self.font_size_spin.setRange(6, 99)
             self.font_size_spin.setValue(10)
-            self.font_size_spin.setMaximumWidth(54)
+            self.font_size_spin.setMaximumWidth(52)
             self.font_size_spin.setToolTip("Schriftgröße")
             self.font_size_spin.valueChanged.connect(self.apply_font_size)
+            self._style_toolbar_field_widget(self.font_size_spin)
             font_bar.addWidget(self.font_size_spin)
             font_bar.addWidget(self.font_family_combo)
             for action in (
