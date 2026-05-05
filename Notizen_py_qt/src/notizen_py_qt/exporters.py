@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from .models import NoteNode
 from .rtf_utils import (
     RtfImage,
+    RtfField,
+    RtfObject,
     RtfHyperlink,
     RtfTextSegment,
     RtfTextStyle,
@@ -110,7 +112,7 @@ def _collect_body_segments(root: NoteNode, options: ExportOptions) -> list[tuple
     return entries
 
 
-def _strip_trailing_parts(parts: list[RtfTextSegment | RtfImage | RtfHyperlink]) -> list[RtfTextSegment | RtfImage | RtfHyperlink]:
+def _strip_trailing_parts(parts: list[RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject]) -> list[RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject]:
     stripped = list(parts)
     while stripped and isinstance(stripped[-1], RtfTextSegment) and not stripped[-1].text.rstrip():
         stripped.pop()
@@ -122,14 +124,14 @@ def _strip_trailing_parts(parts: list[RtfTextSegment | RtfImage | RtfHyperlink])
     return stripped
 
 
-def _collect_body_parts(root: NoteNode, options: ExportOptions) -> list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink]]]:
-    entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink]]] = []
+def _collect_body_parts(root: NoteNode, options: ExportOptions) -> list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject]]]:
+    entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject]]] = []
     for _depth, heading, node in _walk_numbered(root, 0, [], options):
         entries.append((heading, _strip_trailing_parts(rtf_to_content_parts(node.rtf))))
     return entries
 
 
-def _iter_text_segments(entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink]]]):
+def _iter_text_segments(entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject]]]):
     for _heading, parts in entries:
         for part in parts:
             if isinstance(part, RtfTextSegment):
@@ -138,7 +140,7 @@ def _iter_text_segments(entries: list[tuple[str, list[RtfTextSegment | RtfImage 
                 yield RtfTextSegment(part.text, part.style)
 
 
-def _collect_fonts(entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink]]]) -> dict[str, int]:
+def _collect_fonts(entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject]]]) -> dict[str, int]:
     font_indexes: dict[str, int] = {}
     for segment in _iter_text_segments(entries):
         family = segment.style.font_family
@@ -157,7 +159,7 @@ def _font_table(font_indexes: dict[str, int]) -> str:
     return r"{\fonttbl" + "".join(entries) + "}" + "\n"
 
 
-def _collect_colors(entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink]]]) -> dict[str, int]:
+def _collect_colors(entries: list[tuple[str, list[RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject]]]) -> dict[str, int]:
     color_indexes: dict[str, int] = {}
     for segment in _iter_text_segments(entries):
         for color in (segment.style.fg_color, segment.style.bg_color):
@@ -277,11 +279,23 @@ def _emit_hyperlink(link: RtfHyperlink, color_indexes: dict[str, int], font_inde
     return _rtf_hyperlink_field(link.url, link.text, prefix)
 
 
-def _emit_part(part: RtfTextSegment | RtfImage | RtfHyperlink, color_indexes: dict[str, int], font_indexes: dict[str, int]) -> str:
+def _emit_field(field: RtfField) -> str:
+    return field.rtf or _rtf_escape_text(field.text)
+
+
+def _emit_object(obj: RtfObject) -> str:
+    return obj.rtf or _rtf_escape_text(obj.placeholder)
+
+
+def _emit_part(part: RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject, color_indexes: dict[str, int], font_indexes: dict[str, int]) -> str:
     if isinstance(part, RtfImage):
         return _emit_image(part)
     if isinstance(part, RtfHyperlink):
         return _emit_hyperlink(part, color_indexes, font_indexes)
+    if isinstance(part, RtfField):
+        return _emit_field(part)
+    if isinstance(part, RtfObject):
+        return _emit_object(part)
     return _emit_segment(part, color_indexes, font_indexes)
 
 
@@ -292,7 +306,7 @@ def tree_to_rtf(root: NoteNode, options: ExportOptions | None = None) -> str:
     RichTextBox. This implementation keeps that document structure and preserves
     the formatting subset the port can safely parse: bold, italic, underline,
     strikeout, font size, font family, foreground color, background highlight
-    embedded PNG/JPEG/BMP/WMF/EMF pictures, RTF hyperlink fields and visible legacy object placeholders.
+    embedded PNG/JPEG/BMP/WMF/EMF pictures, RTF hyperlink fields and raw legacy OLE/object groups where possible.
     """
     options = options or ExportOptions()
     entries = _collect_body_parts(root, options)

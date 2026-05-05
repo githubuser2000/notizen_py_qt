@@ -45,6 +45,7 @@ class NoteNode:
     fg_argb: int = 0
     desktop_note: DesktopNoteState | None = None
     extra_attrs: dict[str, str] = field(default_factory=dict)
+    extra_child_xml: list[str] = field(default_factory=list)
     children: list["NoteNode"] = field(default_factory=list)
     parent: "NoteNode | None" = field(default=None, repr=False, compare=False)
 
@@ -86,6 +87,7 @@ class NoteNode:
             fg_argb=self.fg_argb,
             desktop_note=desktop_note,
             extra_attrs=dict(self.extra_attrs),
+            extra_child_xml=list(self.extra_child_xml),
         )
         for child in self.children:
             copied.add_child(child.clone_deep(include_desktop_note=include_desktop_note))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ class Step:
     name: str
     command: list[str]
     fatal: bool = False
+    timeout: int | None = None
 
 
 @dataclass
@@ -29,9 +31,30 @@ class Result:
     output: str
 
 
+def _default_step_timeout() -> int:
+    try:
+        return max(10, int(os.environ.get("QT611_CONTINUE_STEP_TIMEOUT", "120")))
+    except ValueError:
+        return 120
+
+
 def run_step(step: Step, cwd: Path) -> Result:
-    proc = subprocess.run(step.command, cwd=str(cwd), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return Result(step.name, proc.returncode, proc.stdout)
+    timeout = step.timeout if step.timeout is not None else _default_step_timeout()
+    try:
+        proc = subprocess.run(
+            step.command,
+            cwd=str(cwd),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        )
+        return Result(step.name, proc.returncode, proc.stdout)
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        return Result(step.name, 124, stdout + f"\n[TIMEOUT after {timeout}s]\n")
 
 
 def main(argv: list[str] | None = None) -> int:

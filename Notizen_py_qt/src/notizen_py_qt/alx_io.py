@@ -277,6 +277,8 @@ def _parse_notiz(element: ET.Element) -> NoteNode:
     for child_element in element:
         if child_element.tag == "Notiz":
             node.add_child(_parse_notiz(child_element))
+        else:
+            node.extra_child_xml.append(ET.tostring(child_element, encoding="unicode"))
     return node
 
 
@@ -351,6 +353,14 @@ def _element_from_note(node: NoteNode) -> ET.Element:
         if desk.argb is not None:
             element.set("argb", str(desk.argb))
     element.text = node.rtf or ""
+    for fragment in node.extra_child_xml:
+        try:
+            element.append(ET.fromstring(fragment))
+        except ET.ParseError:
+            # Keep saving robust even if a hand-written/future fragment could
+            # not be re-parsed by ElementTree.  Known Notizen.NET data is not
+            # affected, and ordinary attributes/children continue to save.
+            continue
     for child in node.children:
         element.append(_element_from_note(child))
     return element

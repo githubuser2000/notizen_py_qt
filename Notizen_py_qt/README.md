@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.24**.
+Aktueller Stand dieses Archivs: **0.10.25**.
 
 ## Start
 
@@ -64,6 +64,13 @@ notizen-py-qt /pfad/zur/datei.alx
 ```
 
 
+
+## Änderungen in 0.10.25
+
+- RTF-Felder ohne Hyperlink, zum Beispiel PAGE/DATE/REF, zeigen jetzt das sichtbare `fldrslt`-Ergebnis statt die interne `fldinst`-Anweisung in Notiztext und Suche; die Roh-`\field`-Gruppe bleibt für HTML-Roundtrip und kombinierten RTF-Export erhalten.
+- Legacy-OLE-/RTF-Objektgruppen (`\object`) werden nicht mehr nur als Textplatzhalter behandelt: Die Rohgruppe bleibt in der RTF→HTML→RTF-Brücke und im kombinierten Teilbaum-/Gesamtbaum-RTF-Export erhalten, solange Qt sie nicht bei echter manueller Bearbeitung entfernt.
+- `.alx`-Dateien behalten unbekannte zusätzliche XML-Kindelemente unter `Notiz`, damit seltene/future Legacy-Metadaten beim Öffnen und Speichern nicht verloren gehen.
+- RTF-Seiten-/Spalten-/Abschnittswechsel werden in Text/HTML zumindest als lesbare Trennung statt als unbekannter Kontrollcode verarbeitet.
 
 ## Änderungen in 0.10.24
 

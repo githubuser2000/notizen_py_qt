@@ -61,6 +61,23 @@ class RtfHyperlink:
     style: "RtfTextStyle | None" = None
 
 
+@dataclass(frozen=True, slots=True)
+class RtfField:
+    """Non-hyperlink RTF field with its visible RichTextBox result."""
+
+    rtf: str
+    text: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RtfObject:
+    """Opaque RichTextBox/OLE object group preserved from legacy RTF."""
+
+    rtf: str
+    class_name: str = ""
+    placeholder: str = LEGACY_OBJECT_PLACEHOLDER
+
+
 _TEXT_CONTROLS = {
     "par": "\n",
     "line": _RTF_SOFT_LINE_BREAK,
@@ -81,6 +98,9 @@ _TEXT_CONTROLS = {
     "cell": "\t",
     "nestcell": "\t",
     "row": "\n",
+    "page": "\f",
+    "sect": "\n",
+    "column": "\n",
 }
 
 
@@ -184,35 +204,50 @@ def _extract_balanced_destination(rtf: str, index: int, destination: str) -> str
     return None if end < 0 else rtf[index : end + 1]
 
 
-def _extract_object_at(rtf: str, index: int) -> tuple[str, int] | None:
+def _extract_object_class_name(group: str, encoding: str = "cp1252") -> str:
+    match = re.search(r"\\objclass\s+([^{}\\]+)", group)
+    if not match:
+        return ""
+    raw = match.group(1).strip().rstrip(";}")
+    return _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1), encoding), raw).strip()
+
+
+def _extract_object_at(rtf: str, index: int) -> tuple[RtfObject, int] | None:
     if not rtf.startswith(r"{\object", index):
         return None
     end = _find_group_end(rtf, index)
     if end < 0:
         return None
-    return LEGACY_OBJECT_PLACEHOLDER, end + 1
+    group = rtf[index : end + 1]
+    return RtfObject(rtf=group, class_name=_extract_object_class_name(group, rtf_ansi_encoding(rtf))), end + 1
 
 
-def _extract_field_at(rtf: str, index: int) -> tuple[RtfHyperlink, int] | None:
+def _extract_field_result_text(group: str) -> str:
+    result_start = group.find(r"{\fldrslt")
+    if result_start < 0:
+        return ""
+    result_end = _find_group_end(group, result_start)
+    if result_end < 0:
+        return ""
+    return _rtf_fragment_to_plain(group[result_start : result_end + 1], rtf_ansi_encoding(group)).strip()
+
+
+def _extract_field_at(rtf: str, index: int) -> tuple[RtfHyperlink | RtfField, int] | None:
     if not rtf.startswith(r"{\field", index):
         return None
     end = _find_group_end(rtf, index)
     if end < 0:
         return None
     group = rtf[index : end + 1]
+    display = _extract_field_result_text(group)
     inst_match = re.search(r'HYPERLINK\s+(?:"((?:\\.|[^"\\])*)"|([^\\{}\s]+))', group, re.IGNORECASE)
-    if not inst_match:
-        return None
-    url = (inst_match.group(1) or inst_match.group(2) or "").replace(r'\"', '"').replace(r"\\", "\\")
-    result_start = group.find(r"{\fldrslt")
-    display = ""
-    if result_start >= 0:
-        result_end = _find_group_end(group, result_start)
-        if result_end >= 0:
-            display = _rtf_fragment_to_plain(group[result_start : result_end + 1], rtf_ansi_encoding(group)).strip()
-    if not display:
-        display = url
-    return RtfHyperlink(url=url, text=display), end + 1
+    if inst_match:
+        url = (inst_match.group(1) or inst_match.group(2) or "").replace(r'\"', '"').replace(r"\\", "\\")
+        return RtfHyperlink(url=url, text=display or url), end + 1
+    # Notizen.NET/RichTextBox can contain ordinary fields such as DATE, PAGE,
+    # REF, SYMBOL or TOC fragments.  The readable payload is the fldrslt group;
+    # the fldinst instruction is only metadata and must not leak into note text.
+    return RtfField(rtf=group, text=display), end + 1
 
 
 @dataclass(slots=True)
@@ -337,7 +372,7 @@ class RtfTextSegment:
     style: RtfTextStyle
 
 
-RtfContentPart = RtfTextSegment | RtfImage | RtfHyperlink
+RtfContentPart = RtfTextSegment | RtfImage | RtfHyperlink | RtfField | RtfObject
 
 
 @dataclass(slots=True)
@@ -560,6 +595,22 @@ def _image_to_html(image: RtfImage) -> str:
     return "<img " + " ".join(attrs) + "/>"
 
 
+def _raw_rtf_to_html(attr_name: str, raw_rtf: str, display_text: str, title: str = "") -> str:
+    encoded = base64.b64encode(raw_rtf.encode("utf-8")).decode("ascii")
+    attrs = [f'{attr_name}="{encoded}"']
+    if title:
+        attrs.append(f'title="{escape(title, quote=True)}"')
+    return "<span " + " ".join(attrs) + ">" + escape(display_text) + "</span>"
+
+
+def _field_to_html(field: RtfField) -> str:
+    return _raw_rtf_to_html("data-notizen-rtf-field", field.rtf, field.text)
+
+
+def _object_to_html(obj: RtfObject) -> str:
+    return _raw_rtf_to_html("data-notizen-rtf-object", obj.rtf, obj.placeholder, obj.class_name)
+
+
 def _clean_font_name(raw: str, encoding: str = "cp1252") -> str:
     raw = _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1), encoding), raw)
     raw = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", raw)
@@ -657,14 +708,14 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
         if ch == "{":
             field_result = _extract_field_at(rtf, i)
             if field_result is not None and not state.skip and not state.hidden:
-                hyperlink, i = field_result
-                yield hyperlink.text
+                field_token, i = field_result
+                yield field_token.text
                 continue
             object_result = _extract_object_at(rtf, i)
             if object_result is not None:
-                placeholder, i = object_result
+                obj, i = object_result
                 if not state.skip and not state.hidden:
-                    yield placeholder
+                    yield obj.placeholder
                 continue
             stack.append(state.copy())
             i += 1
@@ -859,7 +910,7 @@ def _style_to_css(style: _RtfStyle, colors: list[str]) -> str:
     return "; ".join(rules)
 
 
-def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[str | RtfImage | RtfHyperlink, _RtfStyle]]:
+def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[str | RtfImage | RtfHyperlink | RtfField | RtfObject, _RtfStyle]]:
     fonts = extract_font_table(rtf)
     stack: list[_RtfState] = [_RtfState(skip=False, uc=1, style=_RtfStyle())]
     i = 0
@@ -874,14 +925,14 @@ def _rtf_iter_html_tokens(rtf: str, encoding: str = "cp1252") -> Iterable[tuple[
                 continue
             field_result = _extract_field_at(rtf, i)
             if field_result is not None and not state.skip and state.style is not None:
-                hyperlink, i = field_result
-                yield hyperlink, state.style.copy()
+                field_token, i = field_result
+                yield field_token, state.style.copy()
                 continue
             object_result = _extract_object_at(rtf, i)
             if object_result is not None:
-                placeholder, i = object_result
+                obj, i = object_result
                 if not state.skip and state.style is not None:
-                    yield placeholder, state.style.copy()
+                    yield obj, state.style.copy()
                 continue
             stack.append(state.copy())
             i += 1
@@ -1151,6 +1202,16 @@ def rtf_to_content_parts(rtf: str) -> list[RtfContentPart]:
             parts.append(token)
             current_style = None
             continue
+        if isinstance(token, RtfObject):
+            flush()
+            parts.append(token)
+            current_style = None
+            continue
+        if isinstance(token, RtfField):
+            flush()
+            parts.append(token)
+            current_style = None
+            continue
         resolved = _resolve_style(style, colors)
         if isinstance(token, RtfHyperlink):
             flush()
@@ -1203,8 +1264,12 @@ def rtf_to_text_segments(rtf: str) -> list[RtfTextSegment]:
             flush()
             current_style = None
             continue
+        if isinstance(token, RtfObject):
+            flush()
+            current_style = None
+            continue
         resolved = _resolve_style(style, colors)
-        text = token.text if isinstance(token, RtfHyperlink) else token
+        text = token.text if isinstance(token, (RtfHyperlink, RtfField)) else str(token)
         if isinstance(token, RtfHyperlink) and not resolved.underline:
             resolved = _text_style_with_underline(resolved)
         if resolved != current_style:
@@ -1288,6 +1353,18 @@ def rtf_to_html(rtf: str) -> str:
             paragraph_parts.append(_image_to_html(token))
             current_inline_css = None
             continue
+        if isinstance(token, RtfObject):
+            ensure_paragraph(style)
+            flush_text()
+            paragraph_parts.append(_object_to_html(token))
+            current_inline_css = None
+            continue
+        if isinstance(token, RtfField):
+            ensure_paragraph(style)
+            flush_text()
+            paragraph_parts.append(_field_to_html(token))
+            current_inline_css = None
+            continue
         if isinstance(token, RtfHyperlink):
             ensure_paragraph(style)
             flush_text()
@@ -1303,6 +1380,12 @@ def rtf_to_html(rtf: str) -> str:
             continue
 
         ch = token
+        if ch == "\f":
+            ensure_paragraph(style)
+            flush_text()
+            paragraph_parts.append('<hr style="page-break-after:always; border:0; height:0;"/>')
+            current_inline_css = None
+            continue
         if ch == "\n":
             finish_paragraph(style)
             continue
@@ -1403,6 +1486,12 @@ def rtf_to_desktop_html(rtf: str) -> str:
         if isinstance(token, RtfImage):
             emit_raw_html(_image_to_html(token), style)
             continue
+        if isinstance(token, RtfObject):
+            emit_raw_html(_object_to_html(token), style)
+            continue
+        if isinstance(token, RtfField):
+            emit_raw_html(_field_to_html(token), style)
+            continue
         if isinstance(token, RtfHyperlink):
             emit_pending_breaks()
             close_span()
@@ -1416,7 +1505,7 @@ def rtf_to_desktop_html(rtf: str) -> str:
             out.append("</a>")
             emitted_content = True
             continue
-        if token in {"\n", _RTF_SOFT_LINE_BREAK}:
+        if token in {"\n", "\f", _RTF_SOFT_LINE_BREAK}:
             pending_breaks += 1
             continue
         emit_text(token, style)
@@ -1867,6 +1956,25 @@ class _HtmlImage:
     height_px: int | None = None
 
 
+@dataclass(slots=True)
+class _HtmlRawRtf:
+    rtf: str
+
+
+def _decode_raw_rtf_attribute(attr: dict[str, str]) -> str | None:
+    for name in ("data-notizen-rtf-object", "data-notizen-rtf-field", "data-notizen-raw-rtf", "data-notizen-rtf"):
+        encoded = attr.get(name, "").strip()
+        if not encoded:
+            continue
+        try:
+            raw = base64.b64decode(encoded, validate=True).decode("utf-8")
+        except Exception:
+            raw = unquote(encoded)
+        if raw.startswith("{\\") or "{\\object" in raw:
+            return raw
+    return None
+
+
 class _HtmlToSegments(HTMLParser):
     _BLOCK_TAGS = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "center"}
     _HEADING_SIZES = {"h1": 48, "h2": 36, "h3": 28, "h4": 24, "h5": 20, "h6": 18}
@@ -1876,8 +1984,9 @@ class _HtmlToSegments(HTMLParser):
         self.color_names: dict[str, int] = {}
         self.font_names: dict[str, int] = {}
         self.stack: list[_RtfStyle] = [_RtfStyle()]
-        self.segments: list[_HtmlSegment | _HtmlImage] = []
+        self.segments: list[_HtmlSegment | _HtmlImage | _HtmlRawRtf] = []
         self.skip_depth = 0
+        self.raw_rtf_skip_depth = 0
         self.list_stack: list[dict[str, int | str]] = []
         self.table_row_has_cell: list[bool] = []
 
@@ -1947,6 +2056,15 @@ class _HtmlToSegments(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        if self.raw_rtf_skip_depth:
+            self.raw_rtf_skip_depth += 1
+            return
+        attr = {k.lower(): v or "" for k, v in attrs}
+        raw_rtf = _decode_raw_rtf_attribute(attr)
+        if raw_rtf is not None:
+            self.segments.append(_HtmlRawRtf(raw_rtf))
+            self.raw_rtf_skip_depth = 1
+            return
         if tag in {"style", "script"}:
             self.skip_depth += 1
             return
@@ -2012,6 +2130,9 @@ class _HtmlToSegments(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        if self.raw_rtf_skip_depth:
+            self.raw_rtf_skip_depth = max(0, self.raw_rtf_skip_depth - 1)
+            return
         if tag in {"style", "script"}:
             self.skip_depth = max(0, self.skip_depth - 1)
             return
@@ -2050,7 +2171,7 @@ class _HtmlToSegments(HTMLParser):
             self.stack.pop()
 
     def handle_data(self, data: str) -> None:
-        if self.skip_depth:
+        if self.skip_depth or self.raw_rtf_skip_depth:
             return
         self._append(data)
 
@@ -2159,6 +2280,9 @@ def html_to_rtf(html_text: str) -> str:
     font_table = _font_table(parser.font_names)
     body_parts: list[str] = []
     for segment in parser.segments:
+        if isinstance(segment, _HtmlRawRtf):
+            body_parts.append(segment.rtf)
+            continue
         if isinstance(segment, _HtmlImage):
             pict = _rtf_picture_from_source(segment.src, segment.width_px, segment.height_px)
             body_parts.append(pict if pict is not None else _rtf_escape_text("[Bild]"))
