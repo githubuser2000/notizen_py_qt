@@ -67,6 +67,7 @@ from .rtf_utils import (
     dib_to_bmp_bytes,
     html_to_rtf,
     rtf_ansi_encoding,
+    rtf_to_desktop_html,
     rtf_to_html,
     rtf_to_plain_text,
 )
@@ -195,6 +196,7 @@ __all__ = [
     "rtf_ansi_encoding",
     "rtf_to_plain_text",
     "rtf_to_html",
+    "rtf_to_desktop_html",
     "html_to_rtf",
     "RtfHyperlink",
     "LEGACY_OBJECT_PLACEHOLDER",
@@ -245,4 +247,4 @@ __all__ = [
     "windows_association_preview_lines",
 ]
 
-__version__ = "0.10.23"
+__version__ = "0.10.24"

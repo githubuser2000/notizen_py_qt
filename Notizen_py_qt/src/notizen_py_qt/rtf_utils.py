@@ -1329,6 +1329,102 @@ def rtf_to_html(rtf: str) -> str:
     out.append("</body></html>")
     return "".join(out)
 
+
+def rtf_to_desktop_html(rtf: str) -> str:
+    """Convert RTF to compact HTML for legacy desktop sticky notes.
+
+    Desktop notes in Notizen.NET used a borderless WinForms ``RichTextBox`` in
+    the upper-left corner.  Qt's normal HTML paragraph importer adds block
+    margins/leading even when the RTF only contains RichTextBox ``\\line`` soft
+    line breaks.  This desktop-specific bridge keeps character formatting and
+    images/links, but writes the note as inline content with ``<br/>`` breaks so
+    the first text row starts at document position 0 and line breaks stay tight.
+    """
+    body_style = "white-space: pre-wrap; margin:0; padding:0; line-height:100%;"
+    if not rtf:
+        return f'<html><body style="{body_style}"></body></html>'
+    if "{\\rtf" not in rtf[:32]:
+        escaped = escape(rtf).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br/>")
+        return f'<html><body style="{body_style}">{escaped}</body></html>'
+
+    colors = extract_color_table(rtf)
+    out: list[str] = [f'<html><body style="{body_style}">']
+    current_inline_css: str | None = None
+    pending_breaks = 0
+    emitted_content = False
+
+    def close_span() -> None:
+        nonlocal current_inline_css
+        if current_inline_css is not None:
+            out.append("</span>")
+            current_inline_css = None
+
+    def emit_pending_breaks() -> None:
+        nonlocal pending_breaks, emitted_content
+        if pending_breaks <= 0:
+            return
+        if not emitted_content:
+            # Leading \par/\line controls are common import artifacts and made
+            # sticky notes start visually too far down.  RichTextBox opens at
+            # the first real character for the note use case.
+            pending_breaks = 0
+            return
+        close_span()
+        out.extend("<br/>" for _ in range(pending_breaks))
+        pending_breaks = 0
+
+    def ensure_span(style: _RtfStyle) -> None:
+        nonlocal current_inline_css
+        css = _inline_style_to_css(style, colors)
+        if css == current_inline_css:
+            return
+        close_span()
+        current_inline_css = css or None
+        if current_inline_css:
+            out.append(f'<span style="{escape(current_inline_css, quote=True)}">')
+
+    def emit_text(text: str, style: _RtfStyle) -> None:
+        nonlocal emitted_content
+        if not text:
+            return
+        emit_pending_breaks()
+        ensure_span(style)
+        out.append(escape(text))
+        emitted_content = True
+
+    def emit_raw_html(html: str, style: _RtfStyle) -> None:
+        nonlocal emitted_content
+        emit_pending_breaks()
+        ensure_span(style)
+        out.append(html)
+        emitted_content = True
+
+    for token, style in _rtf_iter_html_tokens(rtf, rtf_ansi_encoding(rtf)):
+        if isinstance(token, RtfImage):
+            emit_raw_html(_image_to_html(token), style)
+            continue
+        if isinstance(token, RtfHyperlink):
+            emit_pending_breaks()
+            close_span()
+            css = _inline_style_to_css(style, colors)
+            if "text-decoration" not in css:
+                css = (css + "; " if css else "") + "text-decoration:underline"
+            href = escape(token.url, quote=True)
+            style_attr = f' style="{escape(css, quote=True)}"' if css else ""
+            out.append(f'<a href="{href}"{style_attr}>')
+            out.append(_escape_html_text_with_breaks(token.text))
+            out.append("</a>")
+            emitted_content = True
+            continue
+        if token in {"\n", _RTF_SOFT_LINE_BREAK}:
+            pending_breaks += 1
+            continue
+        emit_text(token, style)
+
+    close_span()
+    out.append("</body></html>")
+    return "".join(out)
+
 def _rtf_escape_text(text: str) -> str:
     parts: list[str] = []
     for ch in text:

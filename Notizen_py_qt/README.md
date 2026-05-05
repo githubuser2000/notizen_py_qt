@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.23**.
+Aktueller Stand dieses Archivs: **0.10.24**.
 
 ## Start
 
@@ -64,6 +64,13 @@ notizen-py-qt /pfad/zur/datei.alx
 ```
 
 
+
+## Änderungen in 0.10.24
+
+- Desktop-Haftnotizen nutzen jetzt eine eigene kompakte RTF→HTML-Brücke ohne Qt-Absatzabstände. `\line` und einfache Zeilenumbrüche bleiben eng, führende Import-Leerzeilen werden für Haftnotizen unterdrückt.
+- Transparenz der Haftnotizen wird zusätzlich über einen Qt-Opacity-Effekt auf den Editor gerendert, damit GNOME/Wayland graduelle Transparenz für Hintergrund und Text sieht.
+- Haftnotizen verwenden, wo verfügbar, `WindowStaysOnBottomHint` und werden nach dem Anzeigen abgesenkt, um das alte Desktop-/hinten-Verhalten näher zu treffen.
+- Die RTF-Formatleiste ist wie in Notizen.NET kompakt angeordnet: N, B, K, U, D, +, -, Schriftgröße, Schriftart.
 
 ## Änderungen in 0.10.23
 

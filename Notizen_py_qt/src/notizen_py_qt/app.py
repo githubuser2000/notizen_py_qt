@@ -55,7 +55,7 @@ from .startup import apply_windows_autostart_script, parse_legacy_startup_args, 
 from .tray_support import decide_startup_tray_visibility, gnome_tray_install_hint
 from .display_env import append_startup_log, normalize_qt_display_environment
 from .window_visibility import env_requests_window_reset, legacy_window_state_is_restorable, sanitize_legacy_window_geometry, should_start_minimized
-from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_html, rtf_to_plain_text
+from .rtf_utils import html_to_rtf, plain_text_to_rtf, rtf_to_desktop_html, rtf_to_html, rtf_to_plain_text
 from .search_logic import SearchResult, search_nodes
 from .search_results import SearchHitView, build_search_hit_views
 from .settings import AppSettings, legacy_autosave_should_save, normalize_autosave_seconds, normalize_window_state
@@ -137,6 +137,10 @@ if QtWidgets is not None:
     WINDOW = _enum(QtCore.Qt, "WindowType", "Window")
     TOOL = _enum(QtCore.Qt, "WindowType", "Tool")
     FRAMELESS = _enum(QtCore.Qt, "WindowType", "FramelessWindowHint")
+    try:
+        WINDOW_STAYS_ON_BOTTOM_HINT = _enum(QtCore.Qt, "WindowType", "WindowStaysOnBottomHint")
+    except Exception:
+        WINDOW_STAYS_ON_BOTTOM_HINT = 0
     CTRL = _enum(QtCore.Qt, "KeyboardModifier", "ControlModifier")
     SHIFT = _enum(QtCore.Qt, "KeyboardModifier", "ShiftModifier")
     ALT = _enum(QtCore.Qt, "KeyboardModifier", "AltModifier")
@@ -293,6 +297,8 @@ if QtWidgets is not None:
             # main window as parent plus Qt.Tool makes some GNOME/window-manager
             # combinations ignore taskbar minimization and window opacity.
             flags = WINDOW | FRAMELESS
+            if WINDOW_STAYS_ON_BOTTOM_HINT:
+                flags |= WINDOW_STAYS_ON_BOTTOM_HINT
             super().__init__(None, flags)
             self.main_window = main_window
             self.node = node
@@ -334,6 +340,12 @@ if QtWidgets is not None:
             self._auto_resize_timer.timeout.connect(self._set_clientsizes)
 
             self.editor = QtWidgets.QTextEdit(self)
+            self._editor_opacity_effect: Any | None = None
+            try:
+                self._editor_opacity_effect = QtWidgets.QGraphicsOpacityEffect(self.editor)
+                self.editor.setGraphicsEffect(self._editor_opacity_effect)
+            except Exception:
+                self._editor_opacity_effect = None
             self.editor.setAcceptRichText(True)
             self.editor.setReadOnly(True)
             self.editor.setFrameShape(_enum(QtWidgets.QFrame, "Shape", "NoFrame"))
@@ -343,8 +355,9 @@ if QtWidgets is not None:
             except Exception:
                 pass
             self._apply_desktop_note_text_layout()
-            self.editor.setHtml(rtf_to_html(node.rtf))
+            self.editor.setHtml(rtf_to_desktop_html(node.rtf))
             self._apply_desktop_note_text_layout()
+            self._compact_desktop_note_blocks()
             self.editor.setMouseTracking(True)
             self.editor.setCursor(QtGui.QCursor(SIZE_ALL_CURSOR))
             self.editor.setContextMenuPolicy(CUSTOM_CONTEXT_MENU)
@@ -365,6 +378,12 @@ if QtWidgets is not None:
                 pass
 
             self.title_label = QtWidgets.QLabel(node.title, self)
+            self._title_opacity_effect: Any | None = None
+            try:
+                self._title_opacity_effect = QtWidgets.QGraphicsOpacityEffect(self.title_label)
+                self.title_label.setGraphicsEffect(self._title_opacity_effect)
+            except Exception:
+                self._title_opacity_effect = None
             self.title_label.setAlignment(ALIGN_CENTER)
             self.title_label.setMouseTracking(True)
             self.title_label.installEventFilter(self)
@@ -430,11 +449,8 @@ if QtWidgets is not None:
             self._expanded = False
             self._set_geometry_rect(shown, transition=True)
             self._desired_opacity = legacy_desknote_opacity_for_inactive(state.opacity)
-            try:
-                self.setWindowOpacity(self._desired_opacity)
-            except Exception:
-                pass
             self._apply_background()
+            self._apply_widget_opacity()
             self._layout_desknote()
 
         def show2(self) -> None:
@@ -445,7 +461,7 @@ if QtWidgets is not None:
                 self.showNormal()
             except Exception:
                 self.show()
-            self.raise_()
+            self._send_to_back()
             self._scroll_manual = False
             self._schedule_auto_resize(150)
             QtCore.QTimer.singleShot(1000, self._schedule_auto_resize)
@@ -616,15 +632,92 @@ if QtWidgets is not None:
             except Exception:
                 pass
             try:
+                self.editor.setViewportMargins(0, 0, 0, 0)
+            except Exception:
+                pass
+            try:
+                self.editor.document().setDefaultStyleSheet(
+                    "html, body { margin:0; padding:0; line-height:100%; } "
+                    "p, div { margin-top:0; margin-bottom:0; padding-top:0; padding-bottom:0; line-height:100%; }"
+                )
+            except Exception:
+                pass
+            try:
                 option = self.editor.document().defaultTextOption()
                 option.setWrapMode(_enum(QtGui.QTextOption, "WrapMode", "WordWrap"))
                 self.editor.document().setDefaultTextOption(option)
             except Exception:
                 pass
 
-        def _qcolor_to_css_rgba(self, color: Any) -> str:
+        def _compact_desktop_note_blocks(self) -> None:
+            """Force WinForms RichTextBox-like compact block spacing in desk notes."""
+
             try:
-                alpha = max(0.0, min(1.0, float(color.alpha()) / 255.0))
+                document = self.editor.document()
+                block = document.begin()
+                cursor = QtGui.QTextCursor(document)
+                while block.isValid():
+                    cursor.setPosition(block.position())
+                    block_format = block.blockFormat()
+                    block_format.setTopMargin(0)
+                    block_format.setBottomMargin(0)
+                    block_format.setLeftMargin(0 if block_format.leftMargin() < 0 else block_format.leftMargin())
+                    block_format.setRightMargin(0 if block_format.rightMargin() < 0 else block_format.rightMargin())
+                    try:
+                        block_format.setLineHeight(100, QtGui.QTextBlockFormat.LineHeightTypes.ProportionalHeight)
+                    except Exception:
+                        try:
+                            block_format.setLineHeight(100, 1)
+                        except Exception:
+                            pass
+                    cursor.setBlockFormat(block_format)
+                    block = block.next()
+            except Exception:
+                pass
+
+        def _effective_desktop_opacity(self) -> float:
+            return legacy_desknote_opacity_for_inactive(self._desired_opacity)
+
+        def _apply_widget_opacity(self) -> None:
+            opacity = self._effective_desktop_opacity()
+            try:
+                # GNOME/Wayland frequently ignores or quantizes top-level
+                # QWidget.windowOpacity().  Paint the editor itself through Qt's
+                # graphics effect so background and text fade together.
+                if self._editor_opacity_effect is not None:
+                    self._editor_opacity_effect.setOpacity(opacity)
+            except Exception:
+                pass
+            try:
+                # Keep the native top-level fully composited; otherwise the WM
+                # opacity path and Qt's own opacity effect multiply each other.
+                self.setWindowOpacity(1.0)
+            except Exception:
+                pass
+            try:
+                if self._title_opacity_effect is not None:
+                    self._title_opacity_effect.setOpacity(opacity)
+            except Exception:
+                pass
+            self.update()
+
+        def _send_to_back(self) -> None:
+            """Keep sticky notes behind normal application windows where Qt/WM allow it."""
+
+            try:
+                self.lower()
+            except Exception:
+                pass
+            try:
+                QtCore.QTimer.singleShot(0, self.lower)
+                QtCore.QTimer.singleShot(150, self.lower)
+            except Exception:
+                pass
+
+        def _qcolor_to_css_rgba(self, color: Any, alpha_multiplier: float = 1.0) -> str:
+            try:
+                base_alpha = max(0.0, min(1.0, float(color.alpha()) / 255.0))
+                alpha = max(0.0, min(1.0, base_alpha * float(alpha_multiplier)))
                 return f"rgba({color.red()}, {color.green()}, {color.blue()}, {alpha:.3f})"
             except Exception:
                 return str(color.name())
@@ -636,13 +729,20 @@ if QtWidgets is not None:
             else:
                 color = color_from_argb(legacy_light_color_argb(0))
             css_color = self._qcolor_to_css_rgba(color)
+            # Keep the CSS background opaque; the QGraphicsOpacityEffect below
+            # fades background and text together on GNOME/Wayland.  The viewport
+            # receives the same color so the old bug where only the custom frame
+            # faded cannot return.
             self.editor.setStyleSheet(
                 "QTextEdit { "
                 f"background-color: {css_color}; "
                 "border: none; padding: 0px; margin: 0px; } "
-                "QTextEdit::viewport { padding: 0px; margin: 0px; }"
+                "QTextEdit::viewport { "
+                f"background-color: {css_color}; "
+                "padding: 0px; margin: 0px; }"
             )
             self._apply_desktop_note_text_layout()
+            self._apply_widget_opacity()
             try:
                 pal = self.palette()
                 pal.setColor(self.backgroundRole(), color)
@@ -676,7 +776,7 @@ if QtWidgets is not None:
             self.node.desktop_note.width = logical.width
             self.node.desktop_note.height = logical.height
             self.node.desktop_note.visible = self.isVisible() if visible is None else visible
-            self.node.desktop_note.opacity = legacy_desknote_opacity_for_inactive(self._desired_opacity)
+            self.node.desktop_note.opacity = self._effective_desktop_opacity()
 
         def _store_after_user_geometry_change(self) -> None:
             self._store_geometry(visible=True)
@@ -689,8 +789,9 @@ if QtWidgets is not None:
             try:
                 self.setWindowTitle(self.node.title)
                 self.title_label.setText(self.node.title)
-                self.editor.setHtml(rtf_to_html(self.node.rtf))
+                self.editor.setHtml(rtf_to_desktop_html(self.node.rtf))
                 self._apply_desktop_note_text_layout()
+                self._compact_desktop_note_blocks()
                 self._apply_background()
                 self._layout_desknote()
             finally:
@@ -730,22 +831,17 @@ if QtWidgets is not None:
             self._desired_opacity = opacity
             self.node.desktop_note.opacity = opacity
             self.node.desktop_note.legacy_sparse = False
-            try:
-                self.setWindowOpacity(opacity)
-            except Exception:
-                pass
+            self._apply_background()
+            self._apply_widget_opacity()
             self.main_window.document.mark_changed()
             self.main_window.update_title()
 
         def _apply_user_opacity(self) -> None:
-            try:
-                # Keep the selected transparency visible even while hovering or
-                # using the context menu.  The legacy helper still exists for
-                # numeric compatibility, but modern Linux users expect the menu
-                # value to affect the actual desktop note immediately.
-                self.setWindowOpacity(legacy_desknote_opacity_for_inactive(self._desired_opacity))
-            except Exception:
-                pass
+            # Keep the selected transparency visible even while hovering or using
+            # the context menu.  Do it inside Qt painting, not through the native
+            # top-level opacity, because GNOME/Wayland may expose only binary
+            # transparency for frameless windows.
+            self._apply_widget_opacity()
 
         def _set_active_opacity(self) -> None:
             self._apply_user_opacity()
@@ -760,6 +856,7 @@ if QtWidgets is not None:
             self._expanded = True
             self._set_geometry_rect(expanded, transition=True)
             self._set_active_opacity()
+            self._send_to_back()
 
         def _collapse_from_hover(self) -> None:
             if not self._expanded:
@@ -768,6 +865,7 @@ if QtWidgets is not None:
             self._expanded = False
             self._set_geometry_rect(collapsed, transition=True)
             self._restore_inactive_opacity()
+            self._send_to_back()
 
         def _timer_collapse_check(self) -> None:
             if not self._expanded:
@@ -1066,6 +1164,10 @@ if QtWidgets is not None:
                 return
             painter = QtGui.QPainter(self)
             try:
+                try:
+                    painter.setOpacity(self._effective_desktop_opacity())
+                except Exception:
+                    pass
                 pen = QtGui.QPen(QtGui.QColor("black"))
                 painter.setPen(pen)
                 painter.drawLine(36, 26, max(36, self.width() - 36), 26)
@@ -1080,6 +1182,10 @@ if QtWidgets is not None:
                 painter.drawText(QtCore.QRect(0, 0, 36, 36), ALIGN_CENTER, "_")
             finally:
                 painter.end()
+
+        def showEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+            super().showEvent(event)
+            self._send_to_back()
 
         def moveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
             if self._system_drag_move or self._system_drag_resize:
@@ -1549,6 +1655,35 @@ if QtWidgets is not None:
             action.triggered.connect(slot)
             return action
 
+        def _style_rtf_toolstrip_actions(self) -> None:
+            """Use the compact N/B/K/U/D/+/- labels from Notizen.NET's ToolStrip."""
+
+            try:
+                bold_font = QtGui.QFont()
+                bold_font.setBold(True)
+                self.bold_action.setFont(bold_font)
+                italic_font = QtGui.QFont()
+                italic_font.setItalic(True)
+                self.italic_action.setFont(italic_font)
+                underline_font = QtGui.QFont()
+                underline_font.setUnderline(True)
+                self.underline_action.setFont(underline_font)
+                strike_font = QtGui.QFont()
+                strike_font.setStrikeOut(True)
+                self.strike_action.setFont(strike_font)
+            except Exception:
+                pass
+            try:
+                priority = QtGui.QAction.Priority.HighPriority
+            except Exception:
+                priority = None
+            if priority is not None:
+                for action in (self.regular_action, self.bold_action, self.italic_action, self.underline_action, self.strike_action):
+                    try:
+                        action.setPriority(priority)
+                    except Exception:
+                        pass
+
         def _create_actions(self) -> None:
             self.new_action = self._act("Neue Datei", self.new_document, "Ctrl+N")
             self.open_action = self._act("Öffnen", self.open_dialog, "Ctrl+O")
@@ -1602,20 +1737,28 @@ if QtWidgets is not None:
             self.search_action = self._act("Suchen", self.show_search, "Ctrl+F")
             self.alarm_action = self._act("Wecker", self.show_alarm_dialog, "Ctrl+Space")
 
-            self.bold_action = self._act("Fett", self.toggle_bold, "Ctrl+B")
+            self.bold_action = self._act("B", self.toggle_bold, "Ctrl+B", checkable=True)
+            self.bold_action.setToolTip("Fett")
             self.bold_action.setObjectName("ToolStrip_bold")
-            self.italic_action = self._act("Kursiv", self.toggle_italic, "Ctrl+I")
+            self.italic_action = self._act("K", self.toggle_italic, "Ctrl+I", checkable=True)
+            self.italic_action.setToolTip("Kursiv")
             self.italic_action.setObjectName("ToolStrip_italic")
-            self.underline_action = self._act("Unterstrichen", self.toggle_underline)
+            self.underline_action = self._act("U", self.toggle_underline, checkable=True)
+            self.underline_action.setToolTip("Unterstrichen")
             self.underline_action.setObjectName("ToolStrip_underline")
-            self.strike_action = self._act("Durchgestrichen", self.toggle_strike)
+            self.strike_action = self._act("D", self.toggle_strike, checkable=True)
+            self.strike_action.setToolTip("Durchgestrichen")
             self.strike_action.setObjectName("ToolStrip_strikeout")
-            self.regular_action = self._act("Normal", self.reset_char_format)
+            self.regular_action = self._act("N", self.reset_char_format)
+            self.regular_action.setToolTip("Normal")
             self.regular_action.setObjectName("ToolStrip_regular")
-            self.bigger_action = self._act("Schrift größer", lambda: self.change_font_size(+1), "Ctrl++")
+            self.bigger_action = self._act("+", lambda: self.change_font_size(+1), "Ctrl++")
+            self.bigger_action.setToolTip("Schrift größer")
             self.bigger_action.setObjectName("ToolStrip_bigger")
-            self.smaller_action = self._act("Schrift kleiner", lambda: self.change_font_size(-1), "Ctrl+-")
+            self.smaller_action = self._act("-", lambda: self.change_font_size(-1), "Ctrl+-")
+            self.smaller_action.setToolTip("Schrift kleiner")
             self.smaller_action.setObjectName("ToolStrip_smaller")
+            self._style_rtf_toolstrip_actions()
             self.text_color_action = self._act("Textfarbe", self.choose_text_color)
             self.text_color_action.setObjectName("fgcolorToolStripMenuItem")
             self.highlight_color_action = self._act("Texthintergrund", self.choose_text_background)
@@ -1829,26 +1972,31 @@ if QtWidgets is not None:
             self.font_family_combo.setObjectName("ToolStrip_fonts")
             self.font_family_combo.setToolTip("Schriftart")
             self.font_family_combo.currentFontChanged.connect(self.apply_font_family)
-            font_bar.addWidget(self.font_family_combo)
-            self.font_size_spin = QtWidgets.QSpinBox()
-            self.font_size_spin.setObjectName("ToolStrip_fontsizenumber")
-            self.font_size_spin.setRange(6, 99)
-            self.font_size_spin.setValue(10)
-            self.font_size_spin.setToolTip("Schriftgröße")
-            self.font_size_spin.valueChanged.connect(self.apply_font_size)
-            font_bar.addWidget(self.font_size_spin)
+            self.font_family_combo.setMaximumWidth(180)
             for action in (
+                self.regular_action,
                 self.bold_action,
                 self.italic_action,
                 self.underline_action,
                 self.strike_action,
-                self.regular_action,
                 self.bigger_action,
                 self.smaller_action,
-                self.text_color_action,
-                self.highlight_color_action,
+            ):
+                font_bar.addAction(action)
+            self.font_size_spin = QtWidgets.QSpinBox()
+            self.font_size_spin.setObjectName("ToolStrip_fontsizenumber")
+            self.font_size_spin.setRange(6, 99)
+            self.font_size_spin.setValue(10)
+            self.font_size_spin.setMaximumWidth(54)
+            self.font_size_spin.setToolTip("Schriftgröße")
+            self.font_size_spin.valueChanged.connect(self.apply_font_size)
+            font_bar.addWidget(self.font_size_spin)
+            font_bar.addWidget(self.font_family_combo)
+            for action in (
                 self.bullet_action,
                 self.cycle_scrollbars_action,
+                self.text_color_action,
+                self.highlight_color_action,
             ):
                 font_bar.addAction(action)
 
@@ -3600,10 +3748,19 @@ if QtWidgets is not None:
                     self.font_family_combo.setCurrentFont(QtGui.QFont(family))
                 size = fmt.fontPointSize() or self.editor.font().pointSizeF() or 10
                 self.font_size_spin.setValue(max(6, min(99, int(round(size)))))
+                try:
+                    current_weight = int(getattr(fmt.fontWeight(), "value", fmt.fontWeight()))
+                    bold_weight = int(getattr(QtGui.QFont.Weight.Bold, "value", QtGui.QFont.Weight.Bold))
+                    self.bold_action.setChecked(current_weight >= bold_weight)
+                    self.italic_action.setChecked(fmt.fontItalic())
+                    self.underline_action.setChecked(fmt.fontUnderline())
+                    self.strike_action.setChecked(fmt.fontStrikeOut())
+                except Exception:
+                    pass
             finally:
                 self._updating_format_controls = False
 
-        def toggle_bold(self) -> None:
+        def toggle_bold(self, checked: bool | None = None) -> None:
             fmt = self.editor.currentCharFormat()
             current = fmt.fontWeight()
 
@@ -3616,22 +3773,26 @@ if QtWidgets is not None:
             except Exception:
                 bold_weight = 75
                 normal_weight = 50
-            fmt.setFontWeight(normal_weight if _weight_value(current) >= _weight_value(bold_weight) else bold_weight)
+            if checked is None:
+                make_bold = _weight_value(current) < _weight_value(bold_weight)
+            else:
+                make_bold = bool(checked)
+            fmt.setFontWeight(bold_weight if make_bold else normal_weight)
             self.merge_editor_format(fmt)
 
-        def toggle_italic(self) -> None:
+        def toggle_italic(self, checked: bool | None = None) -> None:
             fmt = self.editor.currentCharFormat()
-            fmt.setFontItalic(not fmt.fontItalic())
+            fmt.setFontItalic((not fmt.fontItalic()) if checked is None else bool(checked))
             self.merge_editor_format(fmt)
 
-        def toggle_underline(self) -> None:
+        def toggle_underline(self, checked: bool | None = None) -> None:
             fmt = self.editor.currentCharFormat()
-            fmt.setFontUnderline(not fmt.fontUnderline())
+            fmt.setFontUnderline((not fmt.fontUnderline()) if checked is None else bool(checked))
             self.merge_editor_format(fmt)
 
-        def toggle_strike(self) -> None:
+        def toggle_strike(self, checked: bool | None = None) -> None:
             fmt = self.editor.currentCharFormat()
-            fmt.setFontStrikeOut(not fmt.fontStrikeOut())
+            fmt.setFontStrikeOut((not fmt.fontStrikeOut()) if checked is None else bool(checked))
             self.merge_editor_format(fmt)
 
         def reset_char_format(self) -> None:

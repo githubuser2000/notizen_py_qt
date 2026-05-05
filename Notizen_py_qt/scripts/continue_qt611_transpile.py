@@ -86,7 +86,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== {step.name} ===")
         result = run_step(step, cwd=SCRIPT_DIR)
         results.append(result)
-        print(result.output.rstrip())
+        rendered_output = result.output.rstrip()
+        if len(rendered_output) > 12000:
+            rendered_output = rendered_output[:4000] + "\n... [output truncated] ...\n" + rendered_output[-4000:]
+        print(rendered_output)
         if result.returncode != 0:
             print(f"[step returned {result.returncode}]")
             if step.fatal:
