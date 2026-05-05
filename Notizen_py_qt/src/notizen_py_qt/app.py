@@ -84,16 +84,30 @@ except Exception as exc:  # pragma: no cover - exercised on systems without Qt
 
 
 def _load_qt_print_support() -> Any:
-    """Load QtPrintSupport from the active binding only when printing is used."""
-    if BINDING == "PySide6":
-        from PySide6 import QtPrintSupport  # type: ignore
+    """Load QtPrintSupport lazily from the active Qt binding.
 
-        return QtPrintSupport
-    if BINDING == "PyQt6":
-        from PyQt6 import QtPrintSupport  # type: ignore
+    Printing is optional in tests and command-line helpers, so the main module is
+    allowed to import without Qt.  At print time, however, retry both supported
+    bindings instead of relying only on the module-level ``BINDING`` value.
+    """
+    tried: list[str] = []
+    candidates = [BINDING, "PySide6", "PyQt6"]
+    for binding in candidates:
+        if not binding or binding in tried:
+            continue
+        tried.append(binding)
+        try:
+            if binding == "PySide6":
+                from PySide6 import QtPrintSupport  # type: ignore
 
-        return QtPrintSupport
-    raise RuntimeError("QtPrintSupport is unavailable because no Qt binding is loaded.")
+                return QtPrintSupport
+            if binding == "PyQt6":
+                from PyQt6 import QtPrintSupport  # type: ignore
+
+                return QtPrintSupport
+        except Exception:
+            continue
+    raise RuntimeError("QtPrintSupport ist nicht verfügbar; bitte PySide6/PyQt6 mit Druckunterstützung installieren.")
 
 
 def _enum(parent: Any, enum_name: str, value_name: str) -> Any:
@@ -275,8 +289,11 @@ if QtWidgets is not None:
         """
 
         def __init__(self, main_window: "MainWindow", node: NoteNode) -> None:
-            flags = TOOL | WINDOW | FRAMELESS
-            super().__init__(main_window, flags)
+            # Sticky notes must be independent top-level windows.  Using the
+            # main window as parent plus Qt.Tool makes some GNOME/window-manager
+            # combinations ignore taskbar minimization and window opacity.
+            flags = WINDOW | FRAMELESS
+            super().__init__(None, flags)
             self.main_window = main_window
             self.node = node
             self.setObjectName(f"{APP_DESKTOP_ID}-desktop-note")
@@ -288,7 +305,7 @@ if QtWidgets is not None:
             self.setWindowTitle(node.title)
             self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_DeleteOnClose"), False)
             try:
-                self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_TranslucentBackground"), False)
+                self.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_TranslucentBackground"), True)
             except Exception:
                 pass
             self.setMouseTracking(True)
@@ -319,7 +336,15 @@ if QtWidgets is not None:
             self.editor = QtWidgets.QTextEdit(self)
             self.editor.setAcceptRichText(True)
             self.editor.setReadOnly(True)
+            self.editor.setFrameShape(_enum(QtWidgets.QFrame, "Shape", "NoFrame"))
+            self.editor.setContentsMargins(0, 0, 0, 0)
+            try:
+                self.editor.viewport().setContentsMargins(0, 0, 0, 0)
+            except Exception:
+                pass
+            self._apply_desktop_note_text_layout()
             self.editor.setHtml(rtf_to_html(node.rtf))
+            self._apply_desktop_note_text_layout()
             self.editor.setMouseTracking(True)
             self.editor.setCursor(QtGui.QCursor(SIZE_ALL_CURSOR))
             self.editor.setContextMenuPolicy(CUSTOM_CONTEXT_MENU)
@@ -416,7 +441,10 @@ if QtWidgets is not None:
             """Show using the old ``desknote.show2`` compact geometry."""
 
             self._restore_geometry()
-            self.show()
+            try:
+                self.showNormal()
+            except Exception:
+                self.show()
             self.raise_()
             self._scroll_manual = False
             self._schedule_auto_resize(150)
@@ -580,18 +608,56 @@ if QtWidgets is not None:
             self._store_after_user_geometry_change()
             self._restore_inactive_opacity()
 
+        def _apply_desktop_note_text_layout(self) -> None:
+            """Remove QTextEdit/HTML padding that RichTextBox did not have."""
+
+            try:
+                self.editor.document().setDocumentMargin(0)
+            except Exception:
+                pass
+            try:
+                option = self.editor.document().defaultTextOption()
+                option.setWrapMode(_enum(QtGui.QTextOption, "WrapMode", "WordWrap"))
+                self.editor.document().setDefaultTextOption(option)
+            except Exception:
+                pass
+
+        def _qcolor_to_css_rgba(self, color: Any) -> str:
+            try:
+                alpha = max(0.0, min(1.0, float(color.alpha()) / 255.0))
+                return f"rgba({color.red()}, {color.green()}, {color.blue()}, {alpha:.3f})"
+            except Exception:
+                return str(color.name())
+
         def _apply_background(self) -> None:
             state = self.node.desktop_note or DesktopNoteState()
             if state.argb:
                 color = color_from_argb(state.argb)
             else:
                 color = color_from_argb(legacy_light_color_argb(0))
-            self.editor.setStyleSheet(f"background-color: {color.name()}; border: none;")
+            css_color = self._qcolor_to_css_rgba(color)
+            self.editor.setStyleSheet(
+                "QTextEdit { "
+                f"background-color: {css_color}; "
+                "border: none; padding: 0px; margin: 0px; } "
+                "QTextEdit::viewport { padding: 0px; margin: 0px; }"
+            )
+            self._apply_desktop_note_text_layout()
             try:
                 pal = self.palette()
                 pal.setColor(self.backgroundRole(), color)
                 self.setPalette(pal)
-                self.setAutoFillBackground(True)
+                # The QTextEdit/viewport carries the note color.  Do not auto-fill
+                # the top-level translucent window with an opaque palette brush.
+                self.setAutoFillBackground(False)
+            except Exception:
+                pass
+            try:
+                self.editor.setAttribute(_enum(QtCore.Qt, "WidgetAttribute", "WA_StyledBackground"), True)
+            except Exception:
+                pass
+            try:
+                self.editor.viewport().setAutoFillBackground(False)
             except Exception:
                 pass
 
@@ -624,6 +690,7 @@ if QtWidgets is not None:
                 self.setWindowTitle(self.node.title)
                 self.title_label.setText(self.node.title)
                 self.editor.setHtml(rtf_to_html(self.node.rtf))
+                self._apply_desktop_note_text_layout()
                 self._apply_background()
                 self._layout_desknote()
             finally:
@@ -640,7 +707,7 @@ if QtWidgets is not None:
                 action.triggered.connect(lambda checked=False, v=opacity_percent: self._set_opacity_percent(v))
             menu.addSeparator()
             menu.addAction("Im Hauptfenster öffnen", self._activate_main_window_node)
-            menu.addAction("Ausblenden", self._hide_desktop_note)
+            menu.addAction("Ausblenden / minimieren", self._hide_desktop_note)
             menu.addAction("Desktop-Notiz schließen", self._remove_desktop_note)
             menu.exec(global_pos)
 
@@ -670,17 +737,21 @@ if QtWidgets is not None:
             self.main_window.document.mark_changed()
             self.main_window.update_title()
 
-        def _set_active_opacity(self) -> None:
+        def _apply_user_opacity(self) -> None:
             try:
-                self.setWindowOpacity(legacy_desknote_opacity_for_active(self._desired_opacity))
-            except Exception:
-                pass
-
-        def _restore_inactive_opacity(self) -> None:
-            try:
+                # Keep the selected transparency visible even while hovering or
+                # using the context menu.  The legacy helper still exists for
+                # numeric compatibility, but modern Linux users expect the menu
+                # value to affect the actual desktop note immediately.
                 self.setWindowOpacity(legacy_desknote_opacity_for_inactive(self._desired_opacity))
             except Exception:
                 pass
+
+        def _set_active_opacity(self) -> None:
+            self._apply_user_opacity()
+
+        def _restore_inactive_opacity(self) -> None:
+            self._apply_user_opacity()
 
         def _expand_for_hover(self) -> None:
             if self._expanded or not self.main_window.settings.show_desknote_borders:
@@ -721,10 +792,18 @@ if QtWidgets is not None:
                 self.main_window.load_editor_from_node(self.node, preserve_focus=False)
 
         def _hide_desktop_note(self) -> None:
-            self._store_geometry(visible=False)
+            # Notizen.NET's left title hot-zone minimized the sticky note; it did
+            # not delete the ALX desktop-note state.  Keep it visible in the model
+            # and ask the window manager to minimize it so it remains reachable
+            # from the taskbar/window list.
+            self._store_geometry(visible=True)
             if self.node.desktop_note is not None:
-                self.node.desktop_note.visible = False
-            self.hide()
+                self.node.desktop_note.visible = True
+                self.node.desktop_note.legacy_sparse = False
+            try:
+                self.showMinimized()
+            except Exception:
+                self.hide()
             self.main_window.document.mark_changed()
             self.main_window.update_title()
             self.main_window.update_tray_menu()
@@ -1344,6 +1423,7 @@ if QtWidgets is not None:
             self.tree = LegacyTreeWidget(self)
             self.tree.setObjectName("Baum")
             self.tree.setHeaderLabel("Notizen")
+            self.tree.setHeaderHidden(True)
             self.tree.setSelectionBehavior(SELECT_ROWS)
             self.tree.setSelectionMode(EXTENDED_SELECTION)
             self.tree.setDragDropMode(INTERNAL_MOVE)
@@ -1413,9 +1493,6 @@ if QtWidgets is not None:
             left_layout = QtWidgets.QVBoxLayout(left_panel)
             left_layout.setContentsMargins(0, 0, 0, 0)
             left_layout.setSpacing(4)
-            tree_label = QtWidgets.QLabel("Baum")
-            tree_label.setObjectName("treeCaption")
-            left_layout.addWidget(tree_label)
             left_layout.addWidget(self.tree_top_edit)
             left_layout.addWidget(self.tree, 1)
 
@@ -1435,18 +1512,12 @@ if QtWidgets is not None:
 
             title_row = QtWidgets.QHBoxLayout()
             title_row.setContentsMargins(0, 0, 0, 0)
-            title_row.setSpacing(6)
-            title_label = QtWidgets.QLabel("Titel:")
-            title_label.setObjectName("titleCaption")
-            title_label.setBuddy(self.node_title_edit)
+            title_row.setSpacing(0)
             self.editor_mode_label = QtWidgets.QLabel("Modus: RTF/Text")
             self.editor_mode_label.setObjectName("modeCaption")
-            title_row.addWidget(title_label)
+            self.editor_mode_label.hide()
+            self.title_apply_button.hide()
             title_row.addWidget(self.node_title_edit, 1)
-            title_row.addWidget(self.title_apply_button)
-            title_row.addSpacing(8)
-            title_row.addWidget(self.editor_mode_label)
-            title_row.addStretch(0)
 
             right_layout.addLayout(title_row)
             right_layout.addWidget(self.editor, 1)
@@ -1532,17 +1603,28 @@ if QtWidgets is not None:
             self.alarm_action = self._act("Wecker", self.show_alarm_dialog, "Ctrl+Space")
 
             self.bold_action = self._act("Fett", self.toggle_bold, "Ctrl+B")
+            self.bold_action.setObjectName("ToolStrip_bold")
             self.italic_action = self._act("Kursiv", self.toggle_italic, "Ctrl+I")
+            self.italic_action.setObjectName("ToolStrip_italic")
             self.underline_action = self._act("Unterstrichen", self.toggle_underline)
+            self.underline_action.setObjectName("ToolStrip_underline")
             self.strike_action = self._act("Durchgestrichen", self.toggle_strike)
+            self.strike_action.setObjectName("ToolStrip_strikeout")
             self.regular_action = self._act("Normal", self.reset_char_format)
+            self.regular_action.setObjectName("ToolStrip_regular")
             self.bigger_action = self._act("Schrift größer", lambda: self.change_font_size(+1), "Ctrl++")
+            self.bigger_action.setObjectName("ToolStrip_bigger")
             self.smaller_action = self._act("Schrift kleiner", lambda: self.change_font_size(-1), "Ctrl+-")
+            self.smaller_action.setObjectName("ToolStrip_smaller")
             self.text_color_action = self._act("Textfarbe", self.choose_text_color)
+            self.text_color_action.setObjectName("fgcolorToolStripMenuItem")
             self.highlight_color_action = self._act("Texthintergrund", self.choose_text_background)
+            self.highlight_color_action.setObjectName("bgcolorToolStripMenuItem")
             self.bullet_action = self._act("Aufzählungspunkt", self.insert_bullet)
+            self.bullet_action.setObjectName("ToolStrip_dot")
 
             self.cycle_scrollbars_action = self._act("Scrollleisten wechseln", self.cycle_scrollbars)
+            self.cycle_scrollbars_action.setObjectName("ToolStrip_whatscroll")
             self.import_config_action = self._act("Alt-Config importieren", self.import_legacy_config_dialog)
             self.stats_action = self._act("Statistik", self.show_stats_dialog)
             self.about_action = self._act("Info", self.show_about)
@@ -1679,8 +1761,19 @@ if QtWidgets is not None:
             ):
                 self.editor.addAction(action)
 
+        def _toolbar_text_only(self, toolbar: Any) -> None:
+            try:
+                toolbar.setToolButtonStyle(_enum(QtCore.Qt, "ToolButtonStyle", "ToolButtonTextOnly"))
+            except Exception:
+                pass
+            try:
+                toolbar.setMovable(False)
+            except Exception:
+                pass
+
         def _create_toolbars(self) -> None:
             file_bar = self.addToolBar("Datei")
+            self._toolbar_text_only(file_bar)
             for action in (
                 self.new_action,
                 self.open_action,
@@ -1697,6 +1790,7 @@ if QtWidgets is not None:
             ):
                 file_bar.addAction(action)
             node_bar = self.addToolBar("Neu/Entf.")
+            self._toolbar_text_only(node_bar)
             for action in (
                 self.add_child_action,
                 self.add_sibling_action,
@@ -1716,6 +1810,7 @@ if QtWidgets is not None:
             ):
                 node_bar.addAction(action)
             edit_bar = self.addToolBar("Import/Suche")
+            self._toolbar_text_only(edit_bar)
             for action in (
                 self.import_txt_action,
                 self.import_rtf_action,
@@ -1727,12 +1822,16 @@ if QtWidgets is not None:
                 self.import_config_action,
             ):
                 edit_bar.addAction(action)
-            font_bar = self.addToolBar("Schrift")
+            font_bar = self.addToolBar("RTF-Formatierung")
+            font_bar.setObjectName("ToolStrip_fontstyle")
+            self._toolbar_text_only(font_bar)
             self.font_family_combo = QtWidgets.QFontComboBox()
+            self.font_family_combo.setObjectName("ToolStrip_fonts")
             self.font_family_combo.setToolTip("Schriftart")
             self.font_family_combo.currentFontChanged.connect(self.apply_font_family)
             font_bar.addWidget(self.font_family_combo)
             self.font_size_spin = QtWidgets.QSpinBox()
+            self.font_size_spin.setObjectName("ToolStrip_fontsizenumber")
             self.font_size_spin.setRange(6, 99)
             self.font_size_spin.setValue(10)
             self.font_size_spin.setToolTip("Schriftgröße")
@@ -3138,7 +3237,7 @@ if QtWidgets is not None:
         def _print_html(self, html: str, title: str) -> None:
             try:
                 QtPrintSupport = _load_qt_print_support()
-                printer = QtPrintSupport.QPrinter(QtPrintSupport.QPrinter.PrinterMode.HighResolution)
+                printer = QtPrintSupport.QPrinter(_enum(QtPrintSupport.QPrinter, "PrinterMode", "HighResolution"))
                 printer.setDocName(title or "Notizen")
                 dialog = QtPrintSupport.QPrintDialog(printer, self)
                 if dialog.exec() != ACCEPTED:
@@ -3146,7 +3245,10 @@ if QtWidgets is not None:
                 document = QtGui.QTextDocument()
                 document.setDefaultFont(self.editor.font())
                 document.setHtml(html)
-                document.print(printer)
+                print_method = getattr(document, "print_", None) or getattr(document, "print", None)
+                if print_method is None:
+                    raise RuntimeError("QTextDocument-Druckmethode ist in dieser Qt-Bindung nicht verfügbar.")
+                print_method(printer)
             except Exception as exc:
                 QtWidgets.QMessageBox.critical(self, "Drucken fehlgeschlagen", str(exc))
 

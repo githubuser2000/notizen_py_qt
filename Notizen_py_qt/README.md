@@ -2,7 +2,7 @@
 
 Dies ist die Weitertranspilierung des alten VB.NET/WinForms-Projekts **Notizen.NET** nach Python/Qt.
 
-Aktueller Stand dieses Archivs: **0.10.22**.
+Aktueller Stand dieses Archivs: **0.10.23**.
 
 ## Start
 
@@ -63,6 +63,16 @@ python -m pip install -e ".[crypto]"
 notizen-py-qt /pfad/zur/datei.alx
 ```
 
+
+
+## Änderungen in 0.10.23
+
+- Desktop-Haftnotizen sind jetzt echte unabhängige Top-Level-Fenster ohne `Qt.Tool`-Parent. Dadurch kann „Ausblenden / minimieren“ den Window-Manager-Minimieren-Weg nutzen, statt die Haftnotiz aus dem erreichbaren Fenster-/Taskleistenbestand zu entfernen.
+- Die Transparenz der Haftnotizen wurde repariert: Fenster-Opacity wird nicht mehr beim Hover auf 100 % zurückgesetzt, ARGB-Hintergrundfarben werden als `rgba(...)` angewendet, und das transparente Top-Level-Fenster wird nicht mehr mit einem opaken Palette-Brush vollflächig gefüllt.
+- Der Desktop-Haftnotiz-Text nutzt jetzt `QTextDocument.setDocumentMargin(0)`, rahmenlose `QTextEdit`-Darstellung und HTML-Absätze ohne Browser-/Qt-Standardabstand. `\line` bleibt ein weicher Zeilenumbruch (`<br/>`), während `\par` ein echter Absatz bleibt. Dadurch verschwinden die zu großen Leerzeilen und der obere Erste-Zeile-Abstand.
+- Die obere RTF-Formatierungsleiste wurde näher an `ToolStrip_fontstyle` aus Notizen.NET gebracht: Schriftart, Schriftgröße, Normal/Fett/Kursiv/Unterstrichen/Durchgestrichen, größer/kleiner, Textfarbe, Texthintergrund, Aufzählungspunkt und Scrollleisten-Wechsel sind als sichtbare Text-Buttons oben vorhanden und tragen die alten ToolStrip-Objektnamen.
+- Drucken nutzt jetzt die PySide-/PyQt-kompatible `QTextDocument.print_`/`print`-Methode und lädt `QtPrintSupport` bei Bedarf robuster nach. Aktuelle Notiz, Teilbaum und gesamter Baum verwenden diesen gemeinsamen Druckpfad.
+- Das Hauptlayout wurde weiter an Notizen.NET angepasst: kein sichtbares Wort „Baum“ über dem Baum, kein sichtbares „Titel:“-Label über dem Editor, Baum-Header versteckt; die beiden gelben Felder `txt1` und `txt2` stehen in den Split-Panels direkt nebeneinander.
 
 ## Änderungen in 0.10.22
 

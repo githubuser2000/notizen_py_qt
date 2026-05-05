@@ -38,6 +38,7 @@ _SKIP_DESTINATIONS = {
 # dropping them with other ``\*`` destinations.
 _TEXTUAL_IGNORABLE_DESTINATIONS = {"pntext", "listtext"}
 LEGACY_OBJECT_PLACEHOLDER = "[Objekt]"
+_RTF_SOFT_LINE_BREAK = "\u2028"
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +63,7 @@ class RtfHyperlink:
 
 _TEXT_CONTROLS = {
     "par": "\n",
-    "line": "\n",
+    "line": _RTF_SOFT_LINE_BREAK,
     "tab": "\t",
     "bullet": "•",
     "emdash": "—",
@@ -162,7 +163,7 @@ def _peek_ignorable_destination(text: str, backslash_index: int) -> str:
 
 
 def _escape_html_text_with_breaks(text: str) -> str:
-    return escape(text).replace("\n", "<br/>").replace("\t", "\t")
+    return escape(text).replace(_RTF_SOFT_LINE_BREAK, "<br/>").replace("\n", "<br/>").replace("\t", "\t")
 
 
 def _rtf_escape_field_url(url: str) -> str:
@@ -756,7 +757,7 @@ def _rtf_iter_plain(rtf: str, encoding: str = "cp1252") -> Iterable[str]:
 
 
 def _rtf_fragment_to_plain(fragment: str, encoding: str = "cp1252") -> str:
-    text = _combine_surrogate_pairs("".join(_rtf_iter_plain(fragment, encoding))).replace("\r\n", "\n").replace("\r", "\n")
+    text = _combine_surrogate_pairs("".join(_rtf_iter_plain(fragment, encoding))).replace(_RTF_SOFT_LINE_BREAK, "\n").replace("\r\n", "\n").replace("\r", "\n")
     return "\n".join(line.rstrip() for line in text.split("\n"))
 
 
@@ -772,9 +773,9 @@ def rtf_to_plain_text(rtf: str) -> str:
     if "{\\rtf" not in rtf[:32]:
         # Some legacy imports already contain plain text or malformed fragments.
         encoding = rtf_ansi_encoding(rtf)
-        return _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1), encoding), rtf).replace("\r\n", "\n").replace("\r", "\n")
+        return _HEX_RE.sub(lambda m: _decode_hex_byte(m.group(1), encoding), rtf).replace(_RTF_SOFT_LINE_BREAK, "\n").replace("\r\n", "\n").replace("\r", "\n")
     encoding = rtf_ansi_encoding(rtf)
-    text = _combine_surrogate_pairs("".join(_rtf_iter_plain(rtf, encoding))).replace("\r\n", "\n").replace("\r", "\n")
+    text = _combine_surrogate_pairs("".join(_rtf_iter_plain(rtf, encoding))).replace(_RTF_SOFT_LINE_BREAK, "\n").replace("\r\n", "\n").replace("\r", "\n")
     lines = [line.rstrip() for line in text.split("\n")]
     collapsed: list[str] = []
     previous_blank = False
@@ -1134,7 +1135,7 @@ def rtf_to_content_parts(rtf: str) -> list[RtfContentPart]:
         if current_style is None or not current_text:
             current_text = []
             return
-        text = _combine_surrogate_pairs("".join(current_text))
+        text = _combine_surrogate_pairs("".join(current_text)).replace(_RTF_SOFT_LINE_BREAK, "\n")
         current_text = []
         if not text:
             return
@@ -1188,7 +1189,7 @@ def rtf_to_text_segments(rtf: str) -> list[RtfTextSegment]:
         if current_style is None or not current_text:
             current_text = []
             return
-        text = _combine_surrogate_pairs("".join(current_text))
+        text = _combine_surrogate_pairs("".join(current_text)).replace(_RTF_SOFT_LINE_BREAK, "\n")
         current_text = []
         if text:
             if segments and segments[-1].style == current_style:
@@ -1227,10 +1228,10 @@ def rtf_to_html(rtf: str) -> str:
     if not rtf:
         return ""
     if "{\\rtf" not in rtf[:32]:
-        return '<html><body style="white-space: pre-wrap;">' + escape(rtf).replace("\n", "<br/>") + "</body></html>"
+        return '<html><body style="white-space: pre-wrap; margin:0;">' + escape(rtf).replace("\n", "<br/>") + "</body></html>"
 
     colors = extract_color_table(rtf)
-    out: list[str] = ['<html><body style="white-space: pre-wrap;">']
+    out: list[str] = ['<html><body style="white-space: pre-wrap; margin:0;">']
     paragraph_parts: list[str] = []
     current_paragraph_style: _RtfStyle | None = None
     current_inline_css: str | None = None
@@ -1245,7 +1246,7 @@ def rtf_to_html(rtf: str) -> str:
         nonlocal current_text
         if not current_text:
             return
-        text = _combine_surrogate_pairs("".join(current_text))
+        text = _combine_surrogate_pairs("".join(current_text)).replace(_RTF_SOFT_LINE_BREAK, "\n")
         current_text = []
         if current_inline_css:
             paragraph_parts.append(f'<span style="{escape(current_inline_css, quote=True)}">')
@@ -1259,11 +1260,18 @@ def rtf_to_html(rtf: str) -> str:
         if current_paragraph_style is None and style is not None:
             current_paragraph_style = style.copy()
         flush_text()
+        # RichTextBox paragraphs do not have the browser/Qt HTML default top and
+        # bottom margins.  Keep explicit RTF spacing (\sb/\sa), but force zero
+        # margins when the source did not ask for paragraph spacing.
+        paragraph_css_parts: list[str] = []
+        if current_paragraph_style is None or current_paragraph_style.space_before_twips is None:
+            paragraph_css_parts.append("margin-top:0")
+        if current_paragraph_style is None or current_paragraph_style.space_after_twips is None:
+            paragraph_css_parts.append("margin-bottom:0")
         paragraph_css = _paragraph_style_to_css(current_paragraph_style)
         if paragraph_css:
-            out.append(f'<p style="{escape(paragraph_css, quote=True)}">')
-        else:
-            out.append("<p>")
+            paragraph_css_parts.append(paragraph_css)
+        out.append(f'<p style="{escape("; ".join(paragraph_css_parts), quote=True)}">')
         if paragraph_parts:
             out.extend(paragraph_parts)
         else:
@@ -1298,6 +1306,12 @@ def rtf_to_html(rtf: str) -> str:
         if ch == "\n":
             finish_paragraph(style)
             continue
+        if ch == _RTF_SOFT_LINE_BREAK:
+            ensure_paragraph(style)
+            flush_text()
+            paragraph_parts.append("<br/>")
+            current_inline_css = None
+            continue
         ensure_paragraph(style)
         css = _inline_style_to_css(style, colors)
         if css != current_inline_css:
@@ -1318,7 +1332,9 @@ def rtf_to_html(rtf: str) -> str:
 def _rtf_escape_text(text: str) -> str:
     parts: list[str] = []
     for ch in text:
-        if ch == "\\":
+        if ch == _RTF_SOFT_LINE_BREAK:
+            parts.append(r"\line ")
+        elif ch == "\\":
             parts.append(r"\\")
         elif ch == "{":
             parts.append(r"\{")
@@ -1839,7 +1855,7 @@ class _HtmlToSegments(HTMLParser):
             self.skip_depth += 1
             return
         if tag == "br":
-            self._append("\n")
+            self._append(_RTF_SOFT_LINE_BREAK)
             return
         if tag == "img":
             attr = {k.lower(): v or "" for k, v in attrs}

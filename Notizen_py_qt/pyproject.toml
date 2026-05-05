@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "notizen-py-qt"
-version = "0.10.22"
+version = "0.10.23"
 description = "Python/Qt continuation port of the legacy Notizen.NET WinForms note tree application."
 readme = "README.md"
 requires-python = ">=3.10"
